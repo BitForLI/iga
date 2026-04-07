@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { message } from 'antd';
+import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useOrderMode } from '../context/OrderModeContext';
@@ -18,13 +19,21 @@ function getDeliveryFee(subtotal: number): number {
   return 8;
 }
 
-export function CartSidebar() {
+export function CartSidebar({ compact = false }: { compact?: boolean }) {
+  const iconPx = compact ? 24 : 32;
+  const badgePx = compact ? 17 : 20;
   const { items, removeItem, updateQuantity, total } = useCart();
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
   const deliveryFee = orderType === 'Delivery' ? getDeliveryFee(total) : 0;
   const grandTotal = total + deliveryFee;
-  const [isOpen, setIsOpen] = useState(false);
+  const {
+    panelMounted,
+    panelEnter,
+    closePanel,
+    onPanelTransitionEnd,
+    toggleFromTrigger,
+  } = useRightDrawer();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
 
@@ -33,39 +42,41 @@ export function CartSidebar() {
       {/* 购物车按钮 */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleFromTrigger}
         style={{
           position: 'relative',
           backgroundColor: 'transparent',
           border: 'none',
           cursor: 'pointer',
-          width: '32px',
-          height: '32px',
+          width: iconPx,
+          height: iconPx,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          padding: compact ? 2 : 0,
+          flexShrink: 0,
         }}
       >
         <img
           src={cartIcon}
           alt="cart"
-          style={{ width: '32px', height: '32px', objectFit: 'contain' }}
+          style={{ width: iconPx, height: iconPx, objectFit: 'contain' }}
         />
         {items.length > 0 && (
           <span
             style={{
               position: 'absolute',
-              top: '-8px',
-              right: '-8px',
+              top: compact ? -6 : -8,
+              right: compact ? -6 : -8,
               backgroundColor: '#dc2626',
               color: 'white',
               borderRadius: '50%',
-              width: '20px',
-              height: '20px',
+              width: badgePx,
+              height: badgePx,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '0.75rem',
+              fontSize: compact ? '0.65rem' : '0.75rem',
               fontWeight: 'bold',
             }}
           >
@@ -74,41 +85,28 @@ export function CartSidebar() {
         )}
       </button>
 
-      {/* 遮罩在下层先渲染，抽屉在上层，避免点击被其它全屏层抢走 */}
-      {isOpen && (
-        <div
-          aria-hidden
-          onClick={() => setIsOpen(false)}
-          style={{
-            position: 'fixed',
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.3)',
-            zIndex: 1099,
-          }}
-        />
-      )}
-
       {/* 侧边栏 */}
-      {isOpen && (
+      {panelMounted && (
         <div
           role="dialog"
           aria-modal="true"
+          onTransitionEnd={onPanelTransitionEnd}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
             right: 0,
             top: 0,
-            width: '350px',
-            height: '100vh',
+            width: 'min(100vw, 350px)',
+            maxWidth: '100%',
+            height: '100dvh',
             backgroundColor: 'white',
             boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
             zIndex: 1100,
             display: 'flex',
             flexDirection: 'column',
-            animation: 'slideIn 0.3s ease-out',
+            transform: panelEnter ? 'translate3d(0,0,0)' : 'translate3d(100%,0,0)',
+            transition: `transform ${DRAWER_MS}ms ease-out`,
+            willChange: 'transform',
           }}
         >
           {/* 关闭按钮 */}
@@ -124,7 +122,7 @@ export function CartSidebar() {
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Cart</h2>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={closePanel}
               style={{
                 backgroundColor: 'transparent',
                 border: 'none',
@@ -384,16 +382,23 @@ export function CartSidebar() {
         </div>
       )}
 
-      <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-          }
-          to {
-            transform: translateX(0);
-          }
-        }
-      `}</style>
+      {panelMounted && (
+        <div
+          aria-hidden
+          onClick={closePanel}
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.3)',
+            zIndex: 1099,
+            opacity: panelEnter ? 1 : 0,
+            transition: `opacity ${DRAWER_MS}ms ease-out`,
+          }}
+        />
+      )}
     </>
   );
 }

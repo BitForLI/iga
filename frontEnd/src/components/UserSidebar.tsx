@@ -1,50 +1,62 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../api';
 import { orderAPI } from '../api';
 import userIcon from '../assets/images/user.png';
 
-export function UserSidebar() {
+export function UserSidebar({ compact = false }: { compact?: boolean }) {
+  const iconPx = compact ? 24 : 32;
   const { user, setUser, isLoggedIn } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
+  const {
+    panelMounted,
+    panelEnter,
+    closePanel,
+    onPanelTransitionEnd,
+    toggleFromTrigger,
+  } = useRightDrawer();
   const [tab, setTab] = useState<'login' | 'register'>('login');
-
-  const openSidebar = () => setIsOpen(true);
-  const closeSidebar = () => setIsOpen(false);
 
   return (
     <>
       <button
-        onClick={openSidebar}
+        type="button"
+        onClick={toggleFromTrigger}
         style={{
           backgroundColor: 'transparent',
           border: 'none',
           cursor: 'pointer',
-          width: '32px',
-          height: '32px',
+          width: iconPx,
+          height: iconPx,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          padding: compact ? 2 : 0,
+          flexShrink: 0,
         }}
       >
-        <img src={userIcon} alt="user" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+        <img src={userIcon} alt="user" style={{ width: iconPx, height: iconPx, objectFit: 'contain' }} />
       </button>
 
-      {isOpen && (
+      {panelMounted && (
         <div
+          onTransitionEnd={onPanelTransitionEnd}
           style={{
             position: 'fixed',
             right: 0,
             top: 0,
-            width: '380px',
-            maxWidth: '100vw',
-            height: '100vh',
+            width: 'min(380px, 100vw)',
+            maxWidth: '100%',
+            height: '100dvh',
             backgroundColor: 'white',
             boxShadow: '-2px 0 12px rgba(0,0,0,0.15)',
             zIndex: 1000,
             display: 'flex',
             flexDirection: 'column',
+            transform: panelEnter ? 'translate3d(0,0,0)' : 'translate3d(100%,0,0)',
+            transition: `transform ${DRAWER_MS}ms ease-out`,
+            willChange: 'transform',
           }}
         >
           <div
@@ -58,7 +70,8 @@ export function UserSidebar() {
           >
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Account</h2>
             <button
-              onClick={closeSidebar}
+              type="button"
+              onClick={closePanel}
               style={{
                 backgroundColor: 'transparent',
                 border: 'none',
@@ -73,22 +86,25 @@ export function UserSidebar() {
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
             {isLoggedIn && user ? (
-              <OrderHistory user={user} onClose={closeSidebar} />
+              <OrderHistory user={user} onClose={closePanel} />
             ) : (
-              <AuthForms tab={tab} setTab={setTab} onSuccess={(u) => { setUser(u); closeSidebar(); }} />
+              <AuthForms tab={tab} setTab={setTab} onSuccess={(u) => { setUser(u); closePanel(); }} />
             )}
           </div>
         </div>
       )}
 
-      {isOpen && (
+      {panelMounted && (
         <div
-          onClick={closeSidebar}
+          aria-hidden
+          onClick={closePanel}
           style={{
             position: 'fixed',
             inset: 0,
             backgroundColor: 'rgba(0,0,0,0.3)',
             zIndex: 999,
+            opacity: panelEnter ? 1 : 0,
+            transition: `opacity ${DRAWER_MS}ms ease-out`,
           }}
         />
       )}

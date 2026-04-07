@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AddressAutofill } from '@mapbox/search-js-react';
+import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { EnvironmentOutlined, CarOutlined, CloseOutlined } from '@ant-design/icons';
 import pickupIcon from '../assets/images/自提点.png';
 import { useOrderMode, type OrderType } from '../context/OrderModeContext';
@@ -54,13 +55,20 @@ function isInDeliveryZone(suburb: string): boolean {
   return DELIVERY_SUBURBS.some((s) => s.toLowerCase() === suburb.toLowerCase());
 }
 
-export function PickupDeliverySidebar() {
-  const [isOpen, setIsOpen] = useState(false);
+export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }) {
+  const iconPx = compact ? 24 : 32;
+  const {
+    panelMounted,
+    panelEnter,
+    closePanel,
+    onPanelTransitionEnd,
+    toggleFromTrigger,
+  } = useRightDrawer();
   const [addressError, setAddressError] = useState('');
   const [addressInputDirty, setAddressInputDirty] = useState(false);
   const { orderType, setOrderType, pickupTimeSlot, setPickupTimeSlot, deliveryInfo, setDeliveryInfo, saveDeliveryAddress } = useOrderMode();
 
-  const pickupSlots = isOpen ? generatePickupSlots() : [];
+  const pickupSlots = panelMounted ? generatePickupSlots() : [];
 
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);
@@ -68,42 +76,54 @@ export function PickupDeliverySidebar() {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '6px' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: compact ? 0 : 6 }}>
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggleFromTrigger}
           title="Pickup / Delivery"
+          type="button"
           style={{
             backgroundColor: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            padding: 0,
+            padding: compact ? 2 : 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            minWidth: iconPx,
+            minHeight: iconPx,
           }}
         >
-          <img src={pickupIcon} alt="Pickup/Delivery" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+          <img
+            src={pickupIcon}
+            alt="Pickup/Delivery"
+            style={{ width: iconPx, height: iconPx, objectFit: 'contain', display: 'block' }}
+          />
         </button>
-        <span style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: 1 }}>
-          {orderType === 'Pickup' ? 'Pickup' : 'Delivery'}
-        </span>
+        {!compact && (
+          <span style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: 1, whiteSpace: 'nowrap' }}>
+            {orderType === 'Pickup' ? 'Pickup' : 'Delivery'}
+          </span>
+        )}
       </div>
 
-      {isOpen && (
+      {panelMounted && (
         <div
+          onTransitionEnd={onPanelTransitionEnd}
           style={{
             position: 'fixed',
             right: 0,
             top: 0,
-            width: '420px',
-            maxWidth: '95vw',
-            height: '100vh',
+            width: 'min(420px, 100vw)',
+            maxWidth: '100%',
+            height: '100dvh',
             backgroundColor: 'white',
             boxShadow: '-2px 0 12px rgba(0,0,0,0.15)',
             zIndex: 1000,
             display: 'flex',
             flexDirection: 'column',
-            animation: 'slideIn 0.3s ease-out',
+            transform: panelEnter ? 'translate3d(0,0,0)' : 'translate3d(100%,0,0)',
+            transition: `transform ${DRAWER_MS}ms ease-out`,
+            willChange: 'transform',
           }}
         >
           {/* 顶部标题栏 - 白底 */}
@@ -118,7 +138,8 @@ export function PickupDeliverySidebar() {
           >
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0, color: '#0a0a0a' }}>Where would you like to shop?</h2>
             <button
-              onClick={() => setIsOpen(false)}
+              type="button"
+              onClick={closePanel}
               style={{
                 backgroundColor: 'transparent',
                 border: 'none',
@@ -262,6 +283,25 @@ export function PickupDeliverySidebar() {
                       );
                     })}
                   </div>
+                  <button
+                    type="button"
+                    disabled={!pickupTimeSlot}
+                    onClick={closePanel}
+                    style={{
+                      marginTop: '0.75rem',
+                      width: '100%',
+                      padding: '0.5rem 1rem',
+                      backgroundColor: pickupTimeSlot ? '#dc2626' : '#e5e7eb',
+                      color: pickupTimeSlot ? 'white' : '#9ca3af',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      cursor: pickupTimeSlot ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Confirm
+                  </button>
                 </div>
               </>
             ) : (
@@ -419,7 +459,10 @@ export function PickupDeliverySidebar() {
                 />
                 <button
                   type="button"
-                  onClick={saveDeliveryAddress}
+                  onClick={() => {
+                    saveDeliveryAddress();
+                    closePanel();
+                  }}
                   style={{
                     padding: '0.5rem 1rem',
                     backgroundColor: '#dc2626',
@@ -439,10 +482,11 @@ export function PickupDeliverySidebar() {
         </div>
       )}
 
-      {/* 背景遮罩 */}
-      {isOpen && (
+      {/* 背景遮罩：与侧栏同步淡入淡出 */}
+      {panelMounted && (
         <div
-          onClick={() => setIsOpen(false)}
+          aria-hidden
+          onClick={closePanel}
           style={{
             position: 'fixed',
             left: 0,
@@ -451,16 +495,11 @@ export function PickupDeliverySidebar() {
             bottom: 0,
             backgroundColor: 'rgba(0,0,0,0.3)',
             zIndex: 999,
+            opacity: panelEnter ? 1 : 0,
+            transition: `opacity ${DRAWER_MS}ms ease-out`,
           }}
         />
       )}
-
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
     </>
   );
 }

@@ -8,6 +8,7 @@ import home2 from '../assets/images/主页2.png';
 import home3 from '../assets/images/主页3.png';
 import productImage from '../assets/images/main.png';
 import { resolveProductImageUrl } from '../utils/imageUrl';
+import { useMaxWidth } from '../hooks/useMediaQuery';
 import addCartIcon from '../assets/images/添加购物车.png';
 import plusIcon from '../assets/images/加.png';
 import minusIcon from '../assets/images/减.png';
@@ -35,6 +36,19 @@ function deriveWeightGForPer100g(unit: string): number | undefined {
   return undefined;
 }
 
+/** 名称、分类、单位是否同时包含所有分词（不区分大小写） */
+function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
+  const keyword = rawKeyword.trim().toLowerCase();
+  if (!keyword) return true;
+  const nameLower = p.name.toLowerCase();
+  const categoryLower = (p.category ?? '').toLowerCase();
+  const unitLower = (p.unit ?? '').toLowerCase();
+  const words = keyword.split(/\s+/).filter(Boolean);
+  return words.every(
+    (w) => nameLower.includes(w) || categoryLower.includes(w) || unitLower.includes(w)
+  );
+}
+
 /** 首页 Special 横条：真实库中上架、有库存的前 5 个（名称排序，稳定） */
 function pickSpecialStripProducts(list: Product[]): Product[] {
   const eligible = list.filter((p) => p.isActive !== false && p.stockQuantity > 0);
@@ -54,6 +68,7 @@ interface HomePageProps {
 }
 
 export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
+  const isNarrow = useMaxWidth(768);
   const [products, setProducts] = useState<Product[]>([]);
   const [specialProducts, setSpecialProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,15 +112,9 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
 
   const filtered = products.filter((p) => {
     const matchCategory = !selectedCategory || p.category === selectedCategory;
-    const keyword = searchKeyword.trim().toLowerCase();
-    if (!keyword) return matchCategory;
-    const nameLower = p.name.toLowerCase();
-    const categoryLower = p.category.toLowerCase();
-    const searchWords = keyword.split(/\s+/).filter(Boolean);
-    const matchSearch = searchWords.every(
-      (sw) => nameLower.includes(sw) || categoryLower.includes(sw)
-    );
-    return matchCategory && matchSearch;
+    const kw = searchKeyword.trim();
+    if (!kw) return matchCategory;
+    return matchCategory && productMatchesSearchKeyword(p, kw);
   });
 
   if (loading) {
@@ -113,7 +122,7 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
   }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div style={{ padding: isNarrow ? '0.75rem' : '1.5rem', maxWidth: '100%', boxSizing: 'border-box' }}>
       {fetchError && (
         <div
           style={{
@@ -129,30 +138,32 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
           无法从服务器加载商品：{fetchError}
         </div>
       )}
-      {/* 轮换图 - 仅在未选择分类时显示 */}
-      {!selectedCategory && (
-        <HomeCarousel images={[home1, home2, home3]} />
+      {/* 轮换图 - 未选分类且未在搜索时显示 */}
+      {!selectedCategory && !searchKeyword.trim() && (
+        <HomeCarousel images={[home1, home2, home3]} isNarrow={isNarrow} />
       )}
 
-      {/* Special 横条：数据库真实商品（上架、有库存，名称排序取前 5） */}
-      {!selectedCategory && specialProducts.length > 0 && (
+      {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
+      {!selectedCategory && !searchKeyword.trim() && specialProducts.length > 0 && (
         <div style={{ marginBottom: '2.5rem' }}>
           <SpecialProductList
             products={specialProducts}
             onAddCart={addItem}
             productImage={productImage}
+            isNarrow={isNarrow}
           />
         </div>
       )}
 
-      {/* 商品网格 - 点击分类或输入搜索关键词时展示 */}
+      {/* 商品网格：选分类或有关键词时展示，仅列出 filtered */}
       {(selectedCategory || searchKeyword.trim()) && (
         <div id="search-results" style={{ scrollMarginTop: '1rem' }}>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: '1.5rem',
+              /** 手机：固定 2 列（Coles 式），列变宽而不是变多列挤扁 */
+              gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: isNarrow ? '10px' : '1.5rem',
               marginTop: '0.5rem',
             }}
           >
@@ -165,6 +176,7 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
                 addCartIcon={addCartIcon}
                 plusIcon={plusIcon}
                 minusIcon={minusIcon}
+                compact={isNarrow}
               />
             ))}
           </div>
@@ -175,14 +187,26 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
   );
 }
 
-function HomeCarousel({ images }: { images: string[] }) {
+function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolean }) {
   const slides = images.map((src, i) => ({ src, alt: `Home ${i + 1}` }));
   const [current, setCurrent] = useState(0);
+  const heroH = isNarrow ? 200 : 400;
 
   return (
-    <div style={{ position: 'relative', width: 'calc(100% + 6rem)', marginLeft: '-3rem', marginRight: '-3rem', marginTop: '-3rem', marginBottom: '2rem', borderRadius: 0, overflow: 'hidden' }}>
-      <div style={{ minHeight: '400px', backgroundColor: '#4b5563' }}>
-        <img src={slides[current].src} alt={slides[current].alt} style={{ width: '100%', height: '400px', objectFit: 'cover' }} />
+    <div
+      style={{
+        position: 'relative',
+        width: isNarrow ? '100%' : 'calc(100% + 6rem)',
+        marginLeft: isNarrow ? 0 : '-3rem',
+        marginRight: isNarrow ? 0 : '-3rem',
+        marginTop: isNarrow ? 0 : '-3rem',
+        marginBottom: '2rem',
+        borderRadius: 0,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ minHeight: heroH, backgroundColor: '#4b5563' }}>
+        <img src={slides[current].src} alt={slides[current].alt} style={{ width: '100%', height: heroH, objectFit: 'cover' }} />
       </div>
       <button
         onClick={() => setCurrent((c) => (c === 0 ? slides.length - 1 : c - 1))}
@@ -204,53 +228,151 @@ function SpecialProductList({
   products,
   onAddCart,
   productImage,
+  isNarrow,
 }: {
   products: Product[];
   onAddCart: (item: any) => void;
   productImage: string;
+  isNarrow: boolean;
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(160px, 1fr))',
+        gap: isNarrow ? '10px' : '1rem',
+      }}
+    >
       {products.map((p) => (
-        <SpecialCard key={p.id} product={p} onAddCart={onAddCart} productImage={productImage} />
+        <SpecialCard
+          key={p.id}
+          product={p}
+          onAddCart={onAddCart}
+          productImage={productImage}
+          compact={isNarrow}
+        />
       ))}
     </div>
   );
 }
 
-function SpecialCard({ product, onAddCart, productImage }: { product: Product; onAddCart: (item: any) => void; productImage: string }) {
+const titleClampStyle: React.CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  wordBreak: 'break-word',
+};
+
+function SpecialCard({
+  product,
+  onAddCart,
+  productImage,
+  compact = false,
+}: {
+  product: Product;
+  onAddCart: (item: any) => void;
+  productImage: string;
+  compact?: boolean;
+}) {
   const per100g = product.weightG ? `$${(product.price / (product.weightG / 100)).toFixed(2)} per 100g` : '';
 
   return (
-    <div style={{ width: '100%', backgroundColor: 'white', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{
+        width: '100%',
+        minWidth: 0,
+        backgroundColor: 'white',
+        borderRadius: compact ? 6 : 8,
+        overflow: 'hidden',
+        border: '1px solid #e5e7eb',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       {product.discountLabel && (
-        <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.35rem', fontSize: '0.75rem', fontWeight: 'bold', textAlign: 'center' }}>{product.discountLabel}</div>
-      )}
-      <div style={{ padding: '0.75rem', flex: 1 }}>
-        <div style={{ height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.5rem' }}>
-          <img src={resolveProductImageUrl(product.imageUrl, productImage)} alt={product.name} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-        </div>
-        <h3 style={{ fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '0.5rem', lineHeight: 1.2 }}>{product.name}</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-          {product.wasPrice != null && (
-            <span style={{ backgroundColor: '#fef08a', padding: '0.15rem 0.35rem', borderRadius: '4px', fontSize: '0.75rem', textDecoration: 'line-through' }}>was ${product.wasPrice.toFixed(2)}</span>
-          )}
-          <span style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: '0.9rem', cursor: 'pointer' }} title="Add to favourites">♡</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.75rem' }}>
-          <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>${product.price.toFixed(2)}</span>
-          {per100g && <span style={{ fontSize: '0.7rem', color: '#666' }}>{per100g}</span>}
-        </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddCart({ productId: product.id, name: product.name, price: product.price, quantity: 1, imageUrl: product.imageUrl || productImage });
+        <div
+          style={{
+            flexShrink: 0,
+            backgroundColor: '#dc2626',
+            color: 'white',
+            padding: compact ? '0.18rem 0.25rem' : '0.28rem 0.35rem',
+            fontSize: compact ? '0.6rem' : '0.72rem',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            lineHeight: 1.2,
           }}
-          style={{ width: '100%', padding: '0.5rem', border: '1px solid #dc2626', backgroundColor: 'white', color: '#dc2626', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.875rem' }}
         >
-          Add to Cart
-        </button>
+          {product.discountLabel}
+        </div>
+      )}
+      {/* 仅商品图为正方形 */}
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '1',
+          backgroundColor: '#f9fafb',
+          borderRadius: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <img
+          src={resolveProductImageUrl(product.imageUrl, productImage)}
+          alt=""
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        />
+      </div>
+      <div style={{ padding: compact ? '0.35rem' : '0.5rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.25rem' : '0.35rem' }}>
+        <h3
+          style={{
+            ...titleClampStyle,
+            fontSize: compact ? '0.68rem' : '0.8rem',
+            fontWeight: 'bold',
+            margin: 0,
+            lineHeight: 1.2,
+          }}
+        >
+          {product.name}
+        </h3>
+        {product.wasPrice != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
+            <span style={{ backgroundColor: '#fef08a', padding: '0.08rem 0.2rem', borderRadius: '4px', fontSize: '0.6rem', textDecoration: 'line-through' }}>was ${product.wasPrice.toFixed(2)}</span>
+            {!compact && (
+              <span style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: '0.75rem', cursor: 'pointer' }} title="Add to favourites">♡</span>
+            )}
+          </div>
+        )}
+        {/* 价格 + 副价 与 Add to Cart 同一行 */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 2 }}>
+            <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold' }}>${product.price.toFixed(2)}</span>
+            {per100g && <span style={{ fontSize: compact ? '0.52rem' : '0.6rem', color: '#666', lineHeight: 1.2 }}>{per100g}</span>}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddCart({ productId: product.id, name: product.name, price: product.price, quantity: 1, imageUrl: product.imageUrl || productImage });
+            }}
+            style={{
+              flexShrink: 0,
+              padding: compact ? '0.28rem 0.45rem' : '0.35rem 0.55rem',
+              border: '1px solid #dc2626',
+              backgroundColor: 'white',
+              color: '#dc2626',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: compact ? '0.6rem' : '0.72rem',
+              lineHeight: 1.2,
+            }}
+          >
+            Add to Cart
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -263,6 +385,7 @@ function ProductCard({
   addCartIcon,
   plusIcon,
   minusIcon,
+  compact = false,
 }: {
   product: Product;
   onAddCart: (item: any) => void;
@@ -270,8 +393,11 @@ function ProductCard({
   addCartIcon: string;
   plusIcon: string;
   minusIcon: string;
+  compact?: boolean;
 }) {
   const [quantity, setQuantity] = useState(1);
+  const addPx = compact ? 26 : 32;
+  const stepPx = compact ? 18 : 20;
 
   const handleAddToCart = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -292,12 +418,18 @@ function ProductCard({
       onClick={handleAddToCart}
       onKeyDown={(e) => e.key === 'Enter' && handleAddToCart()}
       style={{
+        width: '100%',
+        minWidth: 0,
         border: '1px solid #e5e7eb',
-        borderRadius: '8px',
-        padding: '1rem',
+        borderRadius: compact ? '6px' : '8px',
+        padding: compact ? '0.4rem' : '0.65rem',
         backgroundColor: 'white',
         transition: 'all 0.2s',
         cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
       }}
       onMouseOver={(e) => {
         (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
@@ -308,19 +440,19 @@ function ProductCard({
         (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
       }}
     >
-      {/* 商品图 - 使用 main 模板图片 */}
+      {/* 仅商品图为正方形 */}
       <div
         style={{
           width: '100%',
-          height: '120px',
+          aspectRatio: '1',
           borderRadius: '6px',
-          marginBottom: '0.75rem',
           overflow: 'hidden',
+          backgroundColor: '#f3f4f6',
         }}
       >
         <img
           src={resolveProductImageUrl(product.imageUrl, productImage)}
-          alt={product.name}
+          alt=""
           style={{
             width: '100%',
             height: '100%',
@@ -329,67 +461,96 @@ function ProductCard({
         />
       </div>
 
-      <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{product.name}</h3>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
-        <span style={{ fontSize: '0.875rem', color: '#999' }}>/{product.unit}</span>
-      </div>
-
-      {/* 数量选择 + 添加购物车 - 同一行，加减与数字贴近 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setQuantity(Math.max(1, quantity - 1)); }}
-              style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              width: '24px',
-              height: '24px',
-              padding: 0,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <img src={minusIcon} alt="Minus" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-          </button>
-          <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 'bold', fontSize: '0.9rem' }}>{quantity}</span>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setQuantity(quantity + 1); }}
-            style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              width: '24px',
-              height: '24px',
-              padding: 0,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <img src={plusIcon} alt="Plus" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={handleAddToCart}
+      <div style={{ marginTop: compact ? '0.35rem' : '0.5rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.3rem' : '0.4rem' }}>
+        <h3
           style={{
-            backgroundColor: 'transparent',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...titleClampStyle,
+            fontSize: compact ? '0.75rem' : '0.95rem',
+            fontWeight: 'bold',
+            margin: 0,
+            lineHeight: 1.25,
           }}
         >
-          <img src={addCartIcon} alt="Add to cart" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
-        </button>
+          {product.name}
+        </h3>
+
+        {/* 价格 | 数量 | 购物车 同一行 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: compact ? '0.25rem' : '0.4rem',
+            width: '100%',
+            minWidth: 0,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0 }}>
+            <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
+            <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/{product.unit}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: compact ? '0.12rem' : '0.2rem', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuantity(Math.max(1, quantity - 1));
+              }}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                width: compact ? 22 : 26,
+                height: compact ? 22 : 26,
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img src={minusIcon} alt="Minus" style={{ width: stepPx, height: stepPx, objectFit: 'contain' }} />
+            </button>
+            <span style={{ minWidth: compact ? 18 : 22, textAlign: 'center', fontWeight: 'bold', fontSize: compact ? '0.78rem' : '0.88rem' }}>{quantity}</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuantity(quantity + 1);
+              }}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                width: compact ? 22 : 26,
+                height: compact ? 22 : 26,
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img src={plusIcon} alt="Plus" style={{ width: stepPx, height: stepPx, objectFit: 'contain' }} />
+            </button>
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                padding: 0,
+                marginLeft: compact ? '0.1rem' : '0.2rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img src={addCartIcon} alt="Add to cart" style={{ width: addPx, height: addPx, objectFit: 'contain' }} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

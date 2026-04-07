@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import vegetableIcon from '../assets/images/vegetable.png';
+import { useMaxWidth } from '../hooks/useMediaQuery';
 import fruitIcon from '../assets/images/fruit.png';
 import serviceIcon from '../assets/images/客服.png';
 
@@ -10,8 +11,19 @@ interface SidebarProps {
 }
 
 export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: SidebarProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const isNarrow = useMaxWidth(768);
+  const [isOpen, setIsOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 768 : true
+  );
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth <= 768) setIsOpen(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const categories = [
     { name: 'Vegetables', icon: vegetableIcon },
@@ -22,20 +34,43 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
     { name: 'Pantry', icon: fruitIcon },
   ];
 
+  /** 手机展开时偏窄，避免占满屏；收起条略缩窄 */
+  const collapsedW = isNarrow ? 40 : 48;
+  const drawerW = isNarrow
+    ? Math.min(220, typeof window !== 'undefined' ? window.innerWidth - 20 : 220)
+    : 280;
+
   return (
     <>
+      {isNarrow && isOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setIsOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 98,
+            border: 'none',
+            padding: 0,
+            margin: 0,
+            backgroundColor: 'rgba(0,0,0,0.35)',
+            cursor: 'pointer',
+          }}
+        />
+      )}
       {/* 侧边栏：展开 280px，收起时仅显示窄白边 + 顶部三条杠 */}
       <div
         style={{
-          width: isOpen ? '280px' : '48px',
+          width: isOpen ? (isNarrow ? drawerW : 280) : collapsedW,
           borderRight: '1px solid #e5e7eb',
-          height: `calc(100vh - ${navHeight}px)`,
+          height: `calc(100dvh - ${navHeight}px)`,
           overflow: 'hidden',
           transition: 'width 0.3s',
           position: 'fixed',
           left: 0,
           top: `${navHeight}px`,
-          zIndex: 100,
+          zIndex: 110,
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: 'white',
@@ -46,35 +81,52 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
           onClick={() => setIsOpen(!isOpen)}
           style={{
             width: '100%',
-            padding: isOpen ? '1rem' : '0.75rem',
+            padding: isOpen ? (isNarrow ? '0.65rem 0.5rem' : '1rem') : isNarrow ? '0.5rem' : '0.75rem',
             backgroundColor: '#dc2626',
             color: 'white',
             border: 'none',
             cursor: 'pointer',
             textAlign: 'left',
-            minHeight: '48px',
+            minHeight: isNarrow ? 44 : 48,
             display: 'flex',
             alignItems: 'center',
             justifyContent: isOpen ? 'flex-start' : 'center',
           }}
         >
-          <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>☰</span>
+          <span style={{ fontSize: isNarrow ? '1.1rem' : '1.25rem', fontWeight: 'bold' }}>☰</span>
           {isOpen && (
-            <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
-              Browse Categories
+            <span
+              style={{
+                marginLeft: '0.35rem',
+                fontSize: isNarrow ? '0.7rem' : '0.875rem',
+                fontWeight: 'bold',
+                textTransform: 'uppercase',
+                letterSpacing: isNarrow ? '0.02em' : undefined,
+              }}
+            >
+              {isNarrow ? 'Categories' : 'Browse Categories'}
             </span>
           )}
         </button>
         {/* 分类列表：白底黑字，收起时隐藏 */}
         {isOpen && (
-          <div style={{ flex: 1, padding: '1rem', backgroundColor: 'white', color: '#333', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div
+            style={{
+              flex: 1,
+              padding: isNarrow ? '0.5rem 0.45rem' : '1rem',
+              backgroundColor: 'white',
+              color: '#333',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isNarrow ? '0.25rem' : '0.5rem' }}>
               {categories.map((cat) => (
                 <div
                   key={cat.name}
                   onClick={() => onSelectCategory(selectedCategory === cat.name ? '' : cat.name)}
                   style={{
-                    padding: '0.75rem',
+                    padding: isNarrow ? '0.45rem 0.35rem' : '0.75rem',
                     cursor: 'pointer',
                     borderRadius: '4px',
                     display: 'flex',
@@ -91,8 +143,12 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
                     (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
                   }}
                 >
-                  <img src={cat.icon} alt="" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-                  <span style={{ fontSize: '0.875rem' }}>{cat.name}</span>
+                  <img
+                    src={cat.icon}
+                    alt=""
+                    style={{ width: isNarrow ? 20 : 24, height: isNarrow ? 20 : 24, objectFit: 'contain', flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: isNarrow ? '0.72rem' : '0.875rem', lineHeight: 1.25 }}>{cat.name}</span>
                   <span style={{ marginLeft: 'auto' }}>›</span>
                 </div>
               ))}
@@ -131,7 +187,13 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
       </div>
 
       {/* 占位：撑开主内容区 */}
-      <div style={{ width: isOpen ? '280px' : '48px', flexShrink: 0, transition: 'width 0.3s' }} />
+      <div
+        style={{
+          width: isOpen ? (isNarrow ? drawerW : 280) : collapsedW,
+          flexShrink: 0,
+          transition: 'width 0.3s',
+        }}
+      />
 
       {/* 联系客服对话框 - 左下角 */}
       {serviceDialogOpen && (
@@ -153,7 +215,8 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
               position: 'fixed',
               left: '1rem',
               bottom: '1rem',
-              width: '320px',
+              width: 'min(320px, calc(100vw - 2rem))',
+              maxWidth: 'calc(100vw - 2rem)',
               backgroundColor: 'white',
               borderRadius: '12px',
               boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
