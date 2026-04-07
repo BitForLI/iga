@@ -1,0 +1,16 @@
+# Build
+[Bb]in/
+[Oo]bj/
+out/
+
+# User-specific / secrets（本地从 appsettings.example.json 的 DevelopmentTemplate 复制到 appsettings.Development.json）
+appsettings.Development.json
+appsettings.*.local.json
+*.user
+.vs/
+
+# Logs
+*.log
+
+# OS
+.DS_Store

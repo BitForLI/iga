@@ -1,0 +1,36 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  background: #f5f5f5;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+input, textarea, select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+/* Mapbox SearchBox - ensure suggestions dropdown appears above sidebar */
+mapbox-search-box {
+  --mbx-listbox-z-index: 1100;
+}
+mapbox-search-box [role="listbox"],
+mapbox-search-box .mapbox-search-listbox {
+  z-index: 1100 !important;
+}

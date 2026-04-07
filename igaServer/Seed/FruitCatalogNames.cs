@@ -1,0 +1,52 @@
+namespace igaServer.Seed;
+
+/// <summary>用户提供的水果清单（43 条）；入库分类为 Fruit。部分拼写已按常见英文修正。</summary>
+public static class FruitCatalogNames
+{
+    public static readonly string[] Names =
+    [
+        "Watermelon",
+        "Apple Bravo",
+        "Apple Fuji",
+        "Apple Green Smith",
+        "Apple Jazz",
+        "Apple Red del",
+        "Pear Green",
+        "Pear corella",
+        "Lemon",
+        "Rockmelon",
+        "Passion Fruit",
+        "Strawberry",
+        "Lime",
+        "Blueberry",
+        "Grape Green",
+        "Mini Watermelon",
+        "Apple pink lady",
+        "Spanish melon",
+        "Grape Black",
+        "Mandarine",
+        "Apple small",
+        "Coconut",
+        "Plum",
+        "Dragon Fruit",
+        "Apple gala 54-60",
+        "Kiwi gold",
+        "Kiwi green",
+        "Date",
+        "Papaya",
+        "Pineapple",
+        "Pear Nashi",
+        "Blackberry",
+        "Blueberry Jumbo",
+        "Raspberry",
+        "Mango",
+        "East coast Juice 2L",
+        "Orange bagged",
+        "Peach white",
+        "Orange",
+        "Apricot",
+        "Nectarine White",
+        "Peach Yellow",
+        "Banana",
+    ];
+}

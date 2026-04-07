@@ -1,0 +1,6 @@
+@igaServer_HostAddress = http://localhost:5212
+
+GET {{igaServer_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

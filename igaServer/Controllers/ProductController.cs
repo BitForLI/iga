@@ -1,0 +1,190 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using igaServer.Data;
+using igaServer.Helpers;
+using igaServer.Models;
+
+namespace igaServer.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ProductController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+
+        public ProductController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        private async Task<IActionResult?> RequireAdminAsync()
+        {
+            var (ok, role) = await BackofficeAuthHelper.GetUserRoleAsync(Request, _context);
+            if (!ok) return Unauthorized(new { error = "Sign in required" });
+            if (!BackofficeAuthHelper.IsAdmin(role)) return StatusCode(403, new { error = "Admin only" });
+            return null;
+        }
+
+        // ==========================================
+        // 🛒 顾客端功能 (Customer Features)
+        // ==========================================
+
+        // 1. 获取商品列表 (支持搜索 & 分类筛选)
+        // 对应功能：搜索与分类、库存状态
+        // GET: api/product?category=Meat&search=beef
+        [HttpGet]
+        public async Task<IActionResult> GetProducts(
+            [FromQuery] string? category, 
+            [FromQuery] string? search)
+        {
+            // 默认只查询“已上架”的商品 (IsActive == true)
+            var query = _context.Products.AsQueryable();
+
+            // 如果是顾客查询（通常前台只调这个接口），我们可以默认过滤掉下架商品
+            // 但为了后台也能用这个接口，这里暂时不强制过滤 IsActive，交给前端参数控制
+            // 或者我们可以约定：前台传 isActive=true
+
+            // 1. 按分类筛选 (例如：Veggie, Meat, Fruit)
+            if (!string.IsNullOrEmpty(category))
+            {
+                query = query.Where(p => p.Category == category);
+            }
+
+            // 2. 关键词搜索 (模糊匹配名称或描述)
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(p => p.Name.ToLower().Contains(search.ToLower()));
+            }
+
+            // 顾客端不暴露成本价，仅返回卖价等字段
+            var items = await query
+                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.StockQuantity, p.IsActive, p.IsWeighingRequired })
+                .ToListAsync();
+            return Ok(items);
+        }
+
+        // 2. 获取单个商品详情（顾客端，不暴露成本价）
+        // GET: api/product/5
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetProduct(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.StockQuantity, product.IsActive, product.IsWeighingRequired });
+        }
+
+        // ==========================================
+        // 🔧 商家端后台功能 (Merchant Backend)
+        // ==========================================
+
+        // 3. 创建新商品
+        // POST: api/product
+        [HttpPost]
+        public async Task<IActionResult> CreateProduct(Product product)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            // 自动设置创建时间
+            // product.CreatedAt = DateTime.Now; (如果在 Model 里没赋值的话)
+            
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
+        }
+
+        // 4. 修改商品信息 (改价、改名、改描述)
+        // PUT: api/product/5
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id, Product product)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            if (id != product.Id)
+            {
+                return BadRequest();
+            }
+
+            _context.Entry(product).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!_context.Products.Any(e => e.Id == id))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
+        }
+
+        // 5. 一键上下架 (关键功能)
+        // 对应功能：商家可以一键切换商品在线/离线状态
+        // PATCH: api/product/5/toggle-status
+        [HttpPatch("{id}/toggle-status")]
+        public async Task<IActionResult> ToggleProductStatus(int id)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            // 取反当前状态 (上架变下架，下架变上架)
+            product.IsActive = !product.IsActive;
+            
+            await _context.SaveChangesAsync();
+
+            return Ok(new { id = product.Id, isActive = product.IsActive, message = "Status updated" });
+        }
+
+        // 6. 快速调整库存
+        // 对应功能：库存状态管理
+        // PATCH: api/product/5/stock?quantity=50
+        [HttpPatch("{id}/stock")]
+        public async Task<IActionResult> UpdateStock(int id, [FromQuery] int quantity)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            product.StockQuantity = quantity;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { id = product.Id, newStock = product.StockQuantity });
+        }
+
+        // 7. 删除商品 (慎用，通常建议只下架)
+        // DELETE: api/product/5
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            _context.Products.Remove(product);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+    }
+}
