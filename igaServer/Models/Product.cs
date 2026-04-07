@@ -28,6 +28,14 @@ namespace igaServer.Models
 
         public bool IsActive { get; set; } = true; // 上下架
 
+        /// <summary>Stripe Product ID（后台同步后写入）</summary>
+        [StringLength(64)]
+        public string? StripeProductId { get; set; }
+
+        /// <summary>Stripe Price ID（结账行项目用）</summary>
+        [StringLength(64)]
+        public string? StripePriceId { get; set; }
+
         // --- 核心业务字段 ---
         public bool IsWeighingRequired { get; set; } // 是否是称重商品（决定是否需要二次退款）
     }

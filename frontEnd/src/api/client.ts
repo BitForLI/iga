@@ -1,7 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from '../config/apiEnv';
 
-/** 与后端一致，可在 frontEnd/.env 设置 VITE_API_BASE=http://localhost:5212/api */
-export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:5212/api';
+export { API_BASE };
 
 /** 带 HTTP 状态与原始响应体，便于控制台 / 调试（400 时请看 apiData.error） */
 export class ApiRequestError extends Error {

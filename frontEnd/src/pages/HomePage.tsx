@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { message } from 'antd';
 import { productAPI } from '../api';
+import { API_BASE } from '../config/apiEnv';
 import { useCart } from '../context/CartContext';
 import home1 from '../assets/images/主页.png';
 import home2 from '../assets/images/主页2.png';
@@ -85,7 +86,7 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
         setSpecialProducts([]);
         if (!toastOnceRef.current) {
           toastOnceRef.current = true;
-          message.error(`${msg}（请确认后端 ${import.meta.env.VITE_API_BASE ?? 'http://localhost:5212/api'} 已启动）`);
+          message.error(`${msg}（请确认后端 ${API_BASE} 已启动）`);
         }
       } finally {
         setLoading(false);

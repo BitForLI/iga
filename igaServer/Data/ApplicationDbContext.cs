@@ -26,6 +26,10 @@ namespace igaServer.Data
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
                 .IsUnique();
+
+            modelBuilder.Entity<Product>()
+                .HasIndex(p => p.StripeProductId)
+                .IsUnique();
         }
     }
 }

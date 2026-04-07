@@ -1,5 +1,4 @@
-/** 后端静态资源根地址（与 Vite dev server 不同源时需拼接相对路径） */
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? 'http://localhost:5212';
+import { API_ORIGIN } from '../config/apiEnv';
 
 /**
  * 将商品图片地址转为浏览器可请求的绝对 URL。

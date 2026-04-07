@@ -76,7 +76,7 @@ namespace igaServer.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Orders");
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.OrderItem", b =>
@@ -115,7 +115,7 @@ namespace igaServer.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("OrderItems");
+                    b.ToTable("OrderItems", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.Product", b =>
@@ -170,7 +170,7 @@ namespace igaServer.Migrations
                     b.HasIndex("StripeProductId")
                         .IsUnique();
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.StoreConfig", b =>
@@ -211,7 +211,7 @@ namespace igaServer.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StoreConfigs");
+                    b.ToTable("StoreConfigs", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.StripeProcessedEvent", b =>
@@ -225,7 +225,7 @@ namespace igaServer.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StripeProcessedEvents");
+                    b.ToTable("StripeProcessedEvents", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.User", b =>
@@ -264,7 +264,7 @@ namespace igaServer.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("igaServer.Models.Order", b =>
