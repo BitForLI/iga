@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { AddressAutofill } from '@mapbox/search-js-react';
 import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { EnvironmentOutlined, CarOutlined, CloseOutlined } from '@ant-design/icons';
@@ -13,23 +13,68 @@ const SYDNEY_PROXIMITY = { lng: 151.1, lat: -33.967 };
 
 const PICKUP_SLOT_HOURS = [9, 11, 13, 15, 17, 19];
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_MS = 86400000;
+const PICKUP_DAY_COUNT = 7;
 
-function generatePickupSlots() {
-  const now = new Date();
-  const slots: { date: Date; label: string; value: string; disabled: boolean }[] = [];
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateKey(key: string): Date {
+  const [y, m, day] = key.split('-').map(Number);
+  return new Date(y, m - 1, day);
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function hasAvailableSlotOnDay(day: Date, now: Date): boolean {
+  for (const hour of PICKUP_SLOT_HOURS) {
+    const slotStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0);
+    if (slotStart > now) return true;
+  }
+  return false;
+}
+
+function getFirstSelectableDay(now: Date): Date {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start.getTime() + i * DAY_MS);
+    if (hasAvailableSlotOnDay(day, now)) return day;
+  }
+  return start;
+}
+
+function generateDayCards(now: Date, count: number): { key: string; dayTop: string; dayBottom: string }[] {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + DAY_MS);
+  const first = getFirstSelectableDay(now);
+  const fmt = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' });
+  const out: { key: string; dayTop: string; dayBottom: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
+    const key = dateKey(d);
+    let dayTop: string;
+    if (sameDay(d, today)) dayTop = 'Today';
+    else if (sameDay(d, tomorrow)) dayTop = 'Tomorrow';
+    else dayTop = WEEKDAY[d.getDay()];
+    out.push({ key, dayTop, dayBottom: fmt.format(d) });
+  }
+  return out;
+}
+
+function generateSlotsForDay(day: Date, now: Date): { label: string; value: string }[] {
+  const slots: { label: string; value: string }[] = [];
   for (let i = 0; i < PICKUP_SLOT_HOURS.length; i++) {
     const hour = PICKUP_SLOT_HOURS[i];
-    const slotStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0);
+    const slotStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0);
+    if (slotStart <= now) continue;
     const slotEndHour = i < PICKUP_SLOT_HOURS.length - 1 ? PICKUP_SLOT_HOURS[i + 1] : 21;
-    const dateStr = `${slotStart.getMonth() + 1}/${slotStart.getDate()}`;
-    const weekday = WEEKDAY[slotStart.getDay()];
     const timeStr = `${hour}:00-${slotEndHour}:00`;
-    const disabled = slotStart <= now;
     slots.push({
-      date: slotStart,
-      label: `${dateStr} ${weekday} ${timeStr}`,
+      label: timeStr,
       value: slotStart.toISOString(),
-      disabled,
     });
   }
   return slots;
@@ -67,8 +112,34 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
   const [addressError, setAddressError] = useState('');
   const [addressInputDirty, setAddressInputDirty] = useState(false);
   const { orderType, setOrderType, pickupTimeSlot, setPickupTimeSlot, deliveryInfo, setDeliveryInfo, saveDeliveryAddress } = useOrderMode();
+  const [slotNow, setSlotNow] = useState(() => new Date());
+  const [selectedDayKey, setSelectedDayKey] = useState('');
+  useEffect(() => {
+    if (panelMounted) setSlotNow(new Date());
+  }, [panelMounted]);
 
-  const pickupSlots = panelMounted ? generatePickupSlots() : [];
+  const dayCards = useMemo(() => {
+    if (!panelMounted) return [];
+    return generateDayCards(slotNow, PICKUP_DAY_COUNT);
+  }, [panelMounted, slotNow]);
+
+  useEffect(() => {
+    if (!panelMounted || dayCards.length === 0) return;
+    const fromSlot = pickupTimeSlot ? dateKey(new Date(pickupTimeSlot)) : '';
+    if (fromSlot && dayCards.some((d) => d.key === fromSlot)) {
+      setSelectedDayKey(fromSlot);
+      return;
+    }
+    setSelectedDayKey((prev) => {
+      if (prev && dayCards.some((d) => d.key === prev)) return prev;
+      return dayCards[0].key;
+    });
+  }, [panelMounted, dayCards, pickupTimeSlot]);
+
+  const slotsForDay = useMemo(() => {
+    if (!panelMounted || !selectedDayKey) return [];
+    return generateSlotsForDay(parseDateKey(selectedDayKey), slotNow);
+  }, [panelMounted, selectedDayKey, slotNow]);
 
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);
@@ -254,15 +325,62 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
               <>
                 <div>
                   <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#0a0a0a' }}>Select pickup time slot</p>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        overflowX: 'auto',
+                        overflowY: 'hidden',
+                        paddingBottom: 4,
+                        scrollbarWidth: 'thin',
+                        WebkitOverflowScrolling: 'touch',
+                      }}
+                    >
+                      {dayCards.map((d) => {
+                        const selected = selectedDayKey === d.key;
+                        return (
+                          <button
+                            key={d.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDayKey(d.key);
+                              if (pickupTimeSlot) {
+                                const sk = dateKey(new Date(pickupTimeSlot));
+                                if (sk !== d.key) setPickupTimeSlot('');
+                              }
+                            }}
+                            style={{
+                              flex: '0 0 auto',
+                              minWidth: 88,
+                              padding: '10px 12px',
+                              borderRadius: 14,
+                              border: selected ? '2px solid #dc2626' : '1px solid #e5e7eb',
+                              background: 'white',
+                              color: selected ? '#dc2626' : '#0a0a0a',
+                              cursor: 'pointer',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              textAlign: 'center',
+                              lineHeight: 1.25,
+                              boxSizing: 'border-box',
+                            }}
+                          >
+                            <div>{d.dayTop}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{d.dayBottom}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {pickupSlots.map((slot) => {
+                    {slotsForDay.map((slot) => {
                       const selected = pickupTimeSlot === slot.value;
                       return (
                         <button
                           key={slot.value}
                           type="button"
-                          disabled={slot.disabled}
-                          onClick={() => !slot.disabled && setPickupTimeSlot(slot.value)}
+                          onClick={() => setPickupTimeSlot(slot.value)}
                           style={{
                             display: 'block',
                             width: '100%',
@@ -270,12 +388,11 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
                             border: 'none',
                             borderBottom: selected ? '2px solid #dc2626' : '1px solid #e5e5e5',
                             background: 'white',
-                            cursor: slot.disabled ? 'not-allowed' : 'pointer',
+                            cursor: 'pointer',
                             fontSize: 15,
                             fontWeight: selected ? 600 : 400,
-                            color: slot.disabled ? '#9ca3af' : selected ? '#dc2626' : '#0a0a0a',
+                            color: selected ? '#dc2626' : '#0a0a0a',
                             textAlign: 'left',
-                            opacity: slot.disabled ? 0.5 : 1,
                           }}
                         >
                           {slot.label}

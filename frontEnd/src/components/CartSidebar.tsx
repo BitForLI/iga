@@ -22,7 +22,7 @@ function getDeliveryFee(subtotal: number): number {
 export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const iconPx = compact ? 24 : 32;
   const badgePx = compact ? 17 : 20;
-  const { items, removeItem, updateQuantity, total } = useCart();
+  const { items, totalQuantity, removeItem, updateQuantity, total } = useCart();
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
   const deliveryFee = orderType === 'Delivery' ? getDeliveryFee(total) : 0;
@@ -62,7 +62,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
           alt="cart"
           style={{ width: iconPx, height: iconPx, objectFit: 'contain' }}
         />
-        {items.length > 0 && (
+        {totalQuantity > 0 && (
           <span
             style={{
               position: 'absolute',
@@ -70,9 +70,11 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
               right: compact ? -6 : -8,
               backgroundColor: '#dc2626',
               color: 'white',
-              borderRadius: '50%',
-              width: badgePx,
+              borderRadius: totalQuantity > 9 ? 9999 : '50%',
+              minWidth: badgePx,
               height: badgePx,
+              padding: totalQuantity > 9 ? '0 5px' : 0,
+              boxSizing: 'border-box',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -80,7 +82,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
               fontWeight: 'bold',
             }}
           >
-            {items.length}
+            {totalQuantity > 99 ? '99+' : totalQuantity}
           </span>
         )}
       </button>

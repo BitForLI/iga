@@ -10,6 +10,8 @@ export interface CartItem {
 
 interface CartContextType {
   items: CartItem[];
+  /** 购物车中所有商品件数之和（含同一 SKU 多件） */
+  totalQuantity: number;
   addItem: (item: CartItem) => void;
   removeItem: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
@@ -19,13 +21,52 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    const stored = localStorage.getItem('cart');
-    return stored ? JSON.parse(stored) : [];
-  });
+function parseCartFromStorage(raw: string | null): CartItem[] {
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row: unknown): CartItem | null => {
+        if (!row || typeof row !== 'object') return null;
+        const x = row as Record<string, unknown>;
+        const productId = Number(x.productId ?? x.ProductId);
+        const qty = Number(x.quantity ?? x.Quantity);
+        if (!Number.isFinite(productId) || productId <= 0) return null;
+        const quantity = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
+        if (quantity <= 0) return null;
+        return {
+          productId,
+          name: String(x.name ?? x.Name ?? ''),
+          price: Number.isFinite(Number(x.price ?? x.Price)) ? Number(x.price ?? x.Price) : 0,
+          quantity,
+          imageUrl: typeof x.imageUrl === 'string' ? x.imageUrl : undefined,
+        };
+      })
+      .filter((i): i is CartItem => i !== null);
+  } catch {
+    try {
+      localStorage.removeItem('cart');
+    } catch {
+      /* ignore */
+    }
+    return [];
+  }
+}
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+export function CartProvider({ children }: { children: ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>(() => parseCartFromStorage(localStorage.getItem('cart')));
+
+  const total = items.reduce((sum, item) => {
+    const p = Number(item.price);
+    const q = Number(item.quantity);
+    const line = (Number.isFinite(p) ? p : 0) * (Number.isFinite(q) && q > 0 ? q : 0);
+    return sum + line;
+  }, 0);
+  const totalQuantity = items.reduce((sum, item) => {
+    const q = Number(item.quantity);
+    return sum + (Number.isFinite(q) && q > 0 ? q : 0);
+  }, 0);
 
   const addItem = (newItem: CartItem) => {
     setItems((prev) => {
@@ -67,7 +108,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clear, total }}>
+    <CartContext.Provider value={{ items, totalQuantity, addItem, removeItem, updateQuantity, clear, total }}>
       {children}
     </CartContext.Provider>
   );

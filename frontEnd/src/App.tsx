@@ -17,7 +17,7 @@ import { OrderManagementPage } from './pages/admin/OrderManagementPage';
 import { OrderDetailPage } from './pages/admin/OrderDetailPage';
 import { CustomerManagementPage } from './pages/admin/CustomerManagementPage';
 import { CustomerDetailPage } from './pages/admin/CustomerDetailPage';
-import igaLogo from './assets/images/IGA.png';
+import searchIcon from './assets/images/搜索.png';
 import { useCart } from './context/CartContext';
 import { paymentAPI } from './api';
 import { useMaxWidth } from './hooks/useMediaQuery';
@@ -64,10 +64,21 @@ function MainAppWithPaymentReturn() {
 function MainApp() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > MOBILE_NAV_BREAKPOINT : true
+  );
   const isNarrow = useMaxWidth(MOBILE_NAV_BREAKPOINT);
   const navRef = useRef<HTMLElement>(null);
-  /** 实测顶栏高度（窄屏两行时远大于 72px），供左侧固定栏 top 使用，避免与搜索条重叠 */
-  const [navBarHeightPx, setNavBarHeightPx] = useState(() => (typeof window !== 'undefined' && window.innerWidth <= MOBILE_NAV_BREAKPOINT ? 132 : 90));
+  /** 实测顶栏高度，供左侧固定栏 top 使用 */
+  const [navBarHeightPx, setNavBarHeightPx] = useState(() => (typeof window !== 'undefined' && window.innerWidth <= MOBILE_NAV_BREAKPOINT ? 56 : 90));
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth <= MOBILE_NAV_BREAKPOINT) setSidebarOpen(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -99,56 +110,63 @@ function MainApp() {
         ref={navRef}
         style={{
           backgroundColor: 'white',
-          borderBottom: '1px solid #e5e7eb',
-          padding: isNarrow ? '0.5rem 0.75rem' : '0.75rem 1.5rem',
+          borderBottom: isNarrow && sidebarOpen ? 'none' : '1px solid #e5e7eb',
+          padding: isNarrow ? '0.45rem 0.6rem 0.45rem 0' : '0.75rem 1.5rem',
           minHeight: isNarrow ? undefined : 90,
           display: 'flex',
-          flexDirection: isNarrow ? 'column' : 'row',
-          justifyContent: 'space-between',
+          flexDirection: 'row',
+          flexWrap: 'nowrap',
           alignItems: isNarrow ? 'stretch' : 'center',
-          gap: isNarrow ? '0.65rem' : '1rem',
+          gap: isNarrow ? '0.35rem' : '1rem',
           position: 'sticky',
           top: 0,
           zIndex: 120,
         }}
       >
-        {/* 第一行：Logo + 右侧图标；宽屏时中间插搜索 */}
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.5rem',
+            alignItems: isNarrow ? 'stretch' : 'center',
+            gap: isNarrow ? '0.35rem' : '0.5rem',
             width: '100%',
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              minWidth: 0,
-              cursor: 'pointer',
-              marginLeft: isNarrow ? 0 : '1rem',
-            }}
-            onClick={() => {
-              setSelectedCategory('');
-              setSearchKeyword('');
-            }}
-          >
-            <img
-              src={igaLogo}
-              alt="IGA"
-              style={{ height: isNarrow ? 32 : 48, width: 'auto', objectFit: 'contain' }}
-            />
-          </div>
-
+          {isNarrow && (
+            <button
+              type="button"
+              aria-label={sidebarOpen ? 'Close categories' : 'Open categories'}
+              onClick={() => setSidebarOpen((o) => !o)}
+              style={{
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0 10px 10px 0',
+                width: 46,
+                minHeight: 44,
+                alignSelf: 'stretch',
+                marginTop: '-0.45rem',
+                marginBottom: '-0.45rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                cursor: 'pointer',
+                fontSize: '1.15rem',
+                fontWeight: 'bold',
+                lineHeight: 1,
+                padding: 0,
+                boxSizing: 'border-box',
+              }}
+            >
+              ☰
+            </button>
+          )}
           {!isNarrow && (
             <div
               style={{
                 display: 'flex',
-                alignItems: 'stretch',
+                alignItems: 'center',
                 flex: '1 1 auto',
                 minWidth: 0,
                 maxWidth: 900,
@@ -156,25 +174,25 @@ function MainApp() {
                 border: '1px solid #d1d5db',
                 borderRadius: '20px',
                 overflow: 'hidden',
+                backgroundColor: 'white',
               }}
             >
               <button
                 type="button"
                 onClick={scrollToSearchResults}
+                aria-label="Search"
                 style={{
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1.25rem',
-                  fontSize: '0.875rem',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   flexShrink: 0,
+                  padding: '0.45rem 0.35rem 0.45rem 0.85rem',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
                 }}
               >
-                Search
+                <img src={searchIcon} alt="" style={{ width: 20, height: 20, objectFit: 'contain', display: 'block' }} />
               </button>
               <input
                 type="text"
@@ -191,7 +209,60 @@ function MainApp() {
                   outline: 'none',
                   boxShadow: 'none',
                   backgroundColor: 'white',
-                  padding: '0.5rem 1rem',
+                  padding: '0.5rem 1rem 0.5rem 0',
+                }}
+              />
+            </div>
+          )}
+
+          {isNarrow && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                alignSelf: 'center',
+                flex: '1 1 0',
+                minWidth: 0,
+                maxWidth: 240,
+                border: '1px solid #d1d5db',
+                borderRadius: 10,
+                overflow: 'hidden',
+                backgroundColor: 'white',
+              }}
+            >
+              <button
+                type="button"
+                onClick={scrollToSearchResults}
+                aria-label="Search"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  padding: '0.28rem 0.3rem 0.28rem 0.5rem',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <img src={searchIcon} alt="" style={{ width: 18, height: 18, objectFit: 'contain', display: 'block' }} />
+              </button>
+              <input
+                type="text"
+                className="nav-search-input"
+                placeholder="Search…"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && scrollToSearchResults()}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  border: 'none',
+                  fontSize: '16px',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  backgroundColor: 'white',
+                  padding: '0.32rem 0.55rem 0.32rem 0',
                 }}
               />
             </div>
@@ -200,10 +271,11 @@ function MainApp() {
           <div
             style={{
               display: 'flex',
-              gap: isNarrow ? '0.75rem' : '1rem',
+              gap: isNarrow ? '0.5rem' : '1rem',
               alignItems: 'center',
+              alignSelf: isNarrow ? 'center' : undefined,
               flexShrink: 0,
-              marginLeft: isNarrow ? 'auto' : undefined,
+              marginLeft: 'auto',
             }}
           >
             <PickupDeliverySidebar compact={isNarrow} />
@@ -211,63 +283,17 @@ function MainApp() {
             <CartSidebar compact={isNarrow} />
           </div>
         </div>
-
-        {/* 窄屏：搜索独占一行，宽度随屏宽 */}
-        {isNarrow && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'stretch',
-              width: '100%',
-              minWidth: 0,
-              border: '1px solid #d1d5db',
-              borderRadius: '12px',
-              overflow: 'hidden',
-            }}
-          >
-            <button
-              type="button"
-              onClick={scrollToSearchResults}
-              style={{
-                backgroundColor: '#dc2626',
-                color: 'white',
-                border: 'none',
-                padding: '0.45rem 0.85rem',
-                fontSize: '0.8rem',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                flexShrink: 0,
-              }}
-            >
-              Search
-            </button>
-            <input
-              type="text"
-              className="nav-search-input"
-              placeholder="I'm shopping for...."
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && scrollToSearchResults()}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                border: 'none',
-                fontSize: '16px',
-                outline: 'none',
-                boxShadow: 'none',
-                backgroundColor: 'white',
-                padding: '0.45rem 0.65rem',
-              }}
-            />
-          </div>
-        )}
       </nav>
 
       {/* Main Content Area */}
       <div style={{ display: 'flex', minHeight: `calc(100dvh - ${navBarHeightPx}px)` }}>
-        <Sidebar selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} navHeight={navBarHeightPx} />
+        <Sidebar
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
+          navHeight={navBarHeightPx}
+          isOpen={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+        />
         <main style={{ flex: 1, padding: isNarrow ? '0.75rem' : '1.5rem', minWidth: 0 }}>
           <HomePage selectedCategory={selectedCategory} searchKeyword={searchKeyword} />
         </main>

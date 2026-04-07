@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { AppstoreOutlined } from '@ant-design/icons';
 import vegetableIcon from '../assets/images/vegetable.png';
 import { useMaxWidth } from '../hooks/useMediaQuery';
 import fruitIcon from '../assets/images/fruit.png';
@@ -8,37 +9,32 @@ interface SidebarProps {
   selectedCategory: string;
   onSelectCategory: (cat: string) => void;
   navHeight: number;
+  /** 由顶栏汉堡控制（窄屏）；宽屏仍可点侧栏红条 */
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: SidebarProps) {
+export function Sidebar({ selectedCategory, onSelectCategory, navHeight, isOpen, onOpenChange }: SidebarProps) {
   const isNarrow = useMaxWidth(768);
-  const [isOpen, setIsOpen] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth > 768 : true
-  );
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
 
-  useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth <= 768) setIsOpen(false);
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const categories = [
-    { name: 'Vegetables', icon: vegetableIcon },
-    { name: 'Fruit', icon: fruitIcon },
-    { name: 'Dairy', icon: fruitIcon },
-    { name: 'Meat', icon: vegetableIcon },
-    { name: 'Bakery', icon: vegetableIcon },
-    { name: 'Pantry', icon: fruitIcon },
+  /** value 空字符串表示不过滤分类，与 HomePage 中 !selectedCategory 一致 */
+  const categories: { label: string; value: string; icon?: string }[] = [
+    { label: 'All Products', value: '' },
+    { label: 'Vegetables', value: 'Vegetables', icon: vegetableIcon },
+    { label: 'Fruit', value: 'Fruit', icon: fruitIcon },
+    { label: 'Dairy', value: 'Dairy', icon: fruitIcon },
+    { label: 'Meat', value: 'Meat', icon: vegetableIcon },
+    { label: 'Bakery', value: 'Bakery', icon: vegetableIcon },
+    { label: 'Pantry', value: 'Pantry', icon: fruitIcon },
   ];
 
-  /** 手机展开时偏窄，避免占满屏；收起条略缩窄 */
-  const collapsedW = isNarrow ? 40 : 48;
-  const drawerW = isNarrow
-    ? Math.min(220, typeof window !== 'undefined' ? window.innerWidth - 20 : 220)
-    : 280;
+  /** 窄屏收起时不占位（汉堡在顶栏）；宽屏保留细条 */
+  const collapsedW = isNarrow ? 0 : 48;
+  /** 窄屏抽屉：左缘贴屏、自顶栏下缘起白底铺满，避免左侧/上方露灰缝 */
+  const narrowDrawerOpen = isNarrow && isOpen;
+  /** 尽量窄，减少列表右侧空白 */
+  const narrowDrawerWidth = 'min(168px, 52vw)';
 
   return (
     <>
@@ -46,7 +42,7 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
         <button
           type="button"
           aria-label="Close menu"
-          onClick={() => setIsOpen(false)}
+          onClick={() => onOpenChange(false)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -62,96 +58,133 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
       {/* 侧边栏：展开 280px，收起时仅显示窄白边 + 顶部三条杠 */}
       <div
         style={{
-          width: isOpen ? (isNarrow ? drawerW : 280) : collapsedW,
-          borderRight: '1px solid #e5e7eb',
-          height: `calc(100dvh - ${navHeight}px)`,
-          overflow: 'hidden',
-          transition: 'width 0.3s',
           position: 'fixed',
           left: 0,
-          top: `${navHeight}px`,
-          zIndex: 110,
+          overflow: 'hidden',
+          transition: 'width 0.3s',
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: 'white',
+          boxShadow: 'none',
+          border: 'none',
+          outline: 'none',
+          ...(narrowDrawerOpen
+            ? {
+                top: 0,
+                height: '100dvh',
+                paddingTop: navHeight,
+                boxSizing: 'border-box',
+                width: narrowDrawerWidth,
+                zIndex: 119,
+              }
+            : {
+                top: `${navHeight}px`,
+                height: `calc(100dvh - ${navHeight}px)`,
+                width: isNarrow ? (isOpen ? narrowDrawerWidth : 0) : isOpen ? 280 : collapsedW,
+                zIndex: 110,
+              }),
         }}
       >
-        {/* 头条：三条杠可点击切换，红底白字 */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          style={{
-            width: '100%',
-            padding: isOpen ? (isNarrow ? '0.65rem 0.5rem' : '1rem') : isNarrow ? '0.5rem' : '0.75rem',
-            backgroundColor: '#dc2626',
-            color: 'white',
-            border: 'none',
-            cursor: 'pointer',
-            textAlign: 'left',
-            minHeight: isNarrow ? 44 : 48,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: isOpen ? 'flex-start' : 'center',
-          }}
-        >
-          <span style={{ fontSize: isNarrow ? '1.1rem' : '1.25rem', fontWeight: 'bold' }}>☰</span>
-          {isOpen && (
-            <span
-              style={{
-                marginLeft: '0.35rem',
-                fontSize: isNarrow ? '0.7rem' : '0.875rem',
-                fontWeight: 'bold',
-                textTransform: 'uppercase',
-                letterSpacing: isNarrow ? '0.02em' : undefined,
-              }}
-            >
-              {isNarrow ? 'Categories' : 'Browse Categories'}
-            </span>
-          )}
-        </button>
+        {/* 宽屏：侧栏红条切换；窄屏由顶栏汉堡切换，此处不再显示红条 */}
+        {!isNarrow && (
+          <button
+            type="button"
+            onClick={() => onOpenChange(!isOpen)}
+            style={{
+              width: '100%',
+              padding: isOpen ? '1rem' : '0.75rem',
+              backgroundColor: '#dc2626',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              minHeight: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isOpen ? 'flex-start' : 'center',
+            }}
+          >
+            <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>☰</span>
+            {isOpen && (
+              <span style={{ marginLeft: '0.35rem', fontSize: '0.875rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                Browse Categories
+              </span>
+            )}
+          </button>
+        )}
         {/* 分类列表：白底黑字，收起时隐藏 */}
         {isOpen && (
           <div
             style={{
               flex: 1,
-              padding: isNarrow ? '0.5rem 0.45rem' : '1rem',
+              padding: isNarrow ? '0.55rem 0.22rem 0.45rem' : '1rem',
               backgroundColor: 'white',
               color: '#333',
               display: 'flex',
               flexDirection: 'column',
             }}
           >
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isNarrow ? '0.25rem' : '0.5rem' }}>
-              {categories.map((cat) => (
-                <div
-                  key={cat.name}
-                  onClick={() => onSelectCategory(selectedCategory === cat.name ? '' : cat.name)}
-                  style={{
-                    padding: isNarrow ? '0.45rem 0.35rem' : '0.75rem',
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    transition: 'all 0.2s',
-                    color: selectedCategory === cat.name ? '#dc2626' : '#333',
-                    fontWeight: 'bold',
-                  }}
-                  onMouseOver={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,0,0,0.06)';
-                  }}
-                  onMouseOut={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                  }}
-                >
-                  <img
-                    src={cat.icon}
-                    alt=""
-                    style={{ width: isNarrow ? 20 : 24, height: isNarrow ? 20 : 24, objectFit: 'contain', flexShrink: 0 }}
-                  />
-                  <span style={{ fontSize: isNarrow ? '0.72rem' : '0.875rem', lineHeight: 1.25 }}>{cat.name}</span>
-                  <span style={{ marginLeft: 'auto' }}>›</span>
-                </div>
-              ))}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isNarrow ? '0.2rem' : '0.5rem' }}>
+              {categories.map((cat) => {
+                const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
+                return (
+                  <div
+                    key={cat.label}
+                    onClick={() => {
+                      if (cat.value === '') {
+                        onSelectCategory('');
+                      } else {
+                        onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
+                      }
+                      if (isNarrow) onOpenChange(false);
+                    }}
+                    style={{
+                      padding: isNarrow ? '0.4rem 0.15rem' : '0.75rem',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: isNarrow ? '0.45rem' : '0.75rem',
+                      transition: 'all 0.2s',
+                      color: isSelected ? '#dc2626' : '#333',
+                      fontWeight: 'bold',
+                    }}
+                    onMouseOver={(e) => {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,0,0,0.06)';
+                    }}
+                    onMouseOut={(e) => {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    {cat.icon ? (
+                      <img
+                        src={cat.icon}
+                        alt=""
+                        style={{ width: isNarrow ? 18 : 24, height: isNarrow ? 18 : 24, objectFit: 'contain', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <AppstoreOutlined
+                        style={{
+                          fontSize: isNarrow ? 18 : 24,
+                          color: isSelected ? '#dc2626' : '#6b7280',
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <span
+                      style={{
+                        fontSize: isNarrow ? '0.68rem' : '0.875rem',
+                        lineHeight: 1.25,
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {cat.label}
+                    </span>
+                    <span style={{ flexShrink: 0, opacity: 0.55, fontSize: isNarrow ? '0.65rem' : '0.875rem' }}>›</span>
+                  </div>
+                );
+              })}
             </div>
             {/* Contact Service */}
             <button
@@ -186,12 +219,13 @@ export function Sidebar({ selectedCategory, onSelectCategory, navHeight }: Sideb
         )}
       </div>
 
-      {/* 占位：撑开主内容区 */}
+      {/* 占位：仅宽屏撑开主内容；窄屏侧栏为 fixed 覆盖层，不占位以免商品区被挤窄 */}
       <div
         style={{
-          width: isOpen ? (isNarrow ? drawerW : 280) : collapsedW,
+          width: isNarrow ? 0 : isOpen ? 280 : collapsedW,
           flexShrink: 0,
           transition: 'width 0.3s',
+          minWidth: 0,
         }}
       />
 

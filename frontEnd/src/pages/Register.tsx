@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { authAPI } from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,6 +10,7 @@ export function Register() {
     PhoneNumber: '',
     Password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -24,10 +26,9 @@ export function Register() {
 
     try {
       const res = await authAPI.register(formData);
-      const data = res as any;
+      const data = res as unknown as { userId: number };
+      // 后端 api/auth/register 已写入数据库（Users 表）
       setUser({ id: data.userId, name: formData.Name, email: formData.Email, phoneNumber: formData.PhoneNumber });
-      // 重定向或显示成功
-      console.log('注册成功', res);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -70,15 +71,27 @@ export function Register() {
         className="w-full p-2 border rounded"
       />
       
-      <input
-        type="password"
-        name="Password"
-        placeholder="Password"
-        value={formData.Password}
-        onChange={handleChange}
-        required
-        className="w-full p-2 border rounded"
-      />
+      <div className="relative w-full">
+        <input
+          type={showPassword ? 'text' : 'password'}
+          name="Password"
+          placeholder="Password"
+          value={formData.Password}
+          onChange={handleChange}
+          required
+          className="w-full p-2 pr-10 border rounded box-border"
+          autoComplete="new-password"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={showPassword ? '隐藏密码' : '显示密码'}
+          onClick={() => setShowPassword((v) => !v)}
+          className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-gray-800 border-0 bg-transparent cursor-pointer"
+        >
+          {showPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+        </button>
+      </div>
       
       <button
         type="submit"

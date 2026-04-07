@@ -9,7 +9,6 @@ import home3 from '../assets/images/主页3.png';
 import productImage from '../assets/images/main.png';
 import { resolveProductImageUrl } from '../utils/imageUrl';
 import { useMaxWidth } from '../hooks/useMediaQuery';
-import addCartIcon from '../assets/images/添加购物车.png';
 import plusIcon from '../assets/images/加.png';
 import minusIcon from '../assets/images/减.png';
 
@@ -24,16 +23,6 @@ interface Product {
   isActive?: boolean;
   wasPrice?: number;
   discountLabel?: string; // "Special" | "30% Off" etc.
-  weightG?: number; // for per 100g price
-}
-
-/** 从 unit 推断克重：kg 按「每千克」价展示每 100g；如 "175g" 则解析克数 */
-function deriveWeightGForPer100g(unit: string): number | undefined {
-  const u = unit.trim().toLowerCase();
-  if (u === 'kg') return 1000;
-  const m = u.match(/^([\d.]+)\s*g$/i);
-  if (m) return parseFloat(m[1]);
-  return undefined;
 }
 
 /** 名称、分类、单位是否同时包含所有分词（不区分大小写） */
@@ -58,7 +47,6 @@ function pickSpecialStripProducts(list: Product[]): Product[] {
     .map((p) => ({
       ...p,
       discountLabel: 'Special',
-      weightG: deriveWeightGForPer100g(p.unit),
     }));
 }
 
@@ -74,7 +62,6 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const toastOnceRef = useRef(false);
-  const { addItem } = useCart();
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -146,12 +133,7 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
       {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
       {!selectedCategory && !searchKeyword.trim() && specialProducts.length > 0 && (
         <div style={{ marginBottom: '2.5rem' }}>
-          <SpecialProductList
-            products={specialProducts}
-            onAddCart={addItem}
-            productImage={productImage}
-            isNarrow={isNarrow}
-          />
+          <SpecialProductList products={specialProducts} productImage={productImage} isNarrow={isNarrow} />
         </div>
       )}
 
@@ -161,23 +143,15 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
           <div
             style={{
               display: 'grid',
-              /** 手机：固定 2 列（Coles 式），列变宽而不是变多列挤扁 */
+              /** 顶对齐：避免同行某一格变高时整行卡片被拉高 */
+              alignItems: 'start',
               gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(200px, 1fr))',
               gap: isNarrow ? '10px' : '1.5rem',
               marginTop: '0.5rem',
             }}
           >
             {filtered.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAddCart={addItem}
-                productImage={productImage}
-                addCartIcon={addCartIcon}
-                plusIcon={plusIcon}
-                minusIcon={minusIcon}
-                compact={isNarrow}
-              />
+              <ProductCard key={product.id} product={product} productImage={productImage} compact={isNarrow} />
             ))}
           </div>
           {filtered.length === 0 && <div style={{ textAlign: 'center', color: '#999' }}>No products</div>}
@@ -226,12 +200,10 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
 
 function SpecialProductList({
   products,
-  onAddCart,
   productImage,
   isNarrow,
 }: {
   products: Product[];
-  onAddCart: (item: any) => void;
   productImage: string;
   isNarrow: boolean;
 }) {
@@ -239,18 +211,13 @@ function SpecialProductList({
     <div
       style={{
         display: 'grid',
+        alignItems: 'start',
         gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(160px, 1fr))',
         gap: isNarrow ? '10px' : '1rem',
       }}
     >
       {products.map((p) => (
-        <SpecialCard
-          key={p.id}
-          product={p}
-          onAddCart={onAddCart}
-          productImage={productImage}
-          compact={isNarrow}
-        />
+        <SpecialCard key={p.id} product={p} productImage={productImage} compact={isNarrow} />
       ))}
     </div>
   );
@@ -264,30 +231,211 @@ const titleClampStyle: React.CSSProperties = {
   wordBreak: 'break-word',
 };
 
-function SpecialCard({
+/** 白底红边「Add to cart」；有货后变为药丸步进器；减到 0 恢复 */
+function HomeCartToggle({
   product,
-  onAddCart,
   productImage,
-  compact = false,
+  compact,
 }: {
   product: Product;
-  onAddCart: (item: any) => void;
   productImage: string;
-  compact?: boolean;
+  compact: boolean;
 }) {
-  const per100g = product.weightG ? `$${(product.price / (product.weightG / 100)).toFixed(2)} per 100g` : '';
+  const { items, addItem, updateQuantity, removeItem } = useCart();
+  const cartQty = items.find((i) => i.productId === product.id)?.quantity ?? 0;
+  const stepIconPx = compact ? 14 : 18;
+  /** 与加减行同高；红框「Add to cart」与步进器共用此高度 */
+  const btnSize = compact ? 28 : 32;
+
+  const base = () => ({
+    productId: product.id,
+    name: product.name,
+    price: product.price,
+    imageUrl: product.imageUrl || productImage,
+  });
+
+  const atStockCap = product.stockQuantity > 0 && cartQty >= product.stockQuantity;
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (atStockCap) return;
+    addItem({ ...base(), quantity: 1 });
+  };
+
+  const handleMinus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (cartQty <= 1) removeItem(product.id);
+    else updateQuantity(product.id, cartQty - 1);
+  };
+
+  const handlePlus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (atStockCap) return;
+    addItem({ ...base(), quantity: 1 });
+  };
+
+  const pillBorder = '1px solid #dc2626';
+  /** 与加减按钮同高（border-box），避免 Add↔步进切换时商品卡高度变化 */
+  const rowMinH = btnSize;
+
+  if (cartQty === 0) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          minHeight: rowMinH,
+          display: 'flex',
+          alignItems: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleAdd}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            minHeight: rowMinH,
+            boxSizing: 'border-box',
+            backgroundColor: '#fff',
+            border: pillBorder,
+            borderRadius: 9999,
+            padding: compact ? '0.04rem 0.45rem' : '0.05rem 0.55rem',
+            cursor: atStockCap ? 'not-allowed' : 'pointer',
+            fontWeight: 700,
+            color: '#dc2626',
+            fontSize: compact ? '0.7rem' : '0.82rem',
+            lineHeight: 1.15,
+            opacity: atStockCap ? 0.5 : 1,
+            whiteSpace: 'nowrap',
+          }}
+          disabled={atStockCap}
+        >
+          Add to cart
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
       style={{
         width: '100%',
+        minHeight: rowMinH,
+        boxSizing: 'border-box',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        alignItems: 'center',
+        columnGap: compact ? '0.28rem' : '0.36rem',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={handleMinus}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 0,
+            width: btnSize,
+            height: btnSize,
+            boxSizing: 'border-box',
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src={minusIcon}
+            alt=""
+            width={stepIconPx}
+            height={stepIconPx}
+            style={{ width: stepIconPx, height: stepIconPx, objectFit: 'contain', display: 'block' }}
+          />
+        </button>
+      </div>
+      <span
+        style={{
+          minWidth: compact ? 20 : 24,
+          textAlign: 'center',
+          fontWeight: 700,
+          fontSize: compact ? '0.72rem' : '0.8rem',
+          color: '#111827',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {cartQty}
+      </span>
+      <div style={{ display: 'flex', justifyContent: 'flex-start', minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={handlePlus}
+          disabled={atStockCap}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: atStockCap ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 0,
+            opacity: atStockCap ? 0.35 : 1,
+            width: btnSize,
+            height: btnSize,
+            boxSizing: 'border-box',
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src={plusIcon}
+            alt=""
+            width={stepIconPx}
+            height={stepIconPx}
+            style={{ width: stepIconPx, height: stepIconPx, objectFit: 'contain', display: 'block' }}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SpecialCard({
+  product,
+  productImage,
+  compact = false,
+}: {
+  product: Product;
+  productImage: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        width: '100%',
         minWidth: 0,
+        alignSelf: 'start',
         backgroundColor: 'white',
         borderRadius: compact ? 6 : 8,
         overflow: 'hidden',
         border: '1px solid #e5e7eb',
         display: 'flex',
         flexDirection: 'column',
+        transition: 'all 0.2s',
+      }}
+      onMouseOver={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)';
+      }}
+      onMouseOut={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
       }}
     >
       {product.discountLabel && (
@@ -345,33 +493,18 @@ function SpecialCard({
             )}
           </div>
         )}
-        {/* 价格 + 副价 与 Add to Cart 同一行 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 2 }}>
-            <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold' }}>${product.price.toFixed(2)}</span>
-            {per100g && <span style={{ fontSize: compact ? '0.52rem' : '0.6rem', color: '#666', lineHeight: 1.2 }}>{per100g}</span>}
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddCart({ productId: product.id, name: product.name, price: product.price, quantity: 1, imageUrl: product.imageUrl || productImage });
-            }}
-            style={{
-              flexShrink: 0,
-              padding: compact ? '0.28rem 0.45rem' : '0.35rem 0.55rem',
-              border: '1px solid #dc2626',
-              backgroundColor: 'white',
-              color: '#dc2626',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: compact ? '0.6rem' : '0.72rem',
-              lineHeight: 1.2,
-            }}
-          >
-            Add to Cart
-          </button>
+        <div
+          style={{
+            width: '100%',
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: compact ? '0.1rem' : '0.14rem',
+            marginTop: compact ? '0.12rem' : '0.18rem',
+          }}
+        >
+          <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>${product.price.toFixed(2)}</span>
+          <HomeCartToggle product={product} productImage={productImage} compact={compact} />
         </div>
       </div>
     </div>
@@ -380,52 +513,24 @@ function SpecialCard({
 
 function ProductCard({
   product,
-  onAddCart,
   productImage,
-  addCartIcon,
-  plusIcon,
-  minusIcon,
   compact = false,
 }: {
   product: Product;
-  onAddCart: (item: any) => void;
   productImage: string;
-  addCartIcon: string;
-  plusIcon: string;
-  minusIcon: string;
   compact?: boolean;
 }) {
-  const [quantity, setQuantity] = useState(1);
-  const addPx = compact ? 26 : 32;
-  const stepPx = compact ? 18 : 20;
-
-  const handleAddToCart = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    onAddCart({
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      quantity,
-      imageUrl: product.imageUrl || productImage,
-    });
-    setQuantity(1);
-  };
-
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleAddToCart}
-      onKeyDown={(e) => e.key === 'Enter' && handleAddToCart()}
       style={{
         width: '100%',
         minWidth: 0,
+        alignSelf: 'start',
         border: '1px solid #e5e7eb',
         borderRadius: compact ? '6px' : '8px',
         padding: compact ? '0.4rem' : '0.65rem',
         backgroundColor: 'white',
         transition: 'all 0.2s',
-        cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -461,7 +566,7 @@ function ProductCard({
         />
       </div>
 
-      <div style={{ marginTop: compact ? '0.35rem' : '0.5rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.3rem' : '0.4rem' }}>
+      <div style={{ marginTop: compact ? '0.28rem' : '0.4rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.18rem' : '0.24rem' }}>
         <h3
           style={{
             ...titleClampStyle,
@@ -474,82 +579,12 @@ function ProductCard({
           {product.name}
         </h3>
 
-        {/* 价格 | 数量 | 购物车 同一行 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: compact ? '0.25rem' : '0.4rem',
-            width: '100%',
-            minWidth: 0,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '0.1rem' : '0.14rem', width: '100%', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
             <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
             <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/{product.unit}</span>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: compact ? '0.12rem' : '0.2rem', flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setQuantity(Math.max(1, quantity - 1));
-              }}
-              style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                width: compact ? 22 : 26,
-                height: compact ? 22 : 26,
-                padding: 0,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <img src={minusIcon} alt="Minus" style={{ width: stepPx, height: stepPx, objectFit: 'contain' }} />
-            </button>
-            <span style={{ minWidth: compact ? 18 : 22, textAlign: 'center', fontWeight: 'bold', fontSize: compact ? '0.78rem' : '0.88rem' }}>{quantity}</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setQuantity(quantity + 1);
-              }}
-              style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                width: compact ? 22 : 26,
-                height: compact ? 22 : 26,
-                padding: 0,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <img src={plusIcon} alt="Plus" style={{ width: stepPx, height: stepPx, objectFit: 'contain' }} />
-            </button>
-            <button
-              type="button"
-              onClick={handleAddToCart}
-              style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                padding: 0,
-                marginLeft: compact ? '0.1rem' : '0.2rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <img src={addCartIcon} alt="Add to cart" style={{ width: addPx, height: addPx, objectFit: 'contain' }} />
-            </button>
-          </div>
+          <HomeCartToggle product={product} productImage={productImage} compact={compact} />
         </div>
       </div>
     </div>
