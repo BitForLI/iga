@@ -14,10 +14,15 @@ export function isRequestAborted(err: unknown): boolean {
   return false;
 }
 
+/** 与 ASP.NET System.Text.Json 默认 camelCase 一致，避免注册/登录字段绑定失败 */
 export const authAPI = {
-  register: (data: { Name: string; Email: string; PhoneNumber: string; Password: string }) =>
-    apiClient.post<{ userId: number }>('/auth/register', data),
-  login: (data: { Email: string; Password: string }) =>
+  register: (data: { name: string; email: string; password: string }) =>
+    apiClient.post<{ message: string; emailSent: boolean; email: string }>('/auth/register', data),
+  verifyEmail: (data: { email: string; code: string }) =>
+    apiClient.post<{ message: string }>('/auth/verify-email', data),
+  resendVerification: (data: { email: string }) =>
+    apiClient.post<{ emailSent: boolean; message: string }>('/auth/resend-verification', data),
+  login: (data: { email: string; password: string }) =>
     apiClient.post<{ id: number; name: string; email: string; phoneNumber: string }>('/auth/login', data),
 };
 

@@ -15,12 +15,21 @@ namespace igaServer.Controllers
         private readonly IStripeService _stripeService;
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
+        private readonly IResendEmailService _resendEmail;
+        private readonly ILogger<PaymentController> _logger;
 
-        public PaymentController(IStripeService stripeService, IConfiguration configuration, ApplicationDbContext context)
+        public PaymentController(
+            IStripeService stripeService,
+            IConfiguration configuration,
+            ApplicationDbContext context,
+            IResendEmailService resendEmail,
+            ILogger<PaymentController> logger)
         {
             _stripeService = stripeService;
             _configuration = configuration;
             _context = context;
+            _resendEmail = resendEmail;
+            _logger = logger;
         }
 
         // ==========================================
@@ -257,6 +266,15 @@ namespace igaServer.Controllers
 
                 await _context.SaveChangesAsync();
 
+                try
+                {
+                    await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger, HttpContext.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Payment] 取件码邮件发送失败 order {OrderId}", orderId);
+                }
+
                 return Ok(new { orderStatus = order.OrderStatus, synced = true });
             }
             catch (StripeException ex)
@@ -325,6 +343,16 @@ namespace igaServer.Controllers
                         ProcessedAtUtc = DateTime.UtcNow
                     });
                     await _context.SaveChangesAsync();
+
+                    try
+                    {
+                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Webhook] 取件码邮件发送失败 order {OrderId}", orderId);
+                    }
+
                     return Ok();
                 }
 
@@ -361,6 +389,16 @@ namespace igaServer.Controllers
                         ProcessedAtUtc = DateTime.UtcNow
                     });
                     await _context.SaveChangesAsync();
+
+                    try
+                    {
+                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Webhook] async 取件码邮件发送失败 order {OrderId}", orderId);
+                    }
+
                     return Ok();
                 }
 

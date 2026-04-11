@@ -120,8 +120,8 @@ namespace igaServer.Controllers
 
             order.TotalAmount = totalAmount;
 
-            // === 步骤 6: 设置取货码（手机后四位） ===
-            order.PickupCode = user.PhoneNumber.Substring(Math.Max(0, user.PhoneNumber.Length - 4));
+            // === 步骤 6: 取件码（6 位数字，支付成功后邮件通知） ===
+            order.PickupCode = GeneratePickupCode();
 
             // === 步骤 7: 保存到数据库 ===
             _context.Orders.Add(order);
@@ -401,6 +401,9 @@ namespace igaServer.Controllers
                 CreatedAt = order.CreatedAt
             };
         }
+
+        private static string GeneratePickupCode() =>
+            Random.Shared.Next(100000, 1000000).ToString("D6");
 
         private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
         {

@@ -66,10 +66,23 @@ apiClient.interceptors.response.use(
       (o && typeof o.title === 'string' ? o.title : null) ||
       error.message;
     if (!extracted && o?.errors != null) {
-      try {
-        extracted = JSON.stringify(o.errors);
-      } catch {
-        extracted = 'Validation error';
+      const errs = o.errors;
+      if (typeof errs === 'object' && errs !== null && !Array.isArray(errs)) {
+        const parts: string[] = [];
+        for (const [key, val] of Object.entries(errs as Record<string, unknown>)) {
+          if (Array.isArray(val)) {
+            parts.push(`${key}: ${val.map(String).join(', ')}`);
+          } else if (val != null) {
+            parts.push(`${key}: ${String(val)}`);
+          }
+        }
+        extracted = parts.length > 0 ? parts.join('; ') : 'Validation error';
+      } else {
+        try {
+          extracted = JSON.stringify(errs);
+        } catch {
+          extracted = 'Validation error';
+        }
       }
     }
     const message = extracted || 'Request failed';

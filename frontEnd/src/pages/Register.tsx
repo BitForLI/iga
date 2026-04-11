@@ -7,10 +7,11 @@ export function Register() {
   const [formData, setFormData] = useState({
     Name: '',
     Email: '',
-    PhoneNumber: '',
     Password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
@@ -19,16 +20,18 @@ export function Register() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmitRegister = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      const res = await authAPI.register(formData);
-      const data = res as unknown as { userId: number };
-      // 后端 api/auth/register 已写入数据库（Users 表）
-      setUser({ id: data.userId, name: formData.Name, email: formData.Email, phoneNumber: formData.PhoneNumber });
+      await authAPI.register({
+        name: formData.Name,
+        email: formData.Email,
+        password: formData.Password,
+      });
+      setStep('verify');
+      setCode('');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -36,11 +39,92 @@ export function Register() {
     }
   };
 
+  const handleVerify = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await authAPI.verifyEmail({ email: formData.Email, code: code.trim() });
+      const res = (await authAPI.login({
+        email: formData.Email,
+        password: formData.Password,
+      })) as unknown as { id: number; name: string; email: string; phoneNumber?: string; role?: string };
+      setUser({
+        id: res.id,
+        name: res.name,
+        email: res.email,
+        phoneNumber: res.phoneNumber ?? '',
+        role: res.role ?? 'Customer',
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await authAPI.resendVerification({ email: formData.Email });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (step === 'verify') {
+    return (
+      <form onSubmit={handleVerify} className="space-y-4 max-w-md mx-auto p-4">
+        <h2 className="text-2xl font-bold">Verify email</h2>
+        <p className="text-sm text-gray-600">
+          Enter the 6-digit code sent to <strong>{formData.Email}</strong>
+        </p>
+        {error && <p className="text-red-500">{error}</p>}
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={6}
+          placeholder="6-digit code"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          required
+          className="w-full p-2 border rounded tracking-widest text-center text-lg"
+        />
+        <button
+          type="submit"
+          disabled={loading || code.length !== 6}
+          className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+        >
+          {loading ? 'Verifying...' : 'Verify and sign in'}
+        </button>
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={loading}
+          className="w-full border border-gray-300 p-2 rounded text-sm"
+        >
+          Resend code
+        </button>
+        <button
+          type="button"
+          onClick={() => { setStep('form'); setError(''); }}
+          className="w-full text-sm text-gray-600 hover:underline"
+        >
+          Back
+        </button>
+      </form>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto p-4">
+    <form onSubmit={handleSubmitRegister} className="space-y-4 max-w-md mx-auto p-4">
       <h2 className="text-2xl font-bold">Register</h2>
       {error && <p className="text-red-500">{error}</p>}
-      
+
       <input
         type="text"
         name="Name"
@@ -50,7 +134,7 @@ export function Register() {
         required
         className="w-full p-2 border rounded"
       />
-      
+
       <input
         type="email"
         name="Email"
@@ -60,17 +144,7 @@ export function Register() {
         required
         className="w-full p-2 border rounded"
       />
-      
-      <input
-        type="tel"
-        name="PhoneNumber"
-        placeholder="Phone"
-        value={formData.PhoneNumber}
-        onChange={handleChange}
-        required
-        className="w-full p-2 border rounded"
-      />
-      
+
       <div className="relative w-full">
         <input
           type={showPassword ? 'text' : 'password'}
@@ -92,13 +166,13 @@ export function Register() {
           {showPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
         </button>
       </div>
-      
+
       <button
         type="submit"
         disabled={loading}
         className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
       >
-        {loading ? 'Registering...' : 'Register'}
+        {loading ? 'Sending code...' : 'Send verification code'}
       </button>
     </form>
   );

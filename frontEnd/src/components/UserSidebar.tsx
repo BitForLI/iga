@@ -125,9 +125,10 @@ function AuthForms({
   const [registerData, setRegisterData] = useState({
     Name: '',
     Email: '',
-    PhoneNumber: '',
     Password: '',
   });
+  const [registerStep, setRegisterStep] = useState<'form' | 'verify'>('form');
+  const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -136,7 +137,10 @@ function AuthForms({
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.login(loginData) as any;
+      const res = await authAPI.login({
+        email: loginData.Email,
+        password: loginData.Password,
+      }) as any;
       onSuccess({
         id: res.id,
         name: res.name,
@@ -156,14 +160,49 @@ function AuthForms({
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.register(registerData) as any;
-      onSuccess({
-        id: res.userId,
+      await authAPI.register({
         name: registerData.Name,
         email: registerData.Email,
-        phoneNumber: registerData.PhoneNumber,
-        role: 'Customer',
+        password: registerData.Password,
       });
+      setRegisterStep('verify');
+      setVerifyCode('');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await authAPI.verifyEmail({ email: registerData.Email, code: verifyCode.trim() });
+      const res = (await authAPI.login({
+        email: registerData.Email,
+        password: registerData.Password,
+      })) as any;
+      onSuccess({
+        id: res.id,
+        name: res.name,
+        email: res.email,
+        phoneNumber: res.phoneNumber || '',
+        role: res.role || 'Customer',
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await authAPI.resendVerification({ email: registerData.Email });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -176,7 +215,7 @@ function AuthForms({
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button
           type="button"
-          onClick={() => { setTab('login'); setError(''); }}
+          onClick={() => { setTab('login'); setError(''); setRegisterStep('form'); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -192,7 +231,7 @@ function AuthForms({
         </button>
         <button
           type="button"
-          onClick={() => { setTab('register'); setError(''); }}
+          onClick={() => { setTab('register'); setError(''); setRegisterStep('form'); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -261,6 +300,60 @@ function AuthForms({
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+      ) : registerStep === 'verify' ? (
+        <form onSubmit={handleVerifyEmail} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+            Enter the 6-digit code sent to <strong>{registerData.Email}</strong>
+          </p>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 500 }}>Code</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={verifyCode}
+              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              required
+              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', letterSpacing: '0.2em', textAlign: 'center' }}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading || verifyCode.length !== 6}
+            style={{
+              backgroundColor: loading || verifyCode.length !== 6 ? '#9ca3af' : '#dc2626',
+              color: 'white',
+              padding: '0.75rem',
+              borderRadius: '6px',
+              border: 'none',
+              fontWeight: 'bold',
+              cursor: loading || verifyCode.length !== 6 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loading ? 'Verifying...' : 'Verify & sign in'}
+          </button>
+          <button
+            type="button"
+            onClick={handleResendCode}
+            disabled={loading}
+            style={{
+              padding: '0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              background: 'white',
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Resend code
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRegisterStep('form'); setError(''); }}
+            style={{ border: 'none', background: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.875rem' }}
+          >
+            Back
+          </button>
+        </form>
       ) : (
         <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div>
@@ -279,16 +372,6 @@ function AuthForms({
               type="email"
               value={registerData.Email}
               onChange={(e) => setRegisterData({ ...registerData, Email: e.target.value })}
-              required
-              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 500 }}>Phone</label>
-            <input
-              type="tel"
-              value={registerData.PhoneNumber}
-              onChange={(e) => setRegisterData({ ...registerData, PhoneNumber: e.target.value })}
               required
               style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px' }}
             />
@@ -316,7 +399,7 @@ function AuthForms({
               cursor: loading ? 'not-allowed' : 'pointer',
             }}
           >
-            {loading ? 'Registering...' : 'Register'}
+            {loading ? 'Sending...' : 'Send verification code'}
           </button>
         </form>
       )}

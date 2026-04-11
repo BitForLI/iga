@@ -63,7 +63,11 @@ builder.Services.AddCors(options =>
 });
 
 // 3. 注册控制器服务 (让 Controller 文件夹生效)
-builder.Services.AddControllers();
+// JSON：反序列化时属性名不区分大小写，避免前端/Postman 用 PascalCase（Name）而后端默认期望 camelCase（name）导致字段全空 → 400
+builder.Services.AddControllers().AddJsonOptions(o =>
+{
+    o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+});
 
 // 4. 配置 Swagger 文档 (用于调试接口)
 builder.Services.AddEndpointsApiExplorer();
@@ -81,6 +85,7 @@ else if (builder.Environment.IsDevelopment())
         "[配置] Stripe:SecretKey 未设置，结账接口将返回明确错误。本地请在 appsettings.Development.json 填写 sk_test_... 或设置 Stripe__SecretKey。");
 }
 builder.Services.AddScoped<IGA.Services.IStripeService, IGA.Services.StripeService>();
+builder.Services.AddHttpClient<IGA.Services.IResendEmailService, IGA.Services.ResendEmailService>();
 
 var app = builder.Build();
 
@@ -97,6 +102,23 @@ if (args.Contains("--clear-products"))
     var clearDb = clearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await clearDb.Database.ExecuteSqlRawAsync(@"DELETE FROM ""OrderItems""; DELETE FROM ""Products"";");
     Console.WriteLine("已清空所有商品及订单明细（OrderItems）。");
+    return;
+}
+
+// 清空所有注册用户及订单（保留商品与店铺配置）。用法：dotnet run -- --clear-users（仅 Development）
+if (args.Contains("--clear-users"))
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        Console.WriteLine("已拒绝：生产环境禁止 --clear-users。");
+        return;
+    }
+
+    using var userClearScope = app.Services.CreateScope();
+    var userDb = userClearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await userDb.Database.ExecuteSqlRawAsync(
+        @"DELETE FROM ""OrderItems""; DELETE FROM ""Orders""; DELETE FROM ""Users"";");
+    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、Users）。下次正常启动时会重新 Seed guest@iga.local。");
     return;
 }
 
@@ -175,7 +197,7 @@ using (var scope = app.Services.CreateScope())
     if (!await db.Users.AnyAsync(u => u.Email == "guest@iga.local"))
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("guest"))).ToLowerInvariant();
-        db.Users.Add(new User { Name = "Guest", Email = "guest@iga.local", PhoneNumber = "0000000000", PasswordHash = hash, Role = "Customer" });
+        db.Users.Add(new User { Name = "Guest", Email = "guest@iga.local", PhoneNumber = null, PasswordHash = hash, Role = "Customer", EmailVerified = true });
         await db.SaveChangesAsync();
     }
 
@@ -191,13 +213,13 @@ using (var scope = app.Services.CreateScope())
 
     if (!await db.Users.AnyAsync(u => u.Email == "admin@iga.local"))
     {
-        db.Users.Add(new User { Name = "Admin", Email = "admin@iga.local", PhoneNumber = "0400000001", PasswordHash = hashPw("admin123"), Role = "Admin" });
+        db.Users.Add(new User { Name = "Admin", Email = "admin@iga.local", PhoneNumber = "0400000001", PasswordHash = hashPw("admin123"), Role = "Admin", EmailVerified = true });
         await db.SaveChangesAsync();
     }
 
     if (!await db.Users.AnyAsync(u => u.Email == "staff@iga.local"))
     {
-        db.Users.Add(new User { Name = "Staff", Email = "staff@iga.local", PhoneNumber = "0400000002", PasswordHash = hashPw("staff123"), Role = "Staff" });
+        db.Users.Add(new User { Name = "Staff", Email = "staff@iga.local", PhoneNumber = "0400000002", PasswordHash = hashPw("staff123"), Role = "Staff", EmailVerified = true });
         await db.SaveChangesAsync();
     }
 
@@ -212,7 +234,7 @@ using (var scope = app.Services.CreateScope())
     foreach (var u in seedUsers)
     {
         if (await db.Users.AnyAsync(x => x.Email == u.Email)) continue;
-        db.Users.Add(new User { Name = u.Name, Email = u.Email, PhoneNumber = u.Phone, PasswordHash = hashPw(u.Pw), Role = "Customer" });
+        db.Users.Add(new User { Name = u.Name, Email = u.Email, PhoneNumber = u.Phone, PasswordHash = hashPw(u.Pw), Role = "Customer", EmailVerified = true });
     }
     await db.SaveChangesAsync();
 
@@ -232,7 +254,7 @@ using (var scope = app.Services.CreateScope())
                 UserId = usr.Id,
                 OrderStatus = status,
                 OrderType = "Pickup",
-                PickupCode = usr.PhoneNumber.Length >= 4 ? usr.PhoneNumber[^4..] : "0000",
+                PickupCode = Random.Shared.Next(100000, 1000000).ToString("D6"),
                 PickupTime = DateTime.UtcNow.AddDays(-daysAgo),
                 CreatedAt = DateTime.UtcNow.AddDays(-daysAgo),
             };
