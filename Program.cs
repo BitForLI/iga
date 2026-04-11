@@ -194,6 +194,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+    // Railway / 生产库需与代码迁移一致；未执行迁移会出现「column ... does not exist」
+    await db.Database.MigrateAsync();
+
     if (!await db.Users.AnyAsync(u => u.Email == "guest@iga.local"))
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("guest"))).ToLowerInvariant();
