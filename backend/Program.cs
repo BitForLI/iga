@@ -1,4 +1,5 @@
 using igaServer.Data;
+using igaServer.Models;
 using igaServer.Seed;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -255,13 +256,40 @@ app.MapControllers();
 // 浏览器直接打开 /api 时用于探活（实际业务在 /api/product、/api/auth 等）
 app.MapGet("/api", () => Results.Json(new { ok = true }));
 
-// 7. 迁移 + 蔬菜/水果清单补全（不自动 Seed 用户或演示订单；管理员与客户须自行注册或通过数据库初始化）
+// 7. 迁移 + 固定老板账号 + 蔬菜/水果清单补全（不自动 Seed 演示用户或演示订单）
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
     // Railway / 生产库需与代码迁移一致；未执行迁移会出现「column ... does not exist」
     await db.Database.MigrateAsync();
+
+    const string bossEmail = "boss@igabeverlyhills.com";
+    const string bossPasswordHash = "00c698e75d4ec54b27ae2501f08bfbd15b0a6cd0902330ac3cad18f890d706bc"; // Boss@IGA2026!
+    var boss = await db.Users.FirstOrDefaultAsync(u => u.Email == bossEmail);
+    if (boss == null)
+    {
+        db.Users.Add(new User
+        {
+            Name = "Boss",
+            Email = bossEmail,
+            PhoneNumber = null,
+            PasswordHash = bossPasswordHash,
+            Role = "Admin",
+            EmailVerified = true
+        });
+        await db.SaveChangesAsync();
+        Console.WriteLine("[数据库] 已创建老板账号 boss@igabeverlyhills.com。");
+    }
+    else if (boss.Role != "Admin" || !boss.EmailVerified || boss.PasswordHash != bossPasswordHash)
+    {
+        boss.Name = "Boss";
+        boss.PasswordHash = bossPasswordHash;
+        boss.Role = "Admin";
+        boss.EmailVerified = true;
+        await db.SaveChangesAsync();
+        Console.WriteLine("[数据库] 已更新老板账号 boss@igabeverlyhills.com。");
+    }
 
     // 蔬菜/水果清单：按「分类 + 名称」判断是否存在（避免误把水果写在 Vegetables 时，同名挡住 Fruit 插入）
     var (vegAdded, fruitAdded) = await CatalogDatabaseSync.SeedMissingCatalogProductsAsync(db);
