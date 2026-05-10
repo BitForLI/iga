@@ -181,8 +181,15 @@ function AuthForms({
     e.preventDefault();
     setError('');
     setLoading(true);
+    const codeDigits = verifyCode.replace(/\D/g, '').slice(0, 6);
     try {
-      await authAPI.verifyEmail({ email: registerData.Email, code: verifyCode.trim() });
+      await authAPI.verifyEmail({ email: registerData.Email, code: codeDigits });
+    } catch (err) {
+      setError((err as Error).message);
+      setLoading(false);
+      return;
+    }
+    try {
       const res = (await authAPI.login({
         email: registerData.Email,
         password: registerData.Password,
@@ -195,7 +202,9 @@ function AuthForms({
         role: res.role || 'Customer',
       });
     } catch (err) {
-      setError((err as Error).message);
+      setError(
+        `邮箱已验证，但自动登录失败：${(err as Error).message}。请在左侧选 Sign In 手动登录。`,
+      );
     } finally {
       setLoading(false);
     }

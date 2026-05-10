@@ -44,7 +44,10 @@ export function Register() {
     setError('');
     setLoading(true);
     try {
-      await authAPI.verifyEmail({ email: formData.Email, code: code.trim() });
+      await authAPI.verifyEmail({
+        email: formData.Email,
+        code: code.replace(/\D/g, '').slice(0, 6),
+      });
       const res = (await authAPI.login({
         email: formData.Email,
         password: formData.Password,
