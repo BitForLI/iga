@@ -21,9 +21,9 @@ const CATEGORY_FILTER_OPTIONS = [
 
 /** Mock 数据：当 API 不可用时展示 */
 const MOCK_PRODUCTS: Product[] = [
-  { id: 1, name: 'Fresh Eggs', imageUrl: '/images/main.png', category: 'Dairy', price: 5.99, costPrice: 3.5, unit: 'dozen', stockQuantity: 50, isActive: true },
-  { id: 2, name: 'Organic Apple', imageUrl: '/images/main.png', category: 'Fruit', price: 3.49, costPrice: 2.0, unit: 'kg', stockQuantity: 100, isActive: true },
-  { id: 3, name: 'Tomato', imageUrl: '/images/main.png', category: 'Vegetables', price: 2.99, costPrice: 1.2, unit: 'kg', stockQuantity: 80, isActive: false },
+  { id: 1, name: 'Fresh Eggs', imageUrl: '', category: 'Dairy', price: 5.99, costPrice: 3.5, unit: 'dozen', stockQuantity: 50, isActive: true },
+  { id: 2, name: 'Organic Apple', imageUrl: '', category: 'Fruit', price: 3.49, costPrice: 2.0, unit: 'kg', stockQuantity: 100, isActive: true },
+  { id: 3, name: 'Tomato', imageUrl: '', category: 'Vegetables', price: 2.99, costPrice: 1.2, unit: 'kg', stockQuantity: 80, isActive: false },
 ];
 
 export function ProductManagementPage() {

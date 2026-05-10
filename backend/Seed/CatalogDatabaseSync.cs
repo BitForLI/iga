@@ -7,7 +7,7 @@ namespace igaServer.Seed;
 /// <summary>蔬菜/水果清单与数据库同步（真实写入 Postgres，非前端 mock）。</summary>
 public static class CatalogDatabaseSync
 {
-    public const string DefaultImageUrl = "/images/main.png";
+    public const string DefaultImageUrl = "";
 
     /// <summary>删除 Vegetables、Fruit 两类商品（及关联订单行）后，按清单全量插入。</summary>
     public static async Task ResyncAllCatalogsAsync(ApplicationDbContext db)
