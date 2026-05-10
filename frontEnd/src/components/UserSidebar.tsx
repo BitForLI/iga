@@ -323,7 +323,11 @@ function AuthForms({
                   justifyContent: 'center',
                 }}
               >
-                {showLoginPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                {showLoginPassword ? (
+                  <EyeInvisibleOutlined style={{ fontSize: 18 }} />
+                ) : (
+                  <EyeOutlined style={{ fontSize: 18 }} />
+                )}
               </button>
             </div>
           </div>
@@ -456,7 +460,11 @@ function AuthForms({
                   justifyContent: 'center',
                 }}
               >
-                {showRegisterPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                {showRegisterPassword ? (
+                  <EyeInvisibleOutlined style={{ fontSize: 18 }} />
+                ) : (
+                  <EyeOutlined style={{ fontSize: 18 }} />
+                )}
               </button>
             </div>
           </div>

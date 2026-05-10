@@ -148,7 +148,7 @@ export function Register() {
         className="w-full p-2 border rounded"
       />
 
-      <div className="relative w-full">
+      <div style={{ position: 'relative', width: '100%' }}>
         <input
           type={showPassword ? 'text' : 'password'}
           name="Password"
@@ -156,17 +156,42 @@ export function Register() {
           value={formData.Password}
           onChange={handleChange}
           required
-          className="w-full p-2 pr-10 border rounded box-border"
           autoComplete="new-password"
+          style={{
+            width: '100%',
+            padding: '0.5rem 2.25rem 0.5rem 0.5rem',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            boxSizing: 'border-box',
+          }}
         />
         <button
           type="button"
           tabIndex={-1}
           aria-label={showPassword ? '隐藏密码' : '显示密码'}
           onClick={() => setShowPassword((v) => !v)}
-          className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-gray-800 border-0 bg-transparent cursor-pointer"
+          style={{
+            position: 'absolute',
+            right: 4,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            padding: '0.35rem',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: '#6b7280',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            lineHeight: 1,
+          }}
         >
-          {showPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+          {showPassword ? (
+            <EyeInvisibleOutlined style={{ fontSize: 18 }} />
+          ) : (
+            <EyeOutlined style={{ fontSize: 18 }} />
+          )}
         </button>
       </div>
 

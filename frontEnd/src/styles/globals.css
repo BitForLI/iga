@@ -31,6 +31,15 @@ button {
   transition: all 0.2s;
 }
 
+/* 密码显示/隐藏图标按钮（不受上方全局 padding 挤压导致图标不可见） */
+button[aria-label='显示密码'],
+button[aria-label='隐藏密码'] {
+  padding: 0.35rem !important;
+  font-size: inherit !important;
+  line-height: 1 !important;
+  min-width: auto !important;
+}
+
 input, textarea, select {
   padding: 0.5rem;
   border: 1px solid #ddd;
