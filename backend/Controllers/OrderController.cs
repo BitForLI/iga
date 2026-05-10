@@ -347,11 +347,11 @@ namespace igaServer.Controllers
             var order = orderItem.Order;
             var previousActual = orderItem.ActualWeight;
 
-            // 预估总重、新旧实际总重（kg）
-            decimal expectedTotalWeight = (decimal)(orderItem.ExpectedWeight * orderItem.Quantity);
-            decimal newActualTotalWeight = (decimal)(request.ActualWeight * orderItem.Quantity);
+            // 购物车里的 Quantity 对称重商品表示预估购买重量；不要再乘一次 Quantity，否则会把退款放大。
+            decimal expectedTotalWeight = (decimal)orderItem.ExpectedWeight;
+            decimal newActualTotalWeight = (decimal)request.ActualWeight;
             decimal oldActualTotalWeight = previousActual.HasValue
-                ? (decimal)(previousActual.Value * orderItem.Quantity)
+                ? (decimal)previousActual.Value
                 : newActualTotalWeight;
 
             decimal refundPerKg = orderItem.PriceAtPurchase;
@@ -367,7 +367,15 @@ namespace igaServer.Controllers
             decimal oldLineRefund = previousActual.HasValue
                 ? LineRefundForWeight(expectedTotalWeight, oldActualTotalWeight, refundPerKg)
                 : 0;
-            decimal deltaRefund = newLineRefund - oldLineRefund;
+            decimal requestedDeltaRefund = newLineRefund - oldLineRefund;
+            decimal refundableRemaining = Math.Max(0, order.TotalAmount - order.RefundAmount);
+            decimal deltaRefund = requestedDeltaRefund > 0
+                ? Math.Min(requestedDeltaRefund, refundableRemaining)
+                : requestedDeltaRefund;
+            var canStripeRefund = deltaRefund > 0.01m &&
+                !string.IsNullOrWhiteSpace(order.StripePaymentIntentId) &&
+                !string.Equals(order.OrderStatus, "Pending", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(order.OrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase);
 
             if (deltaRefund < -0.01m)
             {
@@ -379,16 +387,17 @@ namespace igaServer.Controllers
                 });
             }
 
-            // 已支付：Stripe 部分退款（仅增量 > 0）
+            // 已支付且已关联 PaymentIntent：Stripe 部分退款（仅增量 > 0）
             string? stripeRefundId = null;
-            if (deltaRefund > 0.01m
-                && string.Equals(order.OrderStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            if (deltaRefund > 0.01m)
             {
-                if (string.IsNullOrWhiteSpace(order.StripePaymentIntentId))
+                if (!canStripeRefund)
                 {
                     return BadRequest(new
                     {
-                        error = "订单已标记为 Paid，但未关联 StripePaymentIntentId，无法自动退款。",
+                        error = "订单未关联可退款的 Stripe PaymentIntent，无法自动退款。",
+                        orderStatus = order.OrderStatus,
+                        hasPaymentIntent = !string.IsNullOrWhiteSpace(order.StripePaymentIntentId),
                     });
                 }
 
@@ -398,15 +407,14 @@ namespace igaServer.Controllers
                     return BadRequest(new { error = "退款金额过小，无法通过 Stripe 处理（最小 1 分）。" });
                 }
 
-                var remainingAfterRefund = order.TotalAmount - order.RefundAmount - deltaRefund;
-                if (remainingAfterRefund < -0.01m)
+                if (refundableRemaining <= 0.01m)
                 {
                     return BadRequest(new
                     {
-                        error = "退款金额将超过订单已付总额，请核对数据。",
+                        error = "该订单可退金额已用完，不能超过实付金额。",
                         orderTotal = order.TotalAmount,
                         refundedSoFar = order.RefundAmount,
-                        deltaRefund,
+                        requestedDeltaRefund,
                     });
                 }
 
@@ -458,7 +466,10 @@ namespace igaServer.Controllers
                     actualWeight = request.ActualWeight * orderItem.Quantity,
                     newLineRefund,
                     oldLineRefund,
+                    requestedDeltaRefund,
                     deltaRefund,
+                    refundableRemaining,
+                    cappedByPaidAmount = requestedDeltaRefund > deltaRefund,
                     stripeRefundId,
                     needsRefund = newLineRefund > 0,
                 },

@@ -131,11 +131,12 @@ export function OrderDetailPage() {
     try {
       const res = (await apiClient.put(`/order/item/${itemId}/weight`, { actualWeight: v }, {
         headers: { 'X-Admin-Id': String(user.id) },
-      })) as { refundInfo?: { stripeRefundId?: string; deltaRefund?: number }; message?: string };
+      })) as { refundInfo?: { stripeRefundId?: string; deltaRefund?: number; cappedByPaidAmount?: boolean }; message?: string };
       const stripeId = res?.refundInfo?.stripeRefundId;
       const delta = res?.refundInfo?.deltaRefund;
+      const capped = res?.refundInfo?.cappedByPaidAmount;
       if (stripeId) {
-        message.success(`已保存实重，Stripe 已部分退款（差额约 $${Number(delta ?? 0).toFixed(2)}）`);
+        message.success(`已保存实重，Stripe 已部分退款（$${Number(delta ?? 0).toFixed(2)}${capped ? '，已按实付金额封顶' : ''}）`);
       } else if (delta != null && delta > 0.01) {
         message.success('已记录退款金额（订单未走 Stripe 支付时不会自动退款）');
       } else {
@@ -187,14 +188,14 @@ export function OrderDetailPage() {
         `$${(r.quantity * r.priceAtPurchase).toFixed(2)}`,
     },
     {
-      title: '预估(kg/件)',
+      title: '预估(kg)',
       key: 'expW',
       width: 110,
       render: (_: unknown, r: OrderDetail['items'][number]) =>
         r.isWeighingRequired ? (r.expectedWeight != null ? Number(r.expectedWeight).toFixed(3) : '-') : '—',
     },
     {
-      title: '实重(kg/件)',
+      title: '实重(kg)',
       key: 'actualW',
       width: 200,
       render: (_: unknown, r: OrderDetail['items'][number]) => {
@@ -258,7 +259,7 @@ export function OrderDetailPage() {
         extra={
           canEnterWeight ? (
             <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 360 }}>
-              称重商品：录入<strong>每件实重</strong>；若实重小于预估，已支付订单会通过 Stripe 自动退差价。
+              称重商品：录入<strong>实际总重量</strong>；若实重小于预估，已支付订单会通过 Stripe 自动退差价，退款不会超过实付金额。
             </Typography.Text>
           ) : null
         }
