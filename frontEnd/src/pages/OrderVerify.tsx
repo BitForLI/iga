@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { orderAPI } from '../api';
 
 export function OrderVerify({ orderId }: { orderId: number }) {
-  const [phoneLast4, setPhoneLast4] = useState('');
+  const [pickupCode, setPickupCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -14,9 +14,9 @@ export function OrderVerify({ orderId }: { orderId: number }) {
     setLoading(true);
 
     try {
-      await orderAPI.verify(orderId, { PhoneLast4Digits: phoneLast4 });
+      await orderAPI.verify(orderId, { PickupCode: pickupCode });
       setMessage('✅ Order verified');
-      setPhoneLast4('');
+      setPickupCode('');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -32,10 +32,10 @@ export function OrderVerify({ orderId }: { orderId: number }) {
       
       <input
         type="text"
-        placeholder="Last 4 digits of phone"
-        value={phoneLast4}
-        onChange={(e) => setPhoneLast4(e.target.value)}
-        maxLength={4}
+        placeholder="Enter 6-digit pickup code"
+        value={pickupCode}
+        onChange={(e) => setPickupCode(e.target.value.replace(/\D/g, ''))}
+        maxLength={6}
         required
         className="w-full p-2 border rounded"
       />
