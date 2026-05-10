@@ -38,6 +38,8 @@ namespace igaServer.Controllers
                 return BadRequest("Name, Email and Password are required");
 
             var email = request.Email.Trim();
+
+            // Reject if a fully verified account already exists for this email
             if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
                 return BadRequest("Email already registered");
 
@@ -45,6 +47,7 @@ namespace igaServer.Controllers
             var codeHash = HashVerificationCode(email, code);
             var expires = DateTime.UtcNow.AddMinutes(15);
 
+            // If a pending registration already exists, update it instead of creating a duplicate
             var pending = await _context.PendingRegistrations.FindAsync(email);
             if (pending != null)
             {
@@ -77,11 +80,14 @@ namespace igaServer.Controllers
                     code);
             }
 
+            // NOTE: At this point the user is NOT yet registered. Registration is only complete
+            // after the email verification code is submitted and a User record is created.
             return Ok(new
             {
+                status = "PendingVerification",
                 message = sent
-                    ? "Verification code sent to your email."
-                    : "Account created but email could not be sent. Check server logs or configure Resend.",
+                    ? "Verification code sent to your email. You are not yet registered — please verify your email to complete registration."
+                    : "Pending email verification, but the confirmation email could not be sent. Check server logs or configure Resend.",
                 emailSent = sent,
                 email,
             });
@@ -128,7 +134,11 @@ namespace igaServer.Controllers
             _context.PendingRegistrations.Remove(pending);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Email verified. You can sign in now." });
+            return Ok(new
+            {
+                status = "Registered",
+                message = "Registration complete. Your email has been verified and you can now sign in.",
+            });
         }
 
         /// <summary>重新发送验证码（仅待验证注册 <see cref="PendingRegistration"/>）。</summary>
@@ -141,12 +151,14 @@ namespace igaServer.Controllers
                 return BadRequest("Email is required");
 
             var email = request.Email.Trim();
+
+            // Resend only works for pending (unverified) registrations
             if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
-                return BadRequest("Email already verified");
+                return BadRequest("This email is already fully registered. No verification needed.");
 
             var pending = await _context.PendingRegistrations.FindAsync(email);
             if (pending == null)
-                return Ok(new { emailSent = false, message = "If a pending registration exists, a code will be sent." });
+                return Ok(new { emailSent = false, message = "No pending registration found for this email. Please register first." });
 
             var code = Random.Shared.Next(100000, 1000000).ToString("D6");
             pending.VerificationCodeHash = HashVerificationCode(email, code);
@@ -157,7 +169,7 @@ namespace igaServer.Controllers
             if (!sent)
                 _logger.LogWarning("[Auth] 重发验证码失败。邮箱: {Email} 验证码: {Code}", email, code);
 
-            return Ok(new { emailSent = sent, message = sent ? "Code sent." : "Could not send email. Check logs." });
+            return Ok(new { emailSent = sent, message = sent ? "Verification code resent. Check your email to complete registration." : "Could not send email. Check logs." });
         }
 
         [HttpPost("login")]

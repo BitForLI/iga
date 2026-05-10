@@ -259,13 +259,13 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 5. 核销订单（手机后四位验证）
+        // 5. 核销订单（取件码验证）
         // POST: api/order/{orderId}/verify
         // ==========================================
         /// <summary>
         /// 验证订单取货
         /// 1. 检查订单状态是否为 Prepared（已备货）
-        /// 2. 验证手机后四位是否匹配
+        /// 2. 验证邮件中的 6 位取件码是否匹配
         /// 3. 订单标记为 Completed
         /// 4. 返回订单信息
         /// </summary>
@@ -290,10 +290,10 @@ namespace igaServer.Controllers
                 return BadRequest($"Order status is {order.OrderStatus}, can only verify prepared orders");
             }
 
-            // 验证手机后四位
-            if (order.PickupCode != request.PhoneLast4Digits)
+            // 验证取件码（邮件中的 6 位数字）
+            if (order.PickupCode != request.PickupCode)
             {
-                return BadRequest("Invalid pickup code");
+                return BadRequest("Invalid pickup code. Please check the 6-digit code sent to your email.");
             }
 
             // 更新订单状态为已完成
