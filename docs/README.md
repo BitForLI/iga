@@ -163,7 +163,7 @@ npm run dev
 
 | 设置项 | 建议值 |
 |--------|--------|
-| **Root directory**（根目录） | **`frontend`**（本仓库前端目录名；不要用仓库根 `/`） |
+| **Root directory**（根目录） | **`frontend`** 或 **`frontEnd`**（以仓库里实际文件夹名为准；不要用仓库根 `/`） |
 | **Build command** | `npm ci && npm run build`（或 `npm install && npm run build`） |
 | **Build output directory** | **`dist`** |
 | **Environment variables（生产构建）** | **`VITE_API_BASE`** = `https://你的Railway后端域名/api`；可选 **`VITE_PUBLIC_SITE_ORIGIN`**、`VITE_MAPBOX_ACCESS_TOKEN`（见 `frontend/.env.example`） |
@@ -172,7 +172,13 @@ npm run dev
 
 **自定义域名：** 在 Pages 项目绑定 `www` / apex，`DNS` 按向导添加即可；后端 **CORS** 需已包含这些 HTTPS Origin（见 `appsettings.Production.json` / Railway 变量）。
 
-**SPA 路由：** 仓库已包含 **`frontend/public/_redirects`**（构建后写入 `dist/`），避免直接访问 `/admin` 等路径刷新时出现 **404**。
+**SPA 路由：** 仓库已包含 **`public/_redirects`**（构建后写入 `dist/`），避免直接访问 `/admin` 等路径刷新时出现 **404**。
+
+**Cloudflare 上出现「Network Error」、无法加载商品时排查：**
+
+1. **`VITE_API_BASE` 未设置或仍是 localhost**：生产包里默认会指向 `http://localhost:5212/api`，浏览器在用户电脑上访问不到你的 Railway，必然失败。在 Pages → **Environment variables** → **Production** 设置 **`VITE_API_BASE`** = `https://你的Railway后端域名/api`，保存后 **重新部署**（Redeploy）。  
+2. **`https` 与混合内容**：前端页面是 **HTTPS** 时，**`VITE_API_BASE` 也必须是 `https://`**，不要用 `http://`，否则会被浏览器拦截。  
+3. **CORS**：若站点仍是 **`*.pages.dev` 预览域名**，后端 `appsettings.Production.json` 里只有自定义域时，须在 Railway 增加变量 **`Cors__AllowedOrigins__2`**（或下一个序号）= **`https://你的项目.pages.dev`**（与浏览器地址栏 Origin **完全一致**）。自定义域上线且已在 CORS 列表中则可省略此项。
 
 ### 密钥与集成（云平台填写）
 

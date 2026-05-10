@@ -41,3 +41,21 @@ export function getApiOrigin(): string {
 
 export const API_BASE = getApiBase();
 export const API_ORIGIN = getApiOrigin();
+
+/** 生产构建未注入 VITE_API_BASE 时会仍指向 localhost，浏览器访问 Cloudflare 域名时必然 Network Error */
+export function productionApiMissingEnvHint(): string | null {
+  if (!import.meta.env.PROD) return null;
+  const raw = import.meta.env.VITE_API_BASE;
+  if (raw != null && String(raw).trim() !== '') return null;
+  return '请在 Cloudflare Pages 的 Environment variables 中为 Production 设置 VITE_API_BASE=https://你的Railway后端域名/api，保存后重新部署。';
+}
+
+/** CORS：若当前站点是 *.pages.dev，须在 Railway 增加 Cors__AllowedOrigins_N 为该完整 Origin（含 https）。 */
+export function cloudflarePagesCorsHint(): string | null {
+  if (typeof window === 'undefined') return null;
+  const h = window.location.hostname;
+  if (h.endsWith('.pages.dev') || h.endsWith('.cloudflareapp.com')) {
+    return `当前站点为 ${window.location.origin}，请在 Railway Variables 添加 Cors__AllowedOrigins（递增编号），值为与此完全一致的 Origin，然后重启后端。`;
+  }
+  return null;
+}

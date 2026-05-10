@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { message } from 'antd';
 import { productAPI } from '../api';
-import { API_BASE } from '../config/apiEnv';
+import {
+  API_BASE,
+  cloudflarePagesCorsHint,
+  productionApiMissingEnvHint,
+} from '../config/apiEnv';
 import { useCart } from '../context/CartContext';
 import home1 from '../assets/images/主页.png';
 import home2 from '../assets/images/主页2.png';
@@ -83,12 +87,18 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
         setSpecialProducts(list.length > 0 ? pickSpecialStripProducts(list) : []);
       } catch (e) {
         const msg = (e as Error)?.message ?? '加载商品失败';
-        setFetchError(msg);
+        const envHint = productionApiMissingEnvHint();
+        const corsHint = cloudflarePagesCorsHint();
+        const suffix =
+          envHint ?? (msg === 'Network Error' ? corsHint : null);
+        setFetchError(suffix ? `${msg}\n${suffix}` : msg);
         setProducts([]);
         setSpecialProducts([]);
         if (!toastOnceRef.current) {
           toastOnceRef.current = true;
-          message.error(`${msg}（请确认后端 ${API_BASE} 已启动）`);
+          message.error(
+            `${msg}（API: ${API_BASE}${envHint ? ' — 未配置 VITE_API_BASE' : ''}）`,
+          );
         }
       } finally {
         setLoading(false);
@@ -120,6 +130,7 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
             borderRadius: 8,
             color: '#991b1b',
             fontSize: 14,
+            whiteSpace: 'pre-wrap',
           }}
         >
           无法从服务器加载商品：{fetchError}
