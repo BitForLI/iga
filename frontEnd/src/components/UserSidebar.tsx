@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { useAuth } from '../context/AuthContext';
@@ -131,6 +132,8 @@ function AuthForms({
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -276,13 +279,44 @@ function AuthForms({
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 500 }}>Password</label>
-            <input
-              type="password"
-              value={loginData.Password}
-              onChange={(e) => setLoginData({ ...loginData, Password: e.target.value })}
-              required
-              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px' }}
-            />
+            <div style={{ position: 'relative', width: '100%' }}>
+              <input
+                type={showLoginPassword ? 'text' : 'password'}
+                value={loginData.Password}
+                onChange={(e) => setLoginData({ ...loginData, Password: e.target.value })}
+                required
+                autoComplete="current-password"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 2.25rem 0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={showLoginPassword ? '隐藏密码' : '显示密码'}
+                onClick={() => setShowLoginPassword((v) => !v)}
+                style={{
+                  position: 'absolute',
+                  right: 4,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  padding: '0.35rem',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showLoginPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"
@@ -378,13 +412,44 @@ function AuthForms({
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 500 }}>Password</label>
-            <input
-              type="password"
-              value={registerData.Password}
-              onChange={(e) => setRegisterData({ ...registerData, Password: e.target.value })}
-              required
-              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px' }}
-            />
+            <div style={{ position: 'relative', width: '100%' }}>
+              <input
+                type={showRegisterPassword ? 'text' : 'password'}
+                value={registerData.Password}
+                onChange={(e) => setRegisterData({ ...registerData, Password: e.target.value })}
+                required
+                autoComplete="new-password"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 2.25rem 0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={showRegisterPassword ? '隐藏密码' : '显示密码'}
+                onClick={() => setShowRegisterPassword((v) => !v)}
+                style={{
+                  position: 'absolute',
+                  right: 4,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  padding: '0.35rem',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showRegisterPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"

@@ -20,3 +20,16 @@ backend
 cd backend
 dotnet run --launch-profile http
 ```
+
+## 清空用户与订单（重测注册等）
+
+**本地（Development）** 推荐用内置参数（会拒绝在生产环境执行）：
+
+```bash
+cd backend
+dotnet run --launch-profile http -- --clear-users
+```
+
+会删除 `OrderItems`、`Orders`、`Users`；商品与 `StoreConfig` 保留。下次正常启动会按 `Program.cs` 再 Seed 访客账号等。
+
+**生产 / Railway 数据库** 请连上 PostgreSQL 后执行脚本 **`scripts/clear-users-and-orders.sql`**，或在控制台运行与其中相同的 `DELETE` 语句；**务必备份**。
