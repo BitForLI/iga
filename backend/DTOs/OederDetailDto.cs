@@ -31,7 +31,7 @@ namespace igaServer.DTOs
         public string StripePaymentIntentId { get; set; }
 
         // 履约信息
-        public string PickupCode { get; set; } // 手机后四位
+        public string PickupCode { get; set; } // 6-digit pickup code from email
 
         public DateTime? PickupTime { get; set; }
 
