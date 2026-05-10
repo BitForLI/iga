@@ -159,9 +159,20 @@ npm run dev
 
 启动一般由 Railpack 检测 `dotnet publish` 产物；若有需要再在 Settings 里覆盖 **Start command**。
 
-### 前端静态站
+### 前端静态站（Cloudflare Pages 等）
 
-根目录选 **`frontend`**（若仓库中为 `frontEnd`，以实际目录名为准），执行 `npm ci && npm run build`，托管 **`dist`**。构建前设置 **`VITE_API_BASE`** = `https://你的后端公网地址/api`（见 `frontend/.env.example`）。
+| 设置项 | 建议值 |
+|--------|--------|
+| **Root directory**（根目录） | **`frontend`**（本仓库前端目录名；不要用仓库根 `/`） |
+| **Build command** | `npm ci && npm run build`（或 `npm install && npm run build`） |
+| **Build output directory** | **`dist`** |
+| **Environment variables（生产构建）** | **`VITE_API_BASE`** = `https://你的Railway后端域名/api`；可选 **`VITE_PUBLIC_SITE_ORIGIN`**、`VITE_MAPBOX_ACCESS_TOKEN`（见 `frontend/.env.example`） |
+
+**说明：** Vite 只在 **构建时** 读取 `VITE_*`，须在 Cloudflare **Pages → Settings → Environment variables** 里为 **Production**（及 Preview 如需）配置后再触发部署。
+
+**自定义域名：** 在 Pages 项目绑定 `www` / apex，`DNS` 按向导添加即可；后端 **CORS** 需已包含这些 HTTPS Origin（见 `appsettings.Production.json` / Railway 变量）。
+
+**SPA 路由：** 仓库已包含 **`frontend/public/_redirects`**（构建后写入 `dist/`），避免直接访问 `/admin` 等路径刷新时出现 **404**。
 
 ### 密钥与集成（云平台填写）
 
