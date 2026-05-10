@@ -73,7 +73,7 @@ export function CustomerDetailPage() {
       dataIndex: 'id',
       key: 'id',
       render: (v: number) => (
-        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate(`/admin/orders/${v}`)}>
+        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => navigate(`/staff/orders/${v}`)}>
           #{v}
         </Button>
       ),

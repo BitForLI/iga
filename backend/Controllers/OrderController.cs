@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using IGA.Services;
 using igaServer.Data;
 using igaServer.Models;
 using igaServer.DTOs;
@@ -11,10 +12,20 @@ namespace igaServer.Controllers
     public class OrderController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IStripeService _stripeService;
+        private readonly ITelegramNotificationService _telegram;
+        private readonly ILogger<OrderController> _logger;
 
-        public OrderController(ApplicationDbContext context)
+        public OrderController(
+            ApplicationDbContext context,
+            IStripeService stripeService,
+            ITelegramNotificationService telegram,
+            ILogger<OrderController> logger)
         {
             _context = context;
+            _stripeService = stripeService;
+            _telegram = telegram;
+            _logger = logger;
         }
 
         // ==========================================
@@ -126,6 +137,16 @@ namespace igaServer.Controllers
             // === 步骤 7: 保存到数据库 ===
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
+
+            // === 步骤 7.5: Telegram 新订单通知（失败不影响下单） ===
+            try
+            {
+                await _telegram.NotifyNewOrderCreatedAsync(order, user, HttpContext.RequestAborted);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Order] Telegram 新订单通知失败 orderId={OrderId}", order.Id);
+            }
 
             // === 步骤 8: 返回订单详情（后续会添加 Stripe PaymentIntent） ===
             return Ok(new { message = "Order created", orderId = order.Id, totalAmount = order.TotalAmount });
@@ -289,13 +310,9 @@ namespace igaServer.Controllers
         // PUT: api/order/item/{itemId}/weight
         // ==========================================
         /// <summary>
-        /// 称重退款逻辑（第四阶段高级功能）
-        /// 商家在核销时输入实际重量
-        /// 1. 检查商品是否需要称重
-        /// 2. 计算差价
-        /// 3. 保存实际重量信息
-        /// 4. 标记为需要退款（后续通过 Stripe 执行）
-        /// 注意：实际退款需要集成 StripeService（第三阶段）
+        /// 称重退款：按「预估 − 实际」计算本行应退总额；相对上次录入计算**增量**退款，避免重复提交时累计错误。
+        /// 已支付且存在 StripePaymentIntentId 时，对 PaymentIntent 发起部分退款（Stripe）。
+        /// 若新实际重量比上次更轻（应减少已退金额），Stripe 无法自动收回已退款，接口会拒绝并提示人工处理。
         /// </summary>
         [HttpPut("item/{itemId}/weight")]
         public async Task<ActionResult<OrderItemDetailDto>> UpdateItemWeight(
@@ -303,11 +320,11 @@ namespace igaServer.Controllers
             [FromBody] WeightUpdateDto request,
             [FromHeader(Name = "X-Admin-Id")] int adminId)
         {
-            // 验证操作者是否为 Admin
+            // 员工或管理员可录入实重（触发 Stripe 部分退款）
             var admin = await _context.Users.FindAsync(adminId);
-            if (admin == null || admin.Role != "Admin")
+            if (admin == null || (admin.Role != "Admin" && admin.Role != "Staff"))
             {
-                return Unauthorized("Only admin can perform this action");
+                return Unauthorized("Only staff or admin can update item weight");
             }
 
             // 查找订单项
@@ -327,49 +344,124 @@ namespace igaServer.Controllers
                 return BadRequest($"Product {orderItem.Product.Name} does not require weighing");
             }
 
-            // 保存实际重量
+            var order = orderItem.Order;
+            var previousActual = orderItem.ActualWeight;
+
+            // 预估总重、新旧实际总重（kg）
+            decimal expectedTotalWeight = (decimal)(orderItem.ExpectedWeight * orderItem.Quantity);
+            decimal newActualTotalWeight = (decimal)(request.ActualWeight * orderItem.Quantity);
+            decimal oldActualTotalWeight = previousActual.HasValue
+                ? (decimal)(previousActual.Value * orderItem.Quantity)
+                : newActualTotalWeight;
+
+            decimal refundPerKg = orderItem.PriceAtPurchase;
+
+            static decimal LineRefundForWeight(decimal expectedKg, decimal actualKg, decimal pricePerKg)
+            {
+                var diff = expectedKg - actualKg;
+                if (diff <= 0) return 0;
+                return pricePerKg * diff;
+            }
+
+            decimal newLineRefund = LineRefundForWeight(expectedTotalWeight, newActualTotalWeight, refundPerKg);
+            decimal oldLineRefund = previousActual.HasValue
+                ? LineRefundForWeight(expectedTotalWeight, oldActualTotalWeight, refundPerKg)
+                : 0;
+            decimal deltaRefund = newLineRefund - oldLineRefund;
+
+            if (deltaRefund < -0.01m)
+            {
+                return BadRequest(new
+                {
+                    error =
+                        "本次录入的实际重量比上次更重，按业务应减少已退差价；Stripe 无法自动收回已发起的退款，请通过 Stripe 后台人工处理或联系客服。",
+                    deltaRefund,
+                });
+            }
+
+            // 已支付：Stripe 部分退款（仅增量 > 0）
+            string? stripeRefundId = null;
+            if (deltaRefund > 0.01m
+                && string.Equals(order.OrderStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(order.StripePaymentIntentId))
+                {
+                    return BadRequest(new
+                    {
+                        error = "订单已标记为 Paid，但未关联 StripePaymentIntentId，无法自动退款。",
+                    });
+                }
+
+                var minorUnits = (long)Math.Round(deltaRefund * 100m, MidpointRounding.AwayFromZero);
+                if (minorUnits < 1)
+                {
+                    return BadRequest(new { error = "退款金额过小，无法通过 Stripe 处理（最小 1 分）。" });
+                }
+
+                var remainingAfterRefund = order.TotalAmount - order.RefundAmount - deltaRefund;
+                if (remainingAfterRefund < -0.01m)
+                {
+                    return BadRequest(new
+                    {
+                        error = "退款金额将超过订单已付总额，请核对数据。",
+                        orderTotal = order.TotalAmount,
+                        refundedSoFar = order.RefundAmount,
+                        deltaRefund,
+                    });
+                }
+
+                var idempotencyKey = $"weigh-refund-{order.Id}-item-{itemId}-{minorUnits}-{newActualTotalWeight:0.####}";
+                var (ok, errMsg, refundId) = await _stripeService.CreatePartialRefundAsync(
+                    order.StripePaymentIntentId!,
+                    minorUnits,
+                    idempotencyKey,
+                    HttpContext.RequestAborted);
+
+                if (!ok)
+                {
+                    _logger.LogError("[Order] Stripe 部分退款失败 order={OrderId} item={ItemId} amountMinor={Minor} {Error}",
+                        order.Id, itemId, minorUnits, errMsg);
+                    return StatusCode(502, new { error = "Stripe 退款失败", detail = errMsg });
+                }
+
+                stripeRefundId = refundId;
+                _logger.LogInformation(
+                    "[Order] Stripe 部分退款成功 order={OrderId} item={ItemId} amountMinor={Minor} refundId={RefundId}",
+                    order.Id, itemId, minorUnits, stripeRefundId);
+            }
+
+            // 持久化：先写重量与订单金额
             orderItem.ActualWeight = request.ActualWeight;
             _context.OrderItems.Update(orderItem);
 
-            // 计算差价
-            // 预估总重 = ExpectedWeight * Quantity
-            decimal expectedTotalWeight = (decimal)(orderItem.ExpectedWeight * orderItem.Quantity);
-            decimal actualTotalWeight = (decimal)(request.ActualWeight * orderItem.Quantity);
-            decimal weightDifference = expectedTotalWeight - actualTotalWeight;
-
-            if (weightDifference > 0)
+            if (deltaRefund != 0)
             {
-                // 实际重量少于预估，需要退款
-                decimal refundPerKg = orderItem.PriceAtPurchase; // 假设单价 = 每kg价格
-                decimal refundAmount = refundPerKg * weightDifference;
-
-                // 更新订单的退款金额
-                var order = orderItem.Order;
-                order.RefundAmount += refundAmount;
-
-                // 计算最终金额
-                if (order.FinalAmount == null)
-                {
-                    order.FinalAmount = order.TotalAmount;
-                }
-                order.FinalAmount -= refundAmount;
-
+                order.RefundAmount += deltaRefund;
+                order.FinalAmount = order.TotalAmount - order.RefundAmount;
                 _context.Orders.Update(order);
             }
 
             await _context.SaveChangesAsync();
 
             var itemDto = MapToOrderItemDetailDto(orderItem);
-            return Ok(new 
-            { 
-                message = "Weight updated, price adjusted",
+            return Ok(new
+            {
+                message = deltaRefund > 0.01m
+                    ? (stripeRefundId != null
+                        ? "Weight updated; Stripe refund processed."
+                        : "Weight updated; refund recorded (order not paid via Stripe).")
+                    : "Weight updated.",
                 orderItem = itemDto,
-                refundInfo = new 
-                { 
+                refundInfo = new
+                {
                     expectedWeight = orderItem.ExpectedWeight * orderItem.Quantity,
                     actualWeight = request.ActualWeight * orderItem.Quantity,
-                    needsRefund = expectedTotalWeight > actualTotalWeight
-                }
+                    newLineRefund,
+                    oldLineRefund,
+                    deltaRefund,
+                    stripeRefundId,
+                    needsRefund = newLineRefund > 0,
+                },
             });
         }
 
@@ -426,7 +518,8 @@ namespace igaServer.Controllers
                 Quantity = item.Quantity,
                 PriceAtPurchase = item.PriceAtPurchase,
                 ExpectedWeight = item.ExpectedWeight,
-                ActualWeight = item.ActualWeight
+                ActualWeight = item.ActualWeight,
+                IsWeighingRequired = item.Product?.IsWeighingRequired ?? false,
             };
         }
     }

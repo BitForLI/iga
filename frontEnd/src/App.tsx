@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams, useParams } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { OrderModeProvider } from './context/OrderModeContext';
@@ -21,8 +21,13 @@ import searchIcon from './assets/images/搜索.png';
 import { useCart } from './context/CartContext';
 import { paymentAPI } from './api';
 import { useMaxWidth } from './hooks/useMediaQuery';
+import { MOBILE_NAV_BREAKPOINT } from './constants/layout';
 
-const MOBILE_NAV_BREAKPOINT = 768;
+/** 旧书签 /admin/orders/:id → 员工订单详情 */
+function RedirectAdminOrderToStaff() {
+  const { id } = useParams();
+  return <Navigate to={`/staff/orders/${id ?? ''}`} replace />;
+}
 
 function MainAppWithPaymentReturn() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -317,11 +322,11 @@ function App() {
               </RequireAdmin>
             }
           >
-            <Route index element={<Navigate to="/admin/orders" replace />} />
+            <Route index element={<Navigate to="/admin/products" replace />} />
+            <Route path="orders" element={<Navigate to="/staff/orders" replace />} />
+            <Route path="orders/:id" element={<RedirectAdminOrderToStaff />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="products" element={<ProductManagementPage />} />
-            <Route path="orders" element={<OrderManagementPage />} />
-            <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
           </Route>

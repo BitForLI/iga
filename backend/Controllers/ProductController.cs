@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
-using igaServer.Helpers;
+using igaServer.Utils;
 using igaServer.Models;
 
 namespace igaServer.Controllers

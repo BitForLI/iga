@@ -14,3 +14,12 @@ appsettings.*.local.json
 
 # OS
 .DS_Store
+
+# Env（保留各目录下的 `.env.example`）
+.env
+.env.local
+.env.*.local
+!**/.env.example
+
+# 前端密钥副本（若放在仓库根）
+*.pem

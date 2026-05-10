@@ -4,7 +4,6 @@ import { Layout, Menu, ConfigProvider } from 'antd';
 import {
   DashboardOutlined,
   ShoppingOutlined,
-  ShoppingCartOutlined,
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -25,9 +24,9 @@ const ADMIN_THEME = {
   },
 };
 
+/** 管理员：商品、客户、仪表盘；订单在 /staff（员工与管理员均可从账户入口进入） */
 const MENU_ITEMS = [
   { key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-  { key: '/admin/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
   { key: '/admin/products', icon: <ShoppingOutlined />, label: 'Products' },
   { key: '/admin/customers', icon: <UserOutlined />, label: 'Customers' },
 ];
@@ -93,6 +92,9 @@ export function AdminLayout() {
             ) : (
               <MenuFoldOutlined style={{ fontSize: 18, cursor: 'pointer', color: '#374151' }} onClick={() => setCollapsed(true)} />
             )}
+            <Link to="/staff/orders" style={{ color: '#6b7280', fontSize: 13 }}>
+              订单备货（员工入口）
+            </Link>
             <Link to="/" style={{ marginLeft: 'auto', color: '#6b7280' }}>
               Back to store
             </Link>

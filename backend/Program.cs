@@ -4,6 +4,7 @@ using igaServer.Data;
 using igaServer.Models;
 using igaServer.Seed;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 static string[] GetCorsAllowedOrigins(IConfiguration config)
 {
@@ -18,12 +19,66 @@ static string[] GetCorsAllowedOrigins(IConfiguration config)
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Stripe：兼容 Railway 等平台常用的扁平环境变量名（与 Stripe__SecretKey 等效；仅在嵌套键为空时回填）
+static void MapStripeFlatEnvIfNeeded(ConfigurationManager cfg)
+{
+    void Map(string nestedKey, string flatEnvName)
+    {
+        if (!string.IsNullOrWhiteSpace(cfg[nestedKey])) return;
+        var v = Environment.GetEnvironmentVariable(flatEnvName);
+        if (!string.IsNullOrWhiteSpace(v)) cfg[nestedKey] = v.Trim();
+    }
+    Map("Stripe:SecretKey", "STRIPE_SECRET_KEY");
+    Map("Stripe:WebhookSecret", "STRIPE_WEBHOOK_SECRET");
+    Map("Stripe:PublishableKey", "STRIPE_PUBLISHABLE_KEY");
+}
+MapStripeFlatEnvIfNeeded(builder.Configuration);
+
+// Railway Postgres 常注入 DATABASE_URL；优先使用 ConnectionStrings__DefaultConnection，其次解析 DATABASE_URL
+static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
+{
+    if (string.IsNullOrWhiteSpace(databaseUrl)) return null;
+    try
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var username = Uri.UnescapeDataString(userInfo[0]);
+        var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+        var db = uri.AbsolutePath.Trim('/');
+        if (string.IsNullOrEmpty(db)) return null;
+        var port = uri.Port > 0 ? uri.Port : 5432;
+        return new NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = port,
+            Database = db,
+            Username = username,
+            Password = password,
+            SslMode = SslMode.Require,
+            TrustServerCertificate = true,
+        }.ConnectionString;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
 // 1. 连接串：appsettings.json → appsettings.{Environment}.json → 环境变量（如 ConnectionStrings__DefaultConnection）覆盖
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+    connectionString = ConnectionStringFromDatabaseUrl(Environment.GetEnvironmentVariable("DATABASE_URL"));
+
 if (string.IsNullOrWhiteSpace(connectionString) && builder.Environment.IsDevelopment())
 {
     Console.WriteLine(
-        "[配置] Development 下数据库连接串为空：请复制 appsettings.example.json 中的 DevelopmentTemplate 到 appsettings.Development.json 并填写，或设置环境变量 ConnectionStrings__DefaultConnection。");
+        "[配置] Development 下数据库连接串为空：请填写 appsettings.Development.json、环境变量 ConnectionStrings__DefaultConnection，或 Railway 的 DATABASE_URL。");
+}
+
+if (string.IsNullOrWhiteSpace(connectionString) && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "生产环境缺少数据库连接：请设置 ConnectionStrings__DefaultConnection，或确保注入 DATABASE_URL（Railway Postgres 插件通常会提供）。");
 }
 
 // 2. 注册 Postgres 数据库上下文
@@ -55,7 +110,13 @@ builder.Services.AddCors(options =>
                     "生产环境必须配置 Cors:AllowedOrigins（JSON 数组或分号分隔），例如 [\"https://你的前端域名\"]，或环境变量 Cors__AllowedOrigins__0。");
             }
 
-            policy.WithOrigins(origins);
+            // 生产 API 仍允许本地 Vite 调试（与常见 Spring 示例一致；线上前端域名须仍在 Cors 中配置）
+            var localDev = new[]
+            {
+                "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
+                "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
+            };
+            policy.WithOrigins(origins.Concat(localDev).Distinct().ToArray());
         }
 
         policy.AllowAnyHeader().AllowAnyMethod();
@@ -86,6 +147,11 @@ else if (builder.Environment.IsDevelopment())
 }
 builder.Services.AddScoped<IGA.Services.IStripeService, IGA.Services.StripeService>();
 builder.Services.AddHttpClient<IGA.Services.IResendEmailService, IGA.Services.ResendEmailService>();
+builder.Services.AddHttpClient(IGA.Services.TelegramNotificationService.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddScoped<IGA.Services.ITelegramNotificationService, IGA.Services.TelegramNotificationService>();
 
 var app = builder.Build();
 

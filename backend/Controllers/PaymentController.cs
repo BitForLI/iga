@@ -54,7 +54,7 @@ namespace igaServer.Controllers
                 return BadRequest(new
                 {
                     error =
-                        "Stripe 未配置：请在 appsettings.Development.json 中填写 Stripe:SecretKey（测试密钥 sk_test_...），或设置环境变量 Stripe__SecretKey；若 Development 里留空会覆盖基座配置。获取密钥：https://dashboard.stripe.com/test/apikeys"
+                        "Stripe 未配置：Development 可在 appsettings.Development.json 填写 Stripe:SecretKey，或设置 Stripe__SecretKey / STRIPE_SECRET_KEY；Webhook 签名为 Stripe__WebhookSecret / STRIPE_WEBHOOK_SECRET。获取密钥：https://dashboard.stripe.com/apikeys"
                 });
             }
 

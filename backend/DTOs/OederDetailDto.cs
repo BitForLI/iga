@@ -63,6 +63,9 @@ namespace igaServer.DTOs
 
         public double? ActualWeight { get; set; }
 
+        /// <summary>是否称重商品（需录入实重后退差价）</summary>
+        public bool IsWeighingRequired { get; set; }
+
         // 计算该条目的小计
         public decimal Subtotal => PriceAtPurchase * Quantity;
     }

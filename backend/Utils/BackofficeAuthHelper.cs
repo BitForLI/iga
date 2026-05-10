@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
 
-namespace igaServer.Helpers;
+namespace igaServer.Utils;
 
 /// <summary>后台接口：通过请求头 X-User-Id 查库校验角色（与前端登录用户一致）。</summary>
 public static class BackofficeAuthHelper

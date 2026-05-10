@@ -443,20 +443,38 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
         <h3 style={{ fontSize: '1rem', fontWeight: 'bold' }}>Order History</h3>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {user?.role === 'Admin' ? (
-            <Link
-              to="/admin/dashboard"
-              style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.8rem',
-                border: '1px solid #1890ff',
-                color: '#1890ff',
-                borderRadius: '6px',
-                backgroundColor: 'transparent',
-                textDecoration: 'none',
-              }}
-            >
-              Admin
-            </Link>
+            <>
+              <Link
+                to="/admin/products"
+                title="商品、客户、数据看板"
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  border: '1px solid #dc2626',
+                  color: '#dc2626',
+                  borderRadius: '6px',
+                  backgroundColor: 'transparent',
+                  textDecoration: 'none',
+                }}
+              >
+                商品后台
+              </Link>
+              <Link
+                to="/staff/orders"
+                title="查看与处理订单（与员工同一界面）"
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  border: '1px solid #059669',
+                  color: '#059669',
+                  borderRadius: '6px',
+                  backgroundColor: 'transparent',
+                  textDecoration: 'none',
+                }}
+              >
+                订单备货
+              </Link>
+            </>
           ) : null}
           {user?.role === 'Staff' ? (
             <Link
@@ -471,7 +489,7 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
                 textDecoration: 'none',
               }}
             >
-              Prep
+              订单备货
             </Link>
           ) : null}
           <button

@@ -148,16 +148,13 @@ export function OrderManagementPage() {
   const fetchCounts = useCallback(async () => {
     try {
       const c = (await apiClient.get('/admin/orders/counts')) as Record<string, number | undefined>;
-      const totalReady =
-        (c?.totalPrepared ?? c?.TotalPrepared) ??
-        ((c?.preparedPickup ?? c?.PreparedPickup ?? 0) + (c?.preparedDelivery ?? c?.PreparedDelivery ?? 0));
-      // 两个 Ready 标签均显示「全部 Prepared」合计数
+      // 与列表筛选一致：Pickup / Delivery 分开计数（后端 PreparedPickup、PreparedDelivery）
       setTabCounts({
         Pending: (c?.pending ?? c?.Pending) ?? 0,
         Paid: (c?.paid ?? c?.Paid) ?? 0,
         Preparing: (c?.preparing ?? c?.Preparing) ?? 0,
-        PreparedPickup: totalReady,
-        PreparedDelivery: totalReady,
+        PreparedPickup: (c?.preparedPickup ?? c?.PreparedPickup) ?? 0,
+        PreparedDelivery: (c?.preparedDelivery ?? c?.PreparedDelivery) ?? 0,
       });
     } catch (_) {}
   }, []);
@@ -324,10 +321,6 @@ export function OrderManagementPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0 }}>Order Management</h2>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7280' }}>
-            <strong>Awaiting payment</strong>：顾客已下单但未完成 Stripe 支付（本地需 Webhook 才会变 Paid）。
-            <strong> To accept</strong>：已支付，待你点 Accept。
-          </p>
         </div>
         {activeTab === 'Paid' && !broadcastEnabled && (
           <Button type="primary" ghost onClick={enableBroadcast}>

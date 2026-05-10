@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { Card, Descriptions, Table, Button, message } from 'antd';
+import { Card, Descriptions, Table, Button, message, InputNumber, Space, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { apiClient } from '../../api/client';
+import { apiClient, ApiRequestError } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
 interface OrderDetail {
   id: number;
@@ -19,18 +20,33 @@ interface OrderDetail {
   deliveryAddress?: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
-  items: { id: number; productId: number; productName: string; quantity: number; priceAtPurchase: number; expectedWeight?: number; actualWeight?: number }[];
+  items: {
+    id: number;
+    productId: number;
+    productName: string;
+    quantity: number;
+    priceAtPurchase: number;
+    expectedWeight?: number;
+    actualWeight?: number;
+    isWeighingRequired?: boolean;
+  }[];
   createdAt: string;
 }
+
+const WEIGHT_STATUSES = new Set(['Paid', 'Preparing', 'Prepared']);
 
 export function OrderDetailPage() {
   const { adminBasePath = '/admin' } = useOutletContext<{ adminBasePath?: string }>() ?? {};
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [markingReady, setMarkingReady] = useState(false);
+  /** 实重 kg/件，提交前草稿 */
+  const [weightDraft, setWeightDraft] = useState<Record<number, number | null>>({});
+  const [savingWeightId, setSavingWeightId] = useState<number | null>(null);
 
   const fetchOrder = async () => {
     if (!id) return;
@@ -47,9 +63,10 @@ export function OrderDetailPage() {
             priceAtPurchase: Number(it.priceAtPurchase ?? it.PriceAtPurchase ?? 0),
             expectedWeight: it.expectedWeight ?? it.ExpectedWeight,
             actualWeight: it.actualWeight ?? it.ActualWeight,
+            isWeighingRequired: Boolean(it.isWeighingRequired ?? it.IsWeighingRequired),
           }))
         : [];
-      setOrder({
+      const nextOrder: OrderDetail = {
         id: Number(raw.id ?? raw.Id),
         userId: Number(raw.userId ?? raw.UserId),
         userName: String(raw.userName ?? raw.UserName ?? ''),
@@ -66,7 +83,15 @@ export function OrderDetailPage() {
         stripePaymentIntentId: raw.stripePaymentIntentId as string | undefined,
         items,
         createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
-      });
+      };
+      setOrder(nextOrder);
+      const drafts: Record<number, number | null> = {};
+      for (const it of nextOrder.items ?? []) {
+        if (it.isWeighingRequired) {
+          drafts[it.id] = it.actualWeight != null ? Number(it.actualWeight) : null;
+        }
+      }
+      setWeightDraft(drafts);
     } catch {
       message.error('Failed to load order');
     } finally {
@@ -89,6 +114,39 @@ export function OrderDetailPage() {
       message.error((e as Error).message);
     } finally {
       setAccepting(false);
+    }
+  };
+
+  const canEnterWeight =
+    user && (user.role === 'Admin' || user.role === 'Staff') && order && WEIGHT_STATUSES.has(order.orderStatus);
+
+  const handleSaveActualWeight = async (itemId: number) => {
+    if (!user?.id || !canEnterWeight) return;
+    const v = weightDraft[itemId];
+    if (v == null || Number.isNaN(v) || v < 0) {
+      message.warning('请输入有效的实际重量 (kg/件)');
+      return;
+    }
+    setSavingWeightId(itemId);
+    try {
+      const res = (await apiClient.put(`/order/item/${itemId}/weight`, { actualWeight: v }, {
+        headers: { 'X-Admin-Id': String(user.id) },
+      })) as { refundInfo?: { stripeRefundId?: string; deltaRefund?: number }; message?: string };
+      const stripeId = res?.refundInfo?.stripeRefundId;
+      const delta = res?.refundInfo?.deltaRefund;
+      if (stripeId) {
+        message.success(`已保存实重，Stripe 已部分退款（差额约 $${Number(delta ?? 0).toFixed(2)}）`);
+      } else if (delta != null && delta > 0.01) {
+        message.success('已记录退款金额（订单未走 Stripe 支付时不会自动退款）');
+      } else {
+        message.success(res?.message ?? '实重已保存');
+      }
+      fetchOrder();
+    } catch (e) {
+      const err = e as ApiRequestError;
+      message.error(err?.message ?? '保存失败');
+    } finally {
+      setSavingWeightId(null);
     }
   };
 
@@ -128,6 +186,49 @@ export function OrderDetailPage() {
       render: (_: unknown, r: { quantity: number; priceAtPurchase: number }) =>
         `$${(r.quantity * r.priceAtPurchase).toFixed(2)}`,
     },
+    {
+      title: '预估(kg/件)',
+      key: 'expW',
+      width: 110,
+      render: (_: unknown, r: OrderDetail['items'][number]) =>
+        r.isWeighingRequired ? (r.expectedWeight != null ? Number(r.expectedWeight).toFixed(3) : '-') : '—',
+    },
+    {
+      title: '实重(kg/件)',
+      key: 'actualW',
+      width: 200,
+      render: (_: unknown, r: OrderDetail['items'][number]) => {
+        if (!r.isWeighingRequired) return '—';
+        if (!canEnterWeight) {
+          return (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {order?.orderStatus === 'Pending' ? '顾客付款后可录入' : '—'}
+            </Typography.Text>
+          );
+        }
+        return (
+          <Space size="small" wrap>
+            <InputNumber
+              min={0}
+              step={0.01}
+              precision={3}
+              style={{ width: 110 }}
+              value={weightDraft[r.id] ?? null}
+              onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
+              placeholder="实重"
+            />
+            <Button
+              type="primary"
+              size="small"
+              loading={savingWeightId === r.id}
+              onClick={() => void handleSaveActualWeight(r.id)}
+            >
+              保存并退差
+            </Button>
+          </Space>
+        );
+      },
+    },
   ];
 
   if (loading || !order) {
@@ -154,6 +255,13 @@ export function OrderDetailPage() {
         title={<span style={{ fontSize: 18, fontWeight: 700 }}>商品清单（请按此备货）</span>}
         style={{ marginBottom: 16 }}
         styles={{ body: { paddingTop: 12 } }}
+        extra={
+          canEnterWeight ? (
+            <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 360 }}>
+              称重商品：录入<strong>每件实重</strong>；若实重小于预估，已支付订单会通过 Stripe 自动退差价。
+            </Typography.Text>
+          ) : null
+        }
       >
         <Table
           dataSource={order.items ?? []}
@@ -164,7 +272,7 @@ export function OrderDetailPage() {
           summary={() => (
             <Table.Summary fixed>
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={3}>
+                <Table.Summary.Cell index={0} colSpan={5}>
                   <strong>合计</strong>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1}>
