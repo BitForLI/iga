@@ -12,7 +12,6 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { StaffLayout } from './layouts/StaffLayout';
 import { RequireAdmin, RequireStaffOrAdmin } from './components/BackofficeRouteGuards';
 import { ProductManagementPage } from './pages/admin/ProductManagementPage';
-import { DashboardPage } from './pages/admin/DashboardPage';
 import { OrderManagementPage } from './pages/admin/OrderManagementPage';
 import { OrderDetailPage } from './pages/admin/OrderDetailPage';
 import { CustomerManagementPage } from './pages/admin/CustomerManagementPage';
@@ -325,7 +324,7 @@ function App() {
             <Route index element={<Navigate to="/admin/products" replace />} />
             <Route path="orders" element={<Navigate to="/staff/orders" replace />} />
             <Route path="orders/:id" element={<RedirectAdminOrderToStaff />} />
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="dashboard" element={<Navigate to="/admin/products" replace />} />
             <Route path="products" element={<ProductManagementPage />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />

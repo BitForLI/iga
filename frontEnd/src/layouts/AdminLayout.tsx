@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout, Menu, ConfigProvider } from 'antd';
 import {
-  DashboardOutlined,
   ShoppingOutlined,
   UserOutlined,
   MenuFoldOutlined,
@@ -24,9 +23,8 @@ const ADMIN_THEME = {
   },
 };
 
-/** 管理员：商品、客户、仪表盘；订单在 /staff（员工与管理员均可从账户入口进入） */
+/** 管理员：商品、客户；订单在 /staff（员工与管理员均可从账户入口进入） */
 const MENU_ITEMS = [
-  { key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
   { key: '/admin/products', icon: <ShoppingOutlined />, label: 'Products' },
   { key: '/admin/customers', icon: <UserOutlined />, label: 'Customers' },
 ];
@@ -35,7 +33,7 @@ export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const selectedKey = MENU_ITEMS.find((m) => location.pathname.startsWith(m.key))?.key ?? '/admin/dashboard';
+  const selectedKey = MENU_ITEMS.find((m) => location.pathname.startsWith(m.key))?.key ?? '/admin/products';
 
   return (
     <ConfigProvider theme={ADMIN_THEME}>

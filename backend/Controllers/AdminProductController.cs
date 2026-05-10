@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Stripe;
+using Stripe.Checkout;
 using igaServer.Data;
 using igaServer.Utils;
 using igaServer.Models;
@@ -16,11 +18,16 @@ namespace igaServer.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _configuration;
 
-        public AdminProductController(ApplicationDbContext context, IWebHostEnvironment env)
+        public AdminProductController(
+            ApplicationDbContext context,
+            IWebHostEnvironment env,
+            IConfiguration configuration)
         {
             _context = context;
             _env = env;
+            _configuration = configuration;
         }
 
         private async Task<IActionResult?> RequireAdminAsync()
@@ -37,6 +44,59 @@ namespace igaServer.Controllers
             if (!ok) return Unauthorized(new { error = "Sign in required" });
             if (!BackofficeAuthHelper.IsStaffOrAdmin(role)) return StatusCode(403, new { error = "Staff or Admin only" });
             return null;
+        }
+
+        private async Task<int> SyncRecentlyPaidPendingOrdersAsync()
+        {
+            var stripeSecret = (_configuration["Stripe:SecretKey"] ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(stripeSecret))
+            {
+                return 0;
+            }
+
+            var since = DateTime.UtcNow.AddDays(-2);
+            var candidates = await _context.Orders
+                .Where(o => o.OrderStatus == "Pending" &&
+                            o.StripeSessionId != null &&
+                            o.StripeSessionId != "" &&
+                            o.CreatedAt >= since)
+                .OrderByDescending(o => o.CreatedAt)
+                .Take(20)
+                .ToListAsync();
+
+            if (candidates.Count == 0) return 0;
+
+            StripeConfiguration.ApiKey = stripeSecret;
+            var sessionService = new SessionService();
+            var updated = 0;
+
+            foreach (var order in candidates)
+            {
+                try
+                {
+                    var session = await sessionService.GetAsync(order.StripeSessionId);
+                    var paid = string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
+                    if (!paid) continue;
+
+                    order.OrderStatus = "Paid";
+                    if (!string.IsNullOrEmpty(session.PaymentIntentId))
+                    {
+                        order.StripePaymentIntentId = session.PaymentIntentId;
+                    }
+                    updated++;
+                }
+                catch (StripeException ex)
+                {
+                    _ = ex;
+                }
+            }
+
+            if (updated > 0)
+            {
+                await _context.SaveChangesAsync();
+            }
+
+            return updated;
         }
 
         [HttpGet("dashboard")]
@@ -58,6 +118,7 @@ namespace igaServer.Controllers
         public async Task<IActionResult> GetOrderCounts()
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            await SyncRecentlyPaidPendingOrdersAsync();
             var counts = await _context.Orders
                 .GroupBy(o => o.OrderStatus)
                 .Select(g => new { status = g.Key ?? "", count = g.Count() })
@@ -90,6 +151,10 @@ namespace igaServer.Controllers
             [FromQuery] string? orderType = null)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            if (string.IsNullOrEmpty(status) || status == "Pending" || status == "Paid")
+            {
+                await SyncRecentlyPaidPendingOrdersAsync();
+            }
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 10;
             IQueryable<Order> query = _context.Orders.Include(o => o.User);
