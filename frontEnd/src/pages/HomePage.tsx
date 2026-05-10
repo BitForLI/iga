@@ -18,7 +18,6 @@ interface Product {
   price: number;
   category: string;
   unit: string;
-  stockQuantity: number;
   imageUrl?: string;
   isActive?: boolean;
   wasPrice?: number;
@@ -38,9 +37,9 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
   );
 }
 
-/** 首页 Special 横条：真实库中上架、有库存的前 5 个（名称排序，稳定） */
+/** 首页 Special 横条：真实库中上架的前 5 个（名称排序，稳定） */
 function pickSpecialStripProducts(list: Product[]): Product[] {
-  const eligible = list.filter((p) => p.isActive !== false && p.stockQuantity > 0);
+  const eligible = list.filter((p) => p.isActive !== false);
   return [...eligible]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     .slice(0, 5)
@@ -75,7 +74,6 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
           price: Number(p.price ?? p.Price ?? 0),
           category: (p.category ?? p.Category ?? '') as string,
           unit: (p.unit ?? p.Unit ?? '') as string,
-          stockQuantity: Number(p.stockQuantity ?? p.StockQuantity ?? 0),
           imageUrl: (p.imageUrl ?? p.ImageUrl ?? '') as string | undefined,
           isActive: (p.isActive ?? p.IsActive ?? true) as boolean,
         }));
@@ -255,11 +253,8 @@ function HomeCartToggle({
     imageUrl: product.imageUrl || productImage,
   });
 
-  const atStockCap = product.stockQuantity > 0 && cartQty >= product.stockQuantity;
-
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (atStockCap) return;
     addItem({ ...base(), quantity: 1 });
   };
 
@@ -271,7 +266,6 @@ function HomeCartToggle({
 
   const handlePlus = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (atStockCap) return;
     addItem({ ...base(), quantity: 1 });
   };
 
@@ -304,15 +298,14 @@ function HomeCartToggle({
             border: pillBorder,
             borderRadius: 9999,
             padding: compact ? '0.04rem 0.45rem' : '0.05rem 0.55rem',
-            cursor: atStockCap ? 'not-allowed' : 'pointer',
+            cursor: 'pointer',
             fontWeight: 700,
             color: '#dc2626',
             fontSize: compact ? '0.7rem' : '0.82rem',
             lineHeight: 1.15,
-            opacity: atStockCap ? 0.5 : 1,
+            opacity: 1,
             whiteSpace: 'nowrap',
           }}
-          disabled={atStockCap}
         >
           Add to cart
         </button>
@@ -377,17 +370,16 @@ function HomeCartToggle({
         <button
           type="button"
           onClick={handlePlus}
-          disabled={atStockCap}
           style={{
             background: 'transparent',
             border: 'none',
             padding: 0,
-            cursor: atStockCap ? 'not-allowed' : 'pointer',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             lineHeight: 0,
-            opacity: atStockCap ? 0.35 : 1,
+            opacity: 1,
             width: btnSize,
             height: btnSize,
             boxSizing: 'border-box',

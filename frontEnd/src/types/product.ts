@@ -7,7 +7,6 @@ export interface Product {
   price: number;
   costPrice?: number; // 成本价，仅后台可见
   unit: string;
-  stockQuantity: number;
   isActive: boolean;
   isWeighingRequired?: boolean;
 }
@@ -20,7 +19,6 @@ export interface ProductFormValues {
   price: number;
   costPrice?: number;
   unit: string;
-  stockQuantity: number;
   isActive: boolean;
   isWeighingRequired: boolean;
 }

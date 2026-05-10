@@ -51,10 +51,7 @@ namespace igaServer.Controllers
                 .SumAsync(o => o.FinalAmount ?? o.TotalAmount);
             var pendingCount = await _context.Orders
                 .CountAsync(o => o.OrderStatus == "Pending" || o.OrderStatus == "Paid" || o.OrderStatus == "Preparing" || o.OrderStatus == "Prepared");
-            const int lowStockThreshold = 10;
-            var lowStockCount = await _context.Products
-                .CountAsync(p => p.StockQuantity <= lowStockThreshold && p.IsActive);
-            return Ok(new { todaySales, pendingOrderCount = pendingCount, lowStockAlertCount = lowStockCount });
+            return Ok(new { todaySales, pendingOrderCount = pendingCount });
         }
 
         [HttpGet("orders/counts")]

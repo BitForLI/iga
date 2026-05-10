@@ -11,7 +11,7 @@ namespace igaServer.Models
         [Required]
         public string Name { get; set; }
 
-        public string ImageUrl { get; set; }
+        public string? ImageUrl { get; set; }
 
         public string Category { get; set; } // "Veggie", "Meat"
 
@@ -23,8 +23,6 @@ namespace igaServer.Models
         public decimal CostPrice { get; set; } // 成本价
 
         public string Unit { get; set; } // kg, ea, box
-
-        public int StockQuantity { get; set; } // 库存
 
         public bool IsActive { get; set; } = true; // 上下架
 

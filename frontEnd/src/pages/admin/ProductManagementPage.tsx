@@ -21,9 +21,9 @@ const CATEGORY_FILTER_OPTIONS = [
 
 /** Mock 数据：当 API 不可用时展示 */
 const MOCK_PRODUCTS: Product[] = [
-  { id: 1, name: 'Fresh Eggs', imageUrl: '', category: 'Dairy', price: 5.99, costPrice: 3.5, unit: 'dozen', stockQuantity: 50, isActive: true },
-  { id: 2, name: 'Organic Apple', imageUrl: '', category: 'Fruit', price: 3.49, costPrice: 2.0, unit: 'kg', stockQuantity: 100, isActive: true },
-  { id: 3, name: 'Tomato', imageUrl: '', category: 'Vegetables', price: 2.99, costPrice: 1.2, unit: 'kg', stockQuantity: 80, isActive: false },
+  { id: 1, name: 'Fresh Eggs', imageUrl: '', category: 'Dairy', price: 5.99, costPrice: 3.5, unit: 'dozen', isActive: true },
+  { id: 2, name: 'Organic Apple', imageUrl: '', category: 'Fruit', price: 3.49, costPrice: 2.0, unit: 'kg', isActive: true },
+  { id: 3, name: 'Tomato', imageUrl: '', category: 'Vegetables', price: 2.99, costPrice: 1.2, unit: 'kg', isActive: false },
 ];
 
 export function ProductManagementPage() {
@@ -53,7 +53,6 @@ export function ProductManagementPage() {
       price: Number(p.price ?? p.Price ?? 0),
       costPrice: Number(p.costPrice ?? p.CostPrice ?? 0) || undefined,
       unit: p.unit ?? p.Unit ?? '',
-      stockQuantity: Number(p.stockQuantity ?? p.StockQuantity ?? 0),
       isActive: p.isActive ?? p.IsActive ?? true,
       isWeighingRequired: p.isWeighingRequired ?? p.IsWeighingRequired ?? false,
     }));
@@ -158,11 +157,12 @@ export function ProductManagementPage() {
   const handleSubmit = async (values: ProductFormValues) => {
     setSubmitLoading(true);
     try {
+      const payload = { ...values, imageUrl: values.imageUrl ?? '' };
       if (editingProduct) {
-        await adminProductAPI.update(editingProduct.id, { ...values, id: editingProduct.id });
+        await adminProductAPI.update(editingProduct.id, { ...payload, id: editingProduct.id });
         message.success('Product updated');
       } else {
-        await adminProductAPI.create(values);
+        await adminProductAPI.create(payload);
         message.success('Product added');
       }
       setModalOpen(false);
@@ -236,7 +236,6 @@ export function ProductManagementPage() {
         </span>
       ),
     },
-    { title: 'Stock', dataIndex: 'stockQuantity', key: 'stockQuantity', width: 80 },
     {
       title: 'Status',
       dataIndex: 'isActive',

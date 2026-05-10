@@ -50,7 +50,6 @@ function applyProductToForm(form: FormInstance<ProductFormValues>, data: Product
     price: Number(data.price),
     costPrice: data.costPrice != null ? Number(data.costPrice) : undefined,
     unit: data.unit,
-    stockQuantity: data.stockQuantity,
     isActive: data.isActive,
     isWeighingRequired: data.isWeighingRequired ?? false,
   });
@@ -258,18 +257,6 @@ export function ProductFormModal({
             options={unitOptions}
             showSearch
             optionFilterProp="label"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="stockQuantity"
-          label="Stock"
-          rules={[{ required: true, message: 'Please enter stock quantity' }]}
-        >
-          <InputNumber
-            min={0}
-            style={{ width: '100%' }}
-            placeholder="Enter stock quantity"
           />
         </Form.Item>
 

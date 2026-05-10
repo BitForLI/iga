@@ -105,7 +105,6 @@ DELETE FROM ""Products"" WHERE ""Category"" = 'Fruit';
         Price = 1.00m,
         CostPrice = 0m,
         Unit = "kg",
-        StockQuantity = 999,
         IsActive = true,
         ImageUrl = DefaultImageUrl,
         IsWeighingRequired = false

@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Spin, message } from 'antd';
-import { DollarOutlined, ShoppingCartOutlined, WarningOutlined } from '@ant-design/icons';
+import { DollarOutlined, ShoppingCartOutlined } from '@ant-design/icons';
 import { apiClient } from '../../api/client';
 
 interface DashboardStats {
   todaySales: number;
   pendingOrderCount: number;
-  lowStockAlertCount: number;
 }
 
 export function DashboardPage() {
@@ -25,7 +24,6 @@ export function DashboardPage() {
           setStats({
             todaySales: 0,
             pendingOrderCount: 0,
-            lowStockAlertCount: 0,
           });
         }
       } finally {
@@ -69,16 +67,6 @@ export function DashboardPage() {
               valueStyle={{ color: '#dc2626' }}
             />
             <ShoppingCartOutlined style={{ fontSize: 48, color: '#dc2626', opacity: 0.3, float: 'right', marginTop: -40 }} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <Card>
-            <Statistic
-              title="Low Stock Alerts"
-              value={stats?.lowStockAlertCount ?? 0}
-              valueStyle={{ color: stats?.lowStockAlertCount ? '#dc2626' : '#22c55e' }}
-            />
-            <WarningOutlined style={{ fontSize: 48, color: stats?.lowStockAlertCount ? '#dc2626' : '#22c55e', opacity: 0.3, float: 'right', marginTop: -40 }} />
           </Card>
         </Col>
       </Row>

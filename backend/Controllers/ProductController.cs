@@ -30,7 +30,7 @@ namespace igaServer.Controllers
         // ==========================================
 
         // 1. 获取商品列表 (支持搜索 & 分类筛选)
-        // 对应功能：搜索与分类、库存状态
+        // 对应功能：搜索与分类
         // GET: api/product?category=Meat&search=beef
         [HttpGet]
         public async Task<IActionResult> GetProducts(
@@ -58,7 +58,7 @@ namespace igaServer.Controllers
 
             // 顾客端不暴露成本价，仅返回卖价等字段
             var items = await query
-                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.StockQuantity, p.IsActive, p.IsWeighingRequired })
+                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.IsActive, p.IsWeighingRequired })
                 .ToListAsync();
             return Ok(items);
         }
@@ -75,7 +75,7 @@ namespace igaServer.Controllers
                 return NotFound();
             }
 
-            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.StockQuantity, product.IsActive, product.IsWeighingRequired });
+            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.IsActive, product.IsWeighingRequired });
         }
 
         // ==========================================
@@ -88,6 +88,7 @@ namespace igaServer.Controllers
         public async Task<IActionResult> CreateProduct(Product product)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
+            product.ImageUrl = product.ImageUrl?.Trim() ?? "";
             // 自动设置创建时间
             // product.CreatedAt = DateTime.Now; (如果在 Model 里没赋值的话)
             
@@ -107,6 +108,7 @@ namespace igaServer.Controllers
             {
                 return BadRequest();
             }
+            product.ImageUrl = product.ImageUrl?.Trim() ?? "";
 
             _context.Entry(product).State = EntityState.Modified;
 
@@ -150,26 +152,7 @@ namespace igaServer.Controllers
             return Ok(new { id = product.Id, isActive = product.IsActive, message = "Status updated" });
         }
 
-        // 6. 快速调整库存
-        // 对应功能：库存状态管理
-        // PATCH: api/product/5/stock?quantity=50
-        [HttpPatch("{id}/stock")]
-        public async Task<IActionResult> UpdateStock(int id, [FromQuery] int quantity)
-        {
-            if (await RequireAdminAsync() is { } denied) return denied;
-            var product = await _context.Products.FindAsync(id);
-            if (product == null)
-            {
-                return NotFound();
-            }
-
-            product.StockQuantity = quantity;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { id = product.Id, newStock = product.StockQuantity });
-        }
-
-        // 7. 删除商品 (慎用，通常建议只下架)
+        // 6. 删除商品 (慎用，通常建议只下架)
         // DELETE: api/product/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteProduct(int id)
