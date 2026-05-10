@@ -252,6 +252,9 @@ app.UseAuthorization();    // 身份验证中间件
 // 6. 核心：映射所有的 Controller 接口
 app.MapControllers();
 
+// 浏览器直接打开 /api 时用于探活（实际业务在 /api/product、/api/auth 等）
+app.MapGet("/api", () => Results.Json(new { ok = true }));
+
 // 7. 迁移 + 蔬菜/水果清单补全（不自动 Seed 用户或演示订单；管理员与客户须自行注册或通过数据库初始化）
 using (var scope = app.Services.CreateScope())
 {
