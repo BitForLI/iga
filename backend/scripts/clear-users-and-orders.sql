@@ -7,6 +7,7 @@ BEGIN;
 
 DELETE FROM "OrderItems";
 DELETE FROM "Orders";
+DELETE FROM "PendingRegistrations";
 DELETE FROM "Users";
 
 COMMIT;

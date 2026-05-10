@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
+using System.Linq;
 using IGA.Services;
 using igaServer.Data;
 using igaServer.Models;
@@ -26,7 +27,7 @@ namespace igaServer.Controllers
             _logger = logger;
         }
 
-        /// <summary>注册：创建未验证账号并发送邮箱验证码（不含手机号）。</summary>
+        /// <summary>注册：仅写入待验证表 <see cref="PendingRegistration"/>，验证通过后才创建 <see cref="User"/>。</summary>
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest? request)
         {
@@ -37,35 +38,31 @@ namespace igaServer.Controllers
                 return BadRequest("Name, Email and Password are required");
 
             var email = request.Email.Trim();
-            var existing = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-
-            if (existing != null && existing.EmailVerified)
+            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
                 return BadRequest("Email already registered");
 
             var code = Random.Shared.Next(100000, 1000000).ToString("D6");
             var codeHash = HashVerificationCode(email, code);
             var expires = DateTime.UtcNow.AddMinutes(15);
 
-            if (existing != null)
+            var pending = await _context.PendingRegistrations.FindAsync(email);
+            if (pending != null)
             {
-                existing.Name = request.Name.Trim();
-                existing.PasswordHash = HashPassword(request.Password);
-                existing.EmailVerificationCodeHash = codeHash;
-                existing.EmailVerificationExpiresUtc = expires;
+                pending.Name = request.Name.Trim();
+                pending.PasswordHash = HashPassword(request.Password);
+                pending.VerificationCodeHash = codeHash;
+                pending.ExpiresUtc = expires;
             }
             else
             {
-                var user = new User
+                _context.PendingRegistrations.Add(new PendingRegistration
                 {
-                    Name = request.Name.Trim(),
                     Email = email,
-                    PhoneNumber = null,
+                    Name = request.Name.Trim(),
                     PasswordHash = HashPassword(request.Password),
-                    EmailVerified = false,
-                    EmailVerificationCodeHash = codeHash,
-                    EmailVerificationExpiresUtc = expires,
-                };
-                _context.Users.Add(user);
+                    VerificationCodeHash = codeHash,
+                    ExpiresUtc = expires,
+                });
             }
 
             await _context.SaveChangesAsync();
@@ -90,7 +87,7 @@ namespace igaServer.Controllers
             });
         }
 
-        /// <summary>提交邮箱验证码，通过后方可登录。</summary>
+        /// <summary>提交邮箱验证码，通过后首次写入 <see cref="User"/>（已验证）。</summary>
         [HttpPost("verify-email")]
         public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
         {
@@ -98,29 +95,43 @@ namespace igaServer.Controllers
                 return BadRequest("Email and Code are required");
 
             var email = request.Email.Trim();
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            if (user == null)
-                return BadRequest("User not found");
-
-            if (user.EmailVerified)
+            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
                 return Ok(new { message = "Email already verified" });
 
-            if (user.EmailVerificationExpiresUtc == null || user.EmailVerificationExpiresUtc < DateTime.UtcNow)
+            var pending = await _context.PendingRegistrations.FindAsync(email);
+            if (pending == null)
+                return BadRequest("No pending registration. Please register again.");
+
+            if (pending.ExpiresUtc < DateTime.UtcNow)
                 return BadRequest("Verification code expired. Request a new code.");
 
-            var inputHash = HashVerificationCode(email, request.Code.Trim());
-            if (user.EmailVerificationCodeHash != inputHash)
+            var codeDigits = new string((request.Code ?? "").Where(char.IsDigit).ToArray());
+            if (codeDigits.Length != 6)
                 return BadRequest("Invalid verification code");
 
-            user.EmailVerified = true;
-            user.EmailVerificationCodeHash = null;
-            user.EmailVerificationExpiresUtc = null;
+            var inputHash = HashVerificationCode(email, codeDigits);
+            if (pending.VerificationCodeHash != inputHash)
+                return BadRequest("Invalid verification code");
+
+            var user = new User
+            {
+                Name = pending.Name,
+                Email = email,
+                PhoneNumber = null,
+                PasswordHash = pending.PasswordHash,
+                Role = "Customer",
+                EmailVerified = true,
+                EmailVerificationCodeHash = null,
+                EmailVerificationExpiresUtc = null,
+            };
+            _context.Users.Add(user);
+            _context.PendingRegistrations.Remove(pending);
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Email verified. You can sign in now." });
         }
 
-        /// <summary>重新发送验证码（未验证账号）。</summary>
+        /// <summary>重新发送验证码（仅待验证注册 <see cref="PendingRegistration"/>）。</summary>
         [HttpPost("resend-verification")]
         public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest? request)
         {
@@ -130,19 +141,19 @@ namespace igaServer.Controllers
                 return BadRequest("Email is required");
 
             var email = request.Email.Trim();
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            if (user == null)
-                return Ok(new { message = "If an account exists, a code will be sent." });
-
-            if (user.EmailVerified)
+            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
                 return BadRequest("Email already verified");
 
+            var pending = await _context.PendingRegistrations.FindAsync(email);
+            if (pending == null)
+                return Ok(new { emailSent = false, message = "If a pending registration exists, a code will be sent." });
+
             var code = Random.Shared.Next(100000, 1000000).ToString("D6");
-            user.EmailVerificationCodeHash = HashVerificationCode(email, code);
-            user.EmailVerificationExpiresUtc = DateTime.UtcNow.AddMinutes(15);
+            pending.VerificationCodeHash = HashVerificationCode(email, code);
+            pending.ExpiresUtc = DateTime.UtcNow.AddMinutes(15);
             await _context.SaveChangesAsync();
 
-            var sent = await _resendEmail.SendRegistrationVerificationAsync(email, user.Name, code);
+            var sent = await _resendEmail.SendRegistrationVerificationAsync(email, pending.Name, code);
             if (!sent)
                 _logger.LogWarning("[Auth] 重发验证码失败。邮箱: {Email} 验证码: {Code}", email, code);
 

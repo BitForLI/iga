@@ -183,8 +183,8 @@ if (args.Contains("--clear-users"))
     using var userClearScope = app.Services.CreateScope();
     var userDb = userClearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await userDb.Database.ExecuteSqlRawAsync(
-        @"DELETE FROM ""OrderItems""; DELETE FROM ""Orders""; DELETE FROM ""Users"";");
-    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、Users）。下次正常启动时会重新 Seed guest@iga.local。");
+        @"DELETE FROM ""OrderItems""; DELETE FROM ""Orders""; DELETE FROM ""PendingRegistrations""; DELETE FROM ""Users"";");
+    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、PendingRegistrations、Users）。下次正常启动时会重新 Seed guest@iga.local。");
     return;
 }
 

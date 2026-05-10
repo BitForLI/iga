@@ -17,6 +17,8 @@ namespace igaServer.Data
         public DbSet<StoreConfig> StoreConfigs { get; set; } // 注册配置表
         public DbSet<StripeProcessedEvent> StripeProcessedEvents { get; set; }
 
+        public DbSet<PendingRegistration> PendingRegistrations { get; set; }
+
         // 可选：在这里配置字段的特殊约束
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
