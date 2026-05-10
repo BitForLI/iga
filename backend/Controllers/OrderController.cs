@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using IGA.Services;
@@ -39,8 +41,7 @@ namespace igaServer.Controllers
             User user;
             if (request.UserId == 0)
             {
-                user = await _context.Users.FirstOrDefaultAsync(u => u.Email == "guest@iga.local");
-                if (user == null) return BadRequest(new { error = "Guest user not initialized, check database seed" });
+                user = await GetOrCreateGuestUserAsync();
             }
             else
             {
@@ -259,13 +260,13 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 5. 核销订单（取件码验证）
+        // 5. 核销订单（6 位取货码验证）
         // POST: api/order/{orderId}/verify
         // ==========================================
         /// <summary>
         /// 验证订单取货
         /// 1. 检查订单状态是否为 Prepared（已备货）
-        /// 2. 验证邮件中的 6 位取件码是否匹配
+        /// 2. 验证邮件中的 6 位取货码是否与订单 PickupCode 一致
         /// 3. 订单标记为 Completed
         /// 4. 返回订单信息
         /// </summary>
@@ -290,10 +291,11 @@ namespace igaServer.Controllers
                 return BadRequest($"Order status is {order.OrderStatus}, can only verify prepared orders");
             }
 
-            // 验证取件码（邮件中的 6 位数字）
-            if (order.PickupCode != request.PickupCode)
+            var expected = order.PickupCode ?? "";
+            var entered = NormalizePickupDigits(request.PickupCode);
+            if (expected.Length != 6 || entered.Length != 6 || entered != expected)
             {
-                return BadRequest("Invalid pickup code. Please check the 6-digit code sent to your email.");
+                return BadRequest("Invalid pickup code");
             }
 
             // 更新订单状态为已完成
@@ -494,8 +496,44 @@ namespace igaServer.Controllers
             };
         }
 
+        /// <summary>未登录下单使用的占位用户；数据库可不预置，首次访客下单时插入。</summary>
+        private async Task<User> GetOrCreateGuestUserAsync()
+        {
+            var existing = await _context.Users.FirstOrDefaultAsync(u => u.Email == "guest@iga.local");
+            if (existing != null) return existing;
+
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("guest"))).ToLowerInvariant();
+            var guest = new User
+            {
+                Name = "Guest",
+                Email = "guest@iga.local",
+                PhoneNumber = null,
+                PasswordHash = hash,
+                Role = "Customer",
+                EmailVerified = true
+            };
+            _context.Users.Add(guest);
+            try
+            {
+                await _context.SaveChangesAsync();
+                return guest;
+            }
+            catch (DbUpdateException)
+            {
+                _context.Entry(guest).State = EntityState.Detached;
+                return await _context.Users.FirstAsync(u => u.Email == "guest@iga.local");
+            }
+        }
+
         private static string GeneratePickupCode() =>
             Random.Shared.Next(100000, 1000000).ToString("D6");
+
+        /// <summary>仅保留数字，用于比对取货码（允许用户粘贴带空格等）。</summary>
+        private static string NormalizePickupDigits(string? input)
+        {
+            if (string.IsNullOrEmpty(input)) return "";
+            return new string(input.Where(char.IsDigit).ToArray());
+        }
 
         private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
         {

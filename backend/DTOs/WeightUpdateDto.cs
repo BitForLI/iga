@@ -12,13 +12,10 @@ namespace igaServer.DTOs
     }
 
     /// <summary>
-    /// 核销订单请求 DTO
-    /// 验证取件码（邮件中的 6 位数字）-> 订单完成
+    /// 核销订单请求 DTO（与邮件中的 6 位取货码一致）
     /// </summary>
     public class OrderVerifyDto
     {
-        public int OrderId { get; set; }
-
-        public string PickupCode { get; set; } // 6-digit pickup code from email
+        public string PickupCode { get; set; } = "";
     }
 }

@@ -83,9 +83,7 @@ export function ProductManagementPage() {
       } catch (e) {
         if (isRequestAborted(e)) return;
         const detail = e instanceof Error ? e.message : String(e);
-        message.warning(
-          `无法连接商品接口：${detail}。请确认后端已启动（dotnet run），且 .env 中 VITE_API_BASE 与后端地址一致。已显示本地示例数据。`
-        );
+        message.warning(`无法加载商品：${detail}（已显示示例数据）`);
         setData(MOCK_PRODUCTS);
         setPagination((p) => ({ ...p, current: 1, total: MOCK_PRODUCTS.length }));
         setUseMock(true);

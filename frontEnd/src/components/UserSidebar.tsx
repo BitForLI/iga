@@ -202,9 +202,7 @@ function AuthForms({
         role: res.role || 'Customer',
       });
     } catch (err) {
-      setError(
-        `邮箱已验证，但自动登录失败：${(err as Error).message}。请在左侧选 Sign In 手动登录。`,
-      );
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }

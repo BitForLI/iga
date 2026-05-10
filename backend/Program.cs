@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
 using igaServer.Data;
-using igaServer.Models;
 using igaServer.Seed;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -184,7 +181,7 @@ if (args.Contains("--clear-users"))
     var userDb = userClearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await userDb.Database.ExecuteSqlRawAsync(
         @"DELETE FROM ""OrderItems""; DELETE FROM ""Orders""; DELETE FROM ""PendingRegistrations""; DELETE FROM ""Users"";");
-    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、PendingRegistrations、Users）。下次正常启动时会重新 Seed guest@iga.local。");
+    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、PendingRegistrations、Users）。不再自动 Seed 用户；访客首次下单时会创建 guest@iga.local。");
     return;
 }
 
@@ -255,7 +252,7 @@ app.UseAuthorization();    // 身份验证中间件
 // 6. 核心：映射所有的 Controller 接口
 app.MapControllers();
 
-// 7. Seed：Guest 用户 + 基础商品（与前端 DEFAULT_PRODUCTS / SPECIAL_PRODUCTS 对应）
+// 7. 迁移 + 蔬菜/水果清单补全（不自动 Seed 用户或演示订单；管理员与客户须自行注册或通过数据库初始化）
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -263,101 +260,10 @@ using (var scope = app.Services.CreateScope())
     // Railway / 生产库需与代码迁移一致；未执行迁移会出现「column ... does not exist」
     await db.Database.MigrateAsync();
 
-    if (!await db.Users.AnyAsync(u => u.Email == "guest@iga.local"))
-    {
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("guest"))).ToLowerInvariant();
-        db.Users.Add(new User { Name = "Guest", Email = "guest@iga.local", PhoneNumber = null, PasswordHash = hash, Role = "Customer", EmailVerified = true });
-        await db.SaveChangesAsync();
-    }
-
-    // 商品由后台自行维护，不再自动 Seed 默认商品（避免清空后又被写回）
-
     // 蔬菜/水果清单：按「分类 + 名称」判断是否存在（避免误把水果写在 Vegetables 时，同名挡住 Fruit 插入）
     var (vegAdded, fruitAdded) = await CatalogDatabaseSync.SeedMissingCatalogProductsAsync(db);
     if (vegAdded > 0 || fruitAdded > 0)
         Console.WriteLine($"[数据库] 启动时补全清单：蔬菜 +{vegAdded} 条，水果 +{fruitAdded} 条。");
-
-    // Seed 测试用户（管理员 + 客户）及订单，方便后台订单/用户列表展示
-    var hashPw = (string pw) => BitConverter.ToString(SHA256.HashData(Encoding.UTF8.GetBytes(pw))).Replace("-", "").ToLowerInvariant();
-
-    if (!await db.Users.AnyAsync(u => u.Email == "admin@iga.local"))
-    {
-        db.Users.Add(new User { Name = "Admin", Email = "admin@iga.local", PhoneNumber = "0400000001", PasswordHash = hashPw("admin123"), Role = "Admin", EmailVerified = true });
-        await db.SaveChangesAsync();
-    }
-
-    if (!await db.Users.AnyAsync(u => u.Email == "staff@iga.local"))
-    {
-        db.Users.Add(new User { Name = "Staff", Email = "staff@iga.local", PhoneNumber = "0400000002", PasswordHash = hashPw("staff123"), Role = "Staff", EmailVerified = true });
-        await db.SaveChangesAsync();
-    }
-
-    var seedUsers = new[]
-    {
-        (Name: "Alice", Email: "alice@test.com", Phone: "0411111111", Pw: "alice123"),
-        (Name: "Bob", Email: "bob@test.com", Phone: "0422222222", Pw: "bob123"),
-        (Name: "Carol", Email: "carol@test.com", Phone: "0433333333", Pw: "carol123"),
-    };
-    var productList = await db.Products.Take(10).ToListAsync();
-
-    foreach (var u in seedUsers)
-    {
-        if (await db.Users.AnyAsync(x => x.Email == u.Email)) continue;
-        db.Users.Add(new User { Name = u.Name, Email = u.Email, PhoneNumber = u.Phone, PasswordHash = hashPw(u.Pw), Role = "Customer", EmailVerified = true });
-    }
-    await db.SaveChangesAsync();
-
-    // Seed 订单数据：每个用户有订单历史，每种状态都有若干订单（待备货=Paid 含接单按钮）
-    if (productList.Count >= 3)
-    {
-        var customerUsers = await db.Users.Where(x => x.Email != "guest@iga.local" && x.Role != "Admin").ToListAsync();
-        var guest = await db.Users.FirstOrDefaultAsync(x => x.Email == "guest@iga.local");
-        var allUsers = new List<User>();
-        if (guest != null) allUsers.Add(guest);
-        allUsers.AddRange(customerUsers);
-
-        void AddOrder(User usr, string status, int daysAgo)
-        {
-            var order = new Order
-            {
-                UserId = usr.Id,
-                OrderStatus = status,
-                OrderType = "Pickup",
-                PickupCode = Random.Shared.Next(100000, 1000000).ToString("D6"),
-                PickupTime = DateTime.UtcNow.AddDays(-daysAgo),
-                CreatedAt = DateTime.UtcNow.AddDays(-daysAgo),
-            };
-            var items = new List<OrderItem>();
-            decimal total = 0;
-            for (int i = 0; i < 3; i++)
-            {
-                var p = productList[i];
-                var qty = (i % 2) + 1;
-                items.Add(new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = qty, PriceAtPurchase = p.Price, ExpectedWeight = 1.0 });
-                total += p.Price * qty;
-            }
-            order.TotalAmount = total;
-            order.FinalAmount = total;
-            order.Items = items;
-            db.Orders.Add(order);
-        }
-
-        var orderCount = await db.Orders.CountAsync();
-        if (orderCount < 30 && allUsers.Count > 0)
-        {
-            var idx = 0;
-            foreach (var status in new[] { "Pending", "Paid", "Preparing", "Prepared", "Completed", "Cancelled" })
-            {
-                for (int i = 0; i < 5; i++)
-                {
-                    var u = allUsers[idx % allUsers.Count];
-                    AddOrder(u, status, 15 - i);
-                    idx++;
-                }
-            }
-            await db.SaveChangesAsync();
-        }
-    }
 }
 
 app.Run();

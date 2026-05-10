@@ -92,8 +92,7 @@ apiClient.interceptors.response.use(
         String(error.message || '').includes('Network Error'));
     let message = extracted || 'Request failed';
     if (looksNetwork) {
-      message =
-        `Network Error — 浏览器未连上 API（${API_BASE}）。请检查：Cloudflare Production 是否设置 VITE_API_BASE=https://你的Railway域名/api；须为 HTTPS；Railway 的 CORS 是否包含当前页面域名（含 *.pages.dev）。`;
+      message = `Network Error (${API_BASE})`;
     }
     return Promise.reject(new ApiRequestError(message, status, data));
   }

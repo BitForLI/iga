@@ -1,11 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { message } from 'antd';
 import { productAPI } from '../api';
-import {
-  API_BASE,
-  cloudflarePagesCorsHint,
-  productionApiMissingEnvHint,
-} from '../config/apiEnv';
+import { API_BASE } from '../config/apiEnv';
 import { useCart } from '../context/CartContext';
 import home1 from '../assets/images/主页.png';
 import home2 from '../assets/images/主页2.png';
@@ -87,18 +83,12 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
         setSpecialProducts(list.length > 0 ? pickSpecialStripProducts(list) : []);
       } catch (e) {
         const msg = (e as Error)?.message ?? '加载商品失败';
-        const envHint = productionApiMissingEnvHint();
-        const corsHint = cloudflarePagesCorsHint();
-        const suffix =
-          envHint ?? (msg === 'Network Error' ? corsHint : null);
-        setFetchError(suffix ? `${msg}\n${suffix}` : msg);
+        setFetchError(msg);
         setProducts([]);
         setSpecialProducts([]);
         if (!toastOnceRef.current) {
           toastOnceRef.current = true;
-          message.error(
-            `${msg}（API: ${API_BASE}${envHint ? ' — 未配置 VITE_API_BASE' : ''}）`,
-          );
+          message.error(`${msg} (${API_BASE})`);
         }
       } finally {
         setLoading(false);

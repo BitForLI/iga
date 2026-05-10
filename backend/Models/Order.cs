@@ -27,7 +27,7 @@ namespace igaServer.Models
 
         // --- 履约信息 ---
         public string? OrderStatus { get; set; } = "Pending"; // Pending, Paid, Prepared, Completed
-        public string? PickupCode { get; set; } // 手机后四位
+        public string? PickupCode { get; set; } // 6 位数字取货码（创建订单时生成）
         public string? OrderType { get; set; } // "Pickup" 或 "Delivery"
         
         public DateTime? PickupTime { get; set; } // 预约时间
