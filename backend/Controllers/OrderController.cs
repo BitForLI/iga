@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using IGA.Services;
@@ -37,11 +35,11 @@ namespace igaServer.Controllers
         [HttpPost("create")]
         public async Task<ActionResult<OrderDetailDto>> CreateOrder([FromBody] OrderCreateDto request)
         {
-            // === 步骤 1: 验证用户存在（UserId 0 时使用 Guest） ===
+            // === 步骤 1: 验证用户存在（不再自动创建 Guest/初始用户） ===
             User user;
             if (request.UserId == 0)
             {
-                user = await GetOrCreateGuestUserAsync();
+                return BadRequest(new { error = "Please sign in before checkout" });
             }
             else
             {
@@ -494,35 +492,6 @@ namespace igaServer.Controllers
                 Items = order.Items?.Select(oi => MapToOrderItemDetailDto(oi)).ToList(),
                 CreatedAt = order.CreatedAt
             };
-        }
-
-        /// <summary>未登录下单使用的占位用户；数据库可不预置，首次访客下单时插入。</summary>
-        private async Task<User> GetOrCreateGuestUserAsync()
-        {
-            var existing = await _context.Users.FirstOrDefaultAsync(u => u.Email == "guest@iga.local");
-            if (existing != null) return existing;
-
-            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("guest"))).ToLowerInvariant();
-            var guest = new User
-            {
-                Name = "Guest",
-                Email = "guest@iga.local",
-                PhoneNumber = null,
-                PasswordHash = hash,
-                Role = "Customer",
-                EmailVerified = true
-            };
-            _context.Users.Add(guest);
-            try
-            {
-                await _context.SaveChangesAsync();
-                return guest;
-            }
-            catch (DbUpdateException)
-            {
-                _context.Entry(guest).State = EntityState.Detached;
-                return await _context.Users.FirstAsync(u => u.Email == "guest@iga.local");
-            }
         }
 
         private static string GeneratePickupCode() =>

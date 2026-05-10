@@ -321,6 +321,12 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                     message.warning(msg);
                     return;
                   }
+                  if (!user) {
+                    const msg = 'Please sign in before checkout';
+                    setCheckoutError(msg);
+                    message.warning(msg);
+                    return;
+                  }
                   setCheckoutError('');
                   setCheckoutLoading(true);
                   try {
@@ -328,7 +334,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                       ? [deliveryInfo.address, deliveryInfo.suburb, deliveryInfo.postcode].filter(Boolean).join(', ')
                       : undefined;
                     const orderRes = (await orderAPI.create({
-                      userId: user?.id ?? 0,
+                      userId: user.id,
                       orderType: orderType,
                       pickupTime: orderType === 'Pickup' ? pickupTimeSlot : undefined,
                       deliveryAddress: deliveryAddress,

@@ -1,6 +1,7 @@
 import { useCart } from '../context/CartContext';
 import { useState, type FormEvent } from 'react';
 import { orderAPI, paymentAPI } from '../api';
+import { useAuth } from '../context/AuthContext';
 
 interface UserInfo {
   name: string;
@@ -10,6 +11,7 @@ interface UserInfo {
 
 export function Checkout() {
   const { items, total, clear } = useCart();
+  const { user } = useAuth();
   const [userInfo, setUserInfo] = useState<UserInfo>({ name: '', email: '', phoneNumber: '' });
   const [pickupTime, setPickupTime] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,12 +34,16 @@ export function Checkout() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!user) {
+      setError('Please sign in before checkout');
+      return;
+    }
     setLoading(true);
 
     try {
       // 创建订单
       const orderRes = await orderAPI.create({
-        UserId: 0, // 临时用户
+        UserId: user.id,
         OrderType: 'Pickup',
         PickupTime: pickupTime,
         Items: items.map((item) => ({

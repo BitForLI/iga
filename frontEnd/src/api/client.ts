@@ -3,30 +3,6 @@ import { API_BASE } from '../config/apiEnv';
 
 export { API_BASE };
 
-function debugApiIssue(
-  runId: string,
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-): void {
-  // #region agent log
-  fetch('http://127.0.0.1:7704/ingest/f17ff0ef-6b97-4a80-8e19-1b534d0488ed', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '936b1a' },
-    body: JSON.stringify({
-      sessionId: '936b1a',
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-}
-
 /** 带 HTTP 状态与原始响应体，便于控制台 / 调试（400 时请看 apiData.error） */
 export class ApiRequestError extends Error {
   constructor(
@@ -48,14 +24,6 @@ export const apiClient = axios.create({
 
 // 请求拦截器 - 可添加 token
 apiClient.interceptors.request.use((config) => {
-  if (String(config.url || '').includes('/auth/') || String(config.url || '').includes('/product')) {
-    debugApiIssue('pre-fix', 'H5', 'frontEnd/src/api/client.ts:50', 'api request about to be sent', {
-      baseURL: config.baseURL,
-      url: config.url,
-      method: config.method,
-      origin: typeof window !== 'undefined' ? window.location.origin : null,
-    });
-  }
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -89,16 +57,6 @@ apiClient.interceptors.response.use(
     }
     const status = error.response?.status;
     const data = error.response?.data;
-    debugApiIssue('pre-fix', 'H5', 'frontEnd/src/api/client.ts:85', 'api request failed', {
-      baseURL: error.config?.baseURL,
-      url: error.config?.url,
-      method: error.config?.method,
-      origin: typeof window !== 'undefined' ? window.location.origin : null,
-      status,
-      code: error.code,
-      message: error.message,
-      hasResponse: error.response != null,
-    });
     const o = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : null;
     let extracted =
       (typeof data === 'string' ? data : null) ||

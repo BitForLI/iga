@@ -181,7 +181,7 @@ if (args.Contains("--clear-users"))
     var userDb = userClearScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await userDb.Database.ExecuteSqlRawAsync(
         @"DELETE FROM ""OrderItems""; DELETE FROM ""Orders""; DELETE FROM ""PendingRegistrations""; DELETE FROM ""Users"";");
-    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、PendingRegistrations、Users）。不再自动 Seed 用户；访客首次下单时会创建 guest@iga.local。");
+    Console.WriteLine("已清空所有用户及订单（OrderItems、Orders、PendingRegistrations、Users）。不再自动 Seed 用户。");
     return;
 }
 
