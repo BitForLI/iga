@@ -4,7 +4,7 @@
 
 | 目录 | 说明 |
 |------|------|
-| **[backend/](backend/)** | Web API、EF 迁移、`Program.cs`、`dotnet run` |
+| **[backend/](backend/)** | Web API、EF 迁移、`igaServer.csproj`；**Railway 服务 Root directory 须设为 `backend`** |
 | **[frontend/](frontend/)** | 顾客端与后台 UI，`npm run dev` |
 | **[docs/](docs/)** | 项目说明与配置（原根目录 README） |
 

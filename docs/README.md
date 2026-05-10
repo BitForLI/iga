@@ -145,8 +145,26 @@ npm run dev
 
 ## 部署（Railway / 类似平台）
 
-- **后端服务**：仓库根目录选 **`backend`**（或构建上下文指向含 `igaServer.csproj` 的目录），启动一般为 `dotnet run` 或发布后的 `dotnet igaServer.dll`。  
-- **前端静态站**：根目录 **`frontend`**，执行 `npm ci && npm run build`，用平台托管 **`frontend/dist`**。构建前设置 **`VITE_API_BASE`** = `https://你的后端公网地址/api`（见 `frontend/.env.example`）。  
+### 后端（必做：Root Directory）
+
+仓库根目录下没有 `.csproj`，项目文件在 **`backend/igaServer.csproj`**。在 Railway：
+
+1. 打开 **后端服务** → **Settings**。  
+2. **Root directory** 填 **`backend`**（不要留空或填 `/`）。  
+3. 保存并重新部署。
+
+否则 Railpack 会在仓库根扫描，报错类似：**could not determine how to build the app**。详见 **`backend/README.md`**。
+
+可选：**Watch paths** 填 `backend/**`，避免只改前端时也触发后端构建。
+
+启动一般由 Railpack 检测 `dotnet publish` 产物；若有需要再在 Settings 里覆盖 **Start command**。
+
+### 前端静态站
+
+根目录选 **`frontend`**（若仓库中为 `frontEnd`，以实际目录名为准），执行 `npm ci && npm run build`，托管 **`dist`**。构建前设置 **`VITE_API_BASE`** = `https://你的后端公网地址/api`（见 `frontend/.env.example`）。
+
+### 密钥与集成（云平台填写）
+
 - **仓库已包含**：`appsettings.Production.json` 中的生产域名与 Stripe 回跳 URL；**仍需在云平台手动填写**（勿提交密钥）：PostgreSQL 连接串、`Stripe__SecretKey` / `Stripe__WebhookSecret`（或扁平名 `STRIPE_*`，见 `Program.cs`）、Resend/Telegram 等。Stripe Dashboard **Live** 中 Webhook URL 须指向 `https://你的后端域名/api/payment/webhook`。  
 - **勿提交**：`appsettings.Development.json`、任何含密钥的 `.env`。
 
