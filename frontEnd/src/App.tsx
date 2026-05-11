@@ -326,6 +326,7 @@ function App() {
             <Route path="orders/:id" element={<RedirectAdminOrderToStaff />} />
             <Route path="dashboard" element={<Navigate to="/admin/products" replace />} />
             <Route path="products" element={<ProductManagementPage />} />
+            <Route path="refunds" element={<OrderManagementPage initialTab="RefundRequested" />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
           </Route>

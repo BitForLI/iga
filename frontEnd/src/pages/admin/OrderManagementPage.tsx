@@ -86,14 +86,14 @@ interface OrderRow {
   pickedUpAt?: string | null;
 }
 
-export function OrderManagementPage() {
+export function OrderManagementPage({ initialTab = 'Pending' }: { initialTab?: string } = {}) {
   const { adminBasePath = '/admin' } = useOutletContext<{ adminBasePath?: string }>() ?? {};
   const navigate = useNavigate();
   const { play: playAlert, stop: stopAlert, enable: enableBroadcast, isEnabled: broadcastEnabled } = useOrderAlertSound();
   const [data, setData] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
-  const [activeTab, setActiveTab] = useState<string>('Pending');
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const seenOrderIdsRef = useRef<Set<number>>(new Set());
   /** 首次拉取 Paid 列表完成后才允许响铃，避免把页面里已有订单当「新单」；从空队列出现首条 Paid 时也会响 */

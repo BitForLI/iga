@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout, Menu, ConfigProvider } from 'antd';
 import {
+  DollarOutlined,
   ShoppingOutlined,
   UserOutlined,
   MenuFoldOutlined,
@@ -26,6 +27,7 @@ const ADMIN_THEME = {
 /** 管理员：商品、客户；订单在 /staff（员工与管理员均可从账户入口进入） */
 const MENU_ITEMS = [
   { key: '/admin/products', icon: <ShoppingOutlined />, label: 'Products' },
+  { key: '/admin/refunds', icon: <DollarOutlined />, label: 'Refunds' },
   { key: '/admin/customers', icon: <UserOutlined />, label: 'Customers' },
 ];
 
