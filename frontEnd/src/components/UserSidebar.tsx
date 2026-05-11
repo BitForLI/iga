@@ -496,11 +496,31 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
   const [refundRequesting, setRefundRequesting] = useState(false);
   const { setUser } = useAuth();
 
+  const paidOrderStatuses = new Set(['Paid', 'Preparing', 'Prepared', 'Completed', 'RefundRequested', 'Refunded']);
+
+  const normalizeOrder = (raw: any) => ({
+    ...raw,
+    id: raw?.id ?? raw?.Id,
+    totalAmount: Number(raw?.totalAmount ?? raw?.TotalAmount ?? 0),
+    finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
+    refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
+    orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
+    orderType: raw?.orderType ?? raw?.OrderType ?? '',
+    pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
+    pickupTime: raw?.pickupTime ?? raw?.PickupTime,
+    deliveryAddress: raw?.deliveryAddress ?? raw?.DeliveryAddress,
+    createdAt: raw?.createdAt ?? raw?.CreatedAt,
+    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items) : [],
+  });
+
+  const isPaidOrder = (order: any) => paidOrderStatuses.has(String(order?.orderStatus ?? ''));
+
   const fetchOrders = async () => {
     try {
       setError('');
       const res = await orderAPI.getUserOrders(user.id);
-      setOrders(Array.isArray(res) ? res : []);
+      const paidOrders = (Array.isArray(res) ? res : []).map(normalizeOrder).filter(isPaidOrder);
+      setOrders(paidOrders);
     } catch (err) {
       setError((err as Error).message);
       setOrders([]);
@@ -517,21 +537,6 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
     setUser(null);
     onClose();
   };
-
-  const normalizeOrder = (raw: any) => ({
-    ...raw,
-    id: raw?.id ?? raw?.Id,
-    totalAmount: Number(raw?.totalAmount ?? raw?.TotalAmount ?? 0),
-    finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
-    refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
-    orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
-    orderType: raw?.orderType ?? raw?.OrderType ?? '',
-    pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
-    pickupTime: raw?.pickupTime ?? raw?.PickupTime,
-    deliveryAddress: raw?.deliveryAddress ?? raw?.DeliveryAddress,
-    createdAt: raw?.createdAt ?? raw?.CreatedAt,
-    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items) : [],
-  });
 
   const openOrderDetail = async (orderId: number) => {
     setDetailLoading(true);

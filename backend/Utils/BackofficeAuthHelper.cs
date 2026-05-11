@@ -18,7 +18,8 @@ public static class BackofficeAuthHelper
         return (true, string.IsNullOrEmpty(user.Role) ? "Customer" : user.Role);
     }
 
-    public static bool IsAdmin(string role) => role == "Admin";
+    public static bool IsAdmin(string role) => string.Equals(role?.Trim(), "Admin", StringComparison.OrdinalIgnoreCase);
 
-    public static bool IsStaffOrAdmin(string role) => role == "Admin" || role == "Staff";
+    public static bool IsStaffOrAdmin(string role) =>
+        IsAdmin(role) || string.Equals(role?.Trim(), "Staff", StringComparison.OrdinalIgnoreCase);
 }

@@ -266,7 +266,7 @@ using (var scope = app.Services.CreateScope())
 
     const string bossEmail = "boss@igabeverlyhills.com";
     const string bossPasswordHash = "00c698e75d4ec54b27ae2501f08bfbd15b0a6cd0902330ac3cad18f890d706bc"; // Boss@IGA2026!
-    var boss = await db.Users.FirstOrDefaultAsync(u => u.Email == bossEmail);
+    var boss = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == bossEmail);
     if (boss == null)
     {
         db.Users.Add(new User
@@ -281,9 +281,10 @@ using (var scope = app.Services.CreateScope())
         await db.SaveChangesAsync();
         Console.WriteLine("[数据库] 已创建老板账号 boss@igabeverlyhills.com。");
     }
-    else if (boss.Role != "Admin" || !boss.EmailVerified || boss.PasswordHash != bossPasswordHash)
+    else if (boss.Email != bossEmail || !string.Equals(boss.Role, "Admin", StringComparison.OrdinalIgnoreCase) || !boss.EmailVerified || boss.PasswordHash != bossPasswordHash)
     {
         boss.Name = "Boss";
+        boss.Email = bossEmail;
         boss.PasswordHash = bossPasswordHash;
         boss.Role = "Admin";
         boss.EmailVerified = true;

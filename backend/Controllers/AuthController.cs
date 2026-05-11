@@ -37,10 +37,10 @@ namespace igaServer.Controllers
                 string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Name, Email and Password are required");
 
-            var email = request.Email.Trim();
+            var email = NormalizeEmail(request.Email);
 
             // Reject if a fully verified account already exists for this email
-            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email && u.EmailVerified))
                 return BadRequest("Email already registered");
 
             var code = Random.Shared.Next(100000, 1000000).ToString("D6");
@@ -100,8 +100,8 @@ namespace igaServer.Controllers
             if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Code))
                 return BadRequest("Email and Code are required");
 
-            var email = request.Email.Trim();
-            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
+            var email = NormalizeEmail(request.Email);
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email && u.EmailVerified))
                 return Ok(new { message = "Email already verified" });
 
             var pending = await _context.PendingRegistrations.FindAsync(email);
@@ -150,10 +150,10 @@ namespace igaServer.Controllers
             if (string.IsNullOrWhiteSpace(request.Email))
                 return BadRequest("Email is required");
 
-            var email = request.Email.Trim();
+            var email = NormalizeEmail(request.Email);
 
             // Resend only works for pending (unverified) registrations
-            if (await _context.Users.AnyAsync(u => u.Email == email && u.EmailVerified))
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email && u.EmailVerified))
                 return BadRequest("This email is already fully registered. No verification needed.");
 
             var pending = await _context.PendingRegistrations.FindAsync(email);
@@ -178,8 +178,9 @@ namespace igaServer.Controllers
             if (request == null || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Email and Password are required");
 
+            var email = NormalizeEmail(request.Email);
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == request.Email);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email);
 
             if (user == null)
                 return BadRequest("User not found");
@@ -206,6 +207,8 @@ namespace igaServer.Controllers
             var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
             return BitConverter.ToString(hashedBytes).Replace("-", "").ToLowerInvariant();
         }
+
+        private static string NormalizeEmail(string? email) => (email ?? "").Trim().ToLowerInvariant();
 
         private static string HashVerificationCode(string email, string code)
         {
