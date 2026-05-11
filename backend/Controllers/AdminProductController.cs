@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Stripe.Checkout;
+using IGA.Services;
 using igaServer.Data;
 using igaServer.Utils;
 using igaServer.Models;
@@ -19,15 +20,18 @@ namespace igaServer.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _configuration;
+        private readonly IStripeService _stripeService;
 
         public AdminProductController(
             ApplicationDbContext context,
             IWebHostEnvironment env,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IStripeService stripeService)
         {
             _context = context;
             _env = env;
             _configuration = configuration;
+            _stripeService = stripeService;
         }
 
         private async Task<IActionResult?> RequireAdminAsync()
@@ -139,6 +143,7 @@ namespace igaServer.Controllers
                 TotalPrepared = totalPrepared,
                 Completed = dict.GetValueOrDefault("Completed", 0),
                 Pending = dict.GetValueOrDefault("Pending", 0),
+                RefundRequested = dict.GetValueOrDefault("RefundRequested", 0),
                 Cancelled = dict.GetValueOrDefault("Cancelled", 0)
             });
         }
@@ -243,6 +248,63 @@ namespace igaServer.Controllers
         /// <summary>旧版路径，兼容已部署客户端。</summary>
         [HttpPost("order-mark-picked-up/{orderId}")]
         public Task<IActionResult> MarkOrderPickedUpLegacy(int orderId) => MarkOrderPickedUpCore(orderId);
+
+        [HttpPost("order-refund-approve/{orderId}")]
+        public async Task<IActionResult> ApproveRefundRequest(int orderId)
+        {
+            if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null) return NotFound("Order not found");
+            if (order.OrderStatus != "RefundRequested")
+                return BadRequest("Can only approve RefundRequested orders");
+
+            var refundableRemaining = Math.Max(0, order.TotalAmount - order.RefundAmount);
+            if (refundableRemaining <= 0.01m)
+            {
+                order.FinalAmount = 0;
+                order.OrderStatus = "Refunded";
+                await _context.SaveChangesAsync();
+                return Ok(new { id = order.Id, orderStatus = order.OrderStatus, refundAmount = order.RefundAmount, message = "Order already fully refunded" });
+            }
+
+            if (string.IsNullOrWhiteSpace(order.StripePaymentIntentId))
+            {
+                return BadRequest(new { error = "Order is missing StripePaymentIntentId; cannot refund through Stripe." });
+            }
+
+            var minorUnits = (long)Math.Round(refundableRemaining * 100m, MidpointRounding.AwayFromZero);
+            if (minorUnits < 1)
+            {
+                return BadRequest(new { error = "Refund amount is too small for Stripe." });
+            }
+
+            var idempotencyKey = $"customer-refund-order-{order.Id}-{minorUnits}-{order.RefundAmount:0.00}";
+            var (ok, errMsg, refundId) = await _stripeService.CreatePartialRefundAsync(
+                order.StripePaymentIntentId,
+                minorUnits,
+                idempotencyKey,
+                HttpContext.RequestAborted);
+
+            if (!ok)
+            {
+                return StatusCode(502, new { error = "Stripe refund failed", detail = errMsg });
+            }
+
+            order.RefundAmount += refundableRemaining;
+            order.FinalAmount = 0;
+            order.OrderStatus = "Refunded";
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                id = order.Id,
+                orderStatus = order.OrderStatus,
+                refundAmount = order.RefundAmount,
+                finalAmount = order.FinalAmount,
+                stripeRefundId = refundId,
+                message = "Refund approved and processed through Stripe"
+            });
+        }
 
         private async Task<IActionResult> MarkOrderPickedUpCore(int orderId)
         {

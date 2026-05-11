@@ -60,13 +60,14 @@ const TAB_ITEMS = [
   { key: 'Preparing', label: 'Preparing' },
   { key: 'PreparedPickup', label: 'Ready for pickup' },
   { key: 'PreparedDelivery', label: 'Ready for delivery' },
+  { key: 'RefundRequested', label: 'Refund requests' },
 ] as const;
 
 function resolveTabParams(tab: string | undefined): { status?: string; orderType?: string } {
   if (!tab) return { status: 'Pending' };
   if (tab === 'PreparedPickup') return { status: 'Prepared', orderType: 'Pickup' };
   if (tab === 'PreparedDelivery') return { status: 'Prepared', orderType: 'Delivery' };
-  if (tab === 'Pending' || tab === 'Paid' || tab === 'Preparing') return { status: tab };
+  if (tab === 'Pending' || tab === 'Paid' || tab === 'Preparing' || tab === 'RefundRequested') return { status: tab };
   return { status: 'Pending' };
 }
 
@@ -155,6 +156,7 @@ export function OrderManagementPage() {
         Preparing: (c?.preparing ?? c?.Preparing) ?? 0,
         PreparedPickup: (c?.preparedPickup ?? c?.PreparedPickup) ?? 0,
         PreparedDelivery: (c?.preparedDelivery ?? c?.PreparedDelivery) ?? 0,
+        RefundRequested: (c?.refundRequested ?? c?.RefundRequested) ?? 0,
       });
     } catch (_) {}
   }, []);
@@ -181,6 +183,7 @@ export function OrderManagementPage() {
   }, [activeTab, pagination.pageSize, fetchOrders, fetchCounts]);
 
   const [acceptingId, setAcceptingId] = useState<number | null>(null);
+  const [refundingId, setRefundingId] = useState<number | null>(null);
 
   const handleAcceptOrder = async (orderId: number) => {
     setAcceptingId(orderId);
@@ -194,6 +197,25 @@ export function OrderManagementPage() {
       message.error((e as Error).message);
     } finally {
       setAcceptingId(null);
+    }
+  };
+
+  const handleApproveRefund = async (orderId: number) => {
+    const ok = window.confirm(`Approve refund for order #${orderId}? This will refund through Stripe.`);
+    if (!ok) return;
+    setRefundingId(orderId);
+    try {
+      const res = (await apiClient.post(`/admin/order-refund-approve/${orderId}`, {})) as {
+        stripeRefundId?: string;
+        refundAmount?: number;
+      };
+      message.success(`Refund processed${res?.stripeRefundId ? ` (${res.stripeRefundId})` : ''}`);
+      fetchCounts();
+      fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setRefundingId(null);
     }
   };
 
@@ -279,6 +301,16 @@ export function OrderManagementPage() {
         <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {r.orderStatus === 'Pending' && (
             <span style={{ fontSize: 12, color: '#d97706' }}>Awaiting payment</span>
+          )}
+          {r.orderStatus === 'RefundRequested' && (
+            <Button
+              danger
+              size="small"
+              loading={refundingId === r.id}
+              onClick={() => handleApproveRefund(r.id)}
+            >
+              Approve refund
+            </Button>
           )}
           {r.orderStatus === 'Paid' && (
             <Button

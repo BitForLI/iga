@@ -199,7 +199,62 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 4. 更新订单状态（仅 Admin 可用）
+        // 4. 顾客申请退款
+        // POST: api/order/{orderId}/refund-request
+        // ==========================================
+        [HttpPost("{orderId}/refund-request")]
+        public async Task<ActionResult<OrderDetailDto>> RequestRefund(
+            int orderId,
+            [FromHeader(Name = "X-User-Id")] int userId)
+        {
+            if (userId <= 0)
+            {
+                return Unauthorized(new { error = "Sign in required" });
+            }
+
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.Items)
+                .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+            {
+                return NotFound(new { error = "Order not found" });
+            }
+
+            if (order.UserId != userId)
+            {
+                return StatusCode(403, new { error = "You can only request refund for your own order" });
+            }
+
+            if (order.OrderStatus == "RefundRequested")
+            {
+                return Ok(MapToOrderDetailDto(order));
+            }
+
+            var refundableStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Paid",
+                "Preparing",
+                "Prepared",
+                "Completed"
+            };
+
+            if (!refundableStatuses.Contains(order.OrderStatus ?? ""))
+            {
+                return BadRequest(new { error = $"Order status is {order.OrderStatus}; refund request is not available" });
+            }
+
+            order.OrderStatus = "RefundRequested";
+            _context.Orders.Update(order);
+            await _context.SaveChangesAsync();
+
+            return Ok(MapToOrderDetailDto(order));
+        }
+
+        // ==========================================
+        // 5. 更新订单状态（仅 Admin 可用）
         // PUT: api/order/{orderId}/status
         // ==========================================
         /// <summary>
@@ -238,6 +293,7 @@ namespace igaServer.Controllers
                 { "Paid", new List<string> { "Preparing", "Cancelled" } },
                 { "Preparing", new List<string> { "Prepared", "Cancelled" } },
                 { "Prepared", new List<string> { "Completed", "Cancelled" } },
+                { "RefundRequested", new List<string> { "Cancelled" } },
                 { "Completed", new List<string>() },
                 { "Cancelled", new List<string>() }
             };
@@ -258,7 +314,7 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 5. 核销订单（6 位取货码验证）
+        // 6. 核销订单（6 位取货码验证）
         // POST: api/order/{orderId}/verify
         // ==========================================
         /// <summary>
@@ -306,7 +362,7 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 6. 更新订单项重量（称重退款逻辑）
+        // 7. 更新订单项重量（称重退款逻辑）
         // PUT: api/order/item/{itemId}/weight
         // ==========================================
         /// <summary>
@@ -462,8 +518,8 @@ namespace igaServer.Controllers
                 orderItem = itemDto,
                 refundInfo = new
                 {
-                    expectedWeight = orderItem.ExpectedWeight * orderItem.Quantity,
-                    actualWeight = request.ActualWeight * orderItem.Quantity,
+                    expectedWeight = orderItem.ExpectedWeight,
+                    actualWeight = request.ActualWeight,
                     newLineRefund,
                     oldLineRefund,
                     requestedDeltaRefund,

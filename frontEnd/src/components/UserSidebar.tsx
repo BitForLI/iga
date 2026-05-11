@@ -491,21 +491,26 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [refundRequesting, setRefundRequesting] = useState(false);
   const { setUser } = useAuth();
 
+  const fetchOrders = async () => {
+    try {
+      setError('');
+      const res = await orderAPI.getUserOrders(user.id);
+      setOrders(Array.isArray(res) ? res : []);
+    } catch (err) {
+      setError((err as Error).message);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await orderAPI.getUserOrders(user.id);
-        setOrders(Array.isArray(res) ? res : []);
-      } catch (err) {
-        setError((err as Error).message);
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrders();
+    void fetchOrders();
   }, [user.id]);
 
   const handleLogout = () => {
@@ -513,8 +518,152 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
     onClose();
   };
 
+  const normalizeOrder = (raw: any) => ({
+    ...raw,
+    id: raw?.id ?? raw?.Id,
+    totalAmount: Number(raw?.totalAmount ?? raw?.TotalAmount ?? 0),
+    finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
+    refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
+    orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
+    orderType: raw?.orderType ?? raw?.OrderType ?? '',
+    pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
+    pickupTime: raw?.pickupTime ?? raw?.PickupTime,
+    deliveryAddress: raw?.deliveryAddress ?? raw?.DeliveryAddress,
+    createdAt: raw?.createdAt ?? raw?.CreatedAt,
+    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items) : [],
+  });
+
+  const openOrderDetail = async (orderId: number) => {
+    setDetailLoading(true);
+    setError('');
+    try {
+      const raw = await orderAPI.get(orderId);
+      setSelectedOrder(normalizeOrder(raw));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const canRequestRefund = (order: any) =>
+    ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(String(order?.orderStatus ?? ''));
+
+  const handleRequestRefund = async () => {
+    if (!selectedOrder || !canRequestRefund(selectedOrder)) return;
+    const ok = window.confirm('Submit a refund request for this order? Store staff will review it.');
+    if (!ok) return;
+    setRefundRequesting(true);
+    setError('');
+    try {
+      const raw = await orderAPI.requestRefund(selectedOrder.id);
+      const next = normalizeOrder(raw);
+      setSelectedOrder(next);
+      setOrders((list) => list.map((o) => ((o.id ?? o.Id) === next.id ? { ...o, orderStatus: next.orderStatus } : o)));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRefundRequesting(false);
+    }
+  };
+
   if (loading) {
     return <p style={{ textAlign: 'center', color: '#999' }}>Loading orders...</p>;
+  }
+
+  if (selectedOrder) {
+    const amount = selectedOrder.finalAmount != null ? Number(selectedOrder.finalAmount) : Number(selectedOrder.totalAmount ?? 0);
+    const items = selectedOrder.items ?? [];
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setSelectedOrder(null)}
+          style={{
+            marginBottom: '1rem',
+            border: 'none',
+            background: 'transparent',
+            color: '#6b7280',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+        >
+          ← Back to order history
+        </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>Order #{selectedOrder.id}</h3>
+          <span
+            style={{
+              fontSize: '0.75rem',
+              padding: '0.2rem 0.5rem',
+              borderRadius: '4px',
+              backgroundColor: selectedOrder.orderStatus === 'RefundRequested' ? '#fee2e2' : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(selectedOrder.orderStatus) ? '#dcfce7' : '#fef3c7',
+              color: selectedOrder.orderStatus === 'RefundRequested' ? '#991b1b' : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(selectedOrder.orderStatus) ? '#166534' : '#92400e',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {selectedOrder.orderStatus}
+          </span>
+        </div>
+
+        {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
+
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '0.9rem', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.35rem' }}>
+            {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : '-'}
+          </div>
+          <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem' }}>
+            <div><strong>Total:</strong> ${amount.toFixed(2)}</div>
+            <div><strong>Refunded:</strong> ${(selectedOrder.refundAmount ?? 0).toFixed(2)}</div>
+            <div><strong>Type:</strong> {selectedOrder.orderType || '-'}</div>
+            {selectedOrder.orderType === 'Pickup' && <div><strong>Pickup code:</strong> {selectedOrder.pickupCode || '-'}</div>}
+            {selectedOrder.orderType === 'Pickup' && <div><strong>Pickup time:</strong> {selectedOrder.pickupTime ? new Date(selectedOrder.pickupTime).toLocaleString() : '-'}</div>}
+            {selectedOrder.orderType === 'Delivery' && <div><strong>Delivery address:</strong> {selectedOrder.deliveryAddress || '-'}</div>}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Items</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {items.map((item: any, index: number) => {
+              const name = item.productName ?? item.ProductName ?? 'Item';
+              const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+              const price = Number(item.priceAtPurchase ?? item.PriceAtPurchase ?? 0);
+              return (
+                <div key={item.id ?? item.Id ?? index} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.85rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.45rem' }}>
+                  <span>{name} x{quantity}</span>
+                  <strong>${(price * quantity).toFixed(2)}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {selectedOrder.orderStatus === 'RefundRequested' ? (
+          <p style={{ fontSize: '0.85rem', color: '#991b1b', background: '#fee2e2', padding: '0.75rem', borderRadius: 6 }}>
+            Refund request submitted. Store staff will review this order.
+          </p>
+        ) : (
+          <button
+            type="button"
+            disabled={!canRequestRefund(selectedOrder) || refundRequesting}
+            onClick={handleRequestRefund}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: 'none',
+              borderRadius: '6px',
+              backgroundColor: canRequestRefund(selectedOrder) && !refundRequesting ? '#dc2626' : '#9ca3af',
+              color: 'white',
+              fontWeight: 'bold',
+              cursor: canRequestRefund(selectedOrder) && !refundRequesting ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {refundRequesting ? 'Submitting...' : 'Request refund'}
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -600,11 +749,18 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
           {orders.map((order: any) => (
             <div
               key={order.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => void openOrderDetail(order.id ?? order.Id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') void openOrderDetail(order.id ?? order.Id);
+              }}
               style={{
                 border: '1px solid #e5e7eb',
                 borderRadius: '8px',
                 padding: '1rem',
                 backgroundColor: '#f9fafb',
+                cursor: detailLoading ? 'wait' : 'pointer',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
@@ -627,6 +783,7 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
               <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#dc2626' }}>
                 ${order.totalAmount ? Number(order.totalAmount).toFixed(2) : '0.00'}
               </div>
+              <div style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: '#6b7280' }}>Click to view details</div>
               {order.items && order.items.length > 0 && (
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
                   {order.items.slice(0, 3).map((item: any, i: number) => (
