@@ -339,8 +339,24 @@ function App() {
             }
           >
             <Route index element={<Navigate to="/staff/orders" replace />} />
-            <Route path="orders" element={<OrderManagementPage />} />
-            <Route path="refunds" element={<OrderManagementPage initialTab="RefundRequested" />} />
+            <Route
+              path="orders"
+              element={
+                <OrderManagementPage
+                  initialTab="Paid"
+                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'RefundRequested']}
+                />
+              }
+            />
+            <Route
+              path="refunds"
+              element={
+                <OrderManagementPage
+                  initialTab="RefundRequested"
+                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'RefundRequested']}
+                />
+              }
+            />
             <Route path="orders/:id" element={<OrderDetailPage />} />
           </Route>
         </Routes>

@@ -18,7 +18,6 @@ interface OrderDetail {
   pickupCode: string;
   pickupTime?: string;
   deliveryAddress?: string;
-  stripeSessionId?: string;
   stripePaymentIntentId?: string;
   items: {
     id: number;
@@ -44,7 +43,7 @@ export function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [markingReady, setMarkingReady] = useState(false);
-  /** 实重 kg/件，提交前草稿 */
+  /** Actual total weight draft before saving. */
   const [weightDraft, setWeightDraft] = useState<Record<number, number | null>>({});
   const [savingWeightId, setSavingWeightId] = useState<number | null>(null);
 
@@ -79,7 +78,6 @@ export function OrderDetailPage() {
         pickupCode: String(raw.pickupCode ?? raw.PickupCode ?? ''),
         pickupTime: raw.pickupTime as string | undefined,
         deliveryAddress: raw.deliveryAddress as string | undefined,
-        stripeSessionId: raw.stripeSessionId as string | undefined,
         stripePaymentIntentId: raw.stripePaymentIntentId as string | undefined,
         items,
         createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
@@ -124,7 +122,7 @@ export function OrderDetailPage() {
     if (!user?.id || !canEnterWeight) return;
     const v = weightDraft[itemId];
     if (v == null || Number.isNaN(v) || v < 0) {
-      message.warning('请输入有效的实际重量 (kg/件)');
+      message.warning('Enter a valid actual weight.');
       return;
     }
     setSavingWeightId(itemId);
@@ -136,16 +134,16 @@ export function OrderDetailPage() {
       const delta = res?.refundInfo?.deltaRefund;
       const capped = res?.refundInfo?.cappedByPaidAmount;
       if (stripeId) {
-        message.success(`已保存实重，Stripe 已部分退款（$${Number(delta ?? 0).toFixed(2)}${capped ? '，已按实付金额封顶' : ''}）`);
+        message.success(`Actual weight saved. Stripe refund processed ($${Number(delta ?? 0).toFixed(2)}${capped ? ', capped by paid amount' : ''}).`);
       } else if (delta != null && delta > 0.01) {
-        message.success('已记录退款金额（订单未走 Stripe 支付时不会自动退款）');
+        message.success('Refund amount recorded. Non-Stripe orders are not refunded automatically.');
       } else {
-        message.success(res?.message ?? '实重已保存');
+        message.success(res?.message ?? 'Actual weight saved');
       }
       fetchOrder();
     } catch (e) {
       const err = e as ApiRequestError;
-      message.error(err?.message ?? '保存失败');
+      message.error(err?.message ?? 'Failed to save actual weight');
     } finally {
       setSavingWeightId(null);
     }
@@ -188,14 +186,14 @@ export function OrderDetailPage() {
         `$${(r.quantity * r.priceAtPurchase).toFixed(2)}`,
     },
     {
-      title: '预估(kg)',
+      title: 'Expected (kg)',
       key: 'expW',
       width: 110,
       render: (_: unknown, r: OrderDetail['items'][number]) =>
         r.isWeighingRequired ? (r.expectedWeight != null ? Number(r.expectedWeight).toFixed(3) : '-') : '—',
     },
     {
-      title: '实重(kg)',
+      title: 'Actual (kg)',
       key: 'actualW',
       width: 200,
       render: (_: unknown, r: OrderDetail['items'][number]) => {
@@ -203,7 +201,7 @@ export function OrderDetailPage() {
         if (!canEnterWeight) {
           return (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {order?.orderStatus === 'Pending' ? '顾客付款后可录入' : '—'}
+              {order?.orderStatus === 'Pending' ? 'Available after payment' : '—'}
             </Typography.Text>
           );
         }
@@ -216,7 +214,7 @@ export function OrderDetailPage() {
               style={{ width: 110 }}
               value={weightDraft[r.id] ?? null}
               onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
-              placeholder="实重"
+              placeholder="Actual"
             />
             <Button
               type="primary"
@@ -224,7 +222,7 @@ export function OrderDetailPage() {
               loading={savingWeightId === r.id}
               onClick={() => void handleSaveActualWeight(r.id)}
             >
-              保存并退差
+              Save & refund
             </Button>
           </Space>
         );
@@ -253,13 +251,13 @@ export function OrderDetailPage() {
       <h2 style={{ marginBottom: 16 }}>Order #{order.id}</h2>
 
       <Card
-        title={<span style={{ fontSize: 18, fontWeight: 700 }}>商品清单（请按此备货）</span>}
+        title={<span style={{ fontSize: 18, fontWeight: 700 }}>Items to Prepare</span>}
         style={{ marginBottom: 16 }}
         styles={{ body: { paddingTop: 12 } }}
         extra={
           canEnterWeight ? (
             <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 360 }}>
-              称重商品：录入<strong>实际总重量</strong>；若实重小于预估，已支付订单会通过 Stripe 自动退差价，退款不会超过实付金额。
+              Weighed items: enter the <strong>actual total weight</strong>. If the actual weight is lower than expected, paid orders are automatically partially refunded through Stripe, capped by the paid amount.
             </Typography.Text>
           ) : null
         }
@@ -274,7 +272,7 @@ export function OrderDetailPage() {
             <Table.Summary fixed>
               <Table.Summary.Row>
                 <Table.Summary.Cell index={0} colSpan={5}>
-                  <strong>合计</strong>
+                  <strong>Total</strong>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1}>
                   <strong>${amount.toFixed(2)}</strong>
@@ -285,7 +283,7 @@ export function OrderDetailPage() {
         />
       </Card>
 
-      <Card title="订单信息">
+      <Card title="Order Information">
         <div style={{ marginBottom: 16 }}>
           {order.orderStatus === 'Paid' && (
             <Button type="primary" loading={accepting} onClick={handleAcceptOrder}>
@@ -313,7 +311,6 @@ export function OrderDetailPage() {
           <Descriptions.Item label="Delivery address">{order.orderType === 'Delivery' ? (order.deliveryAddress || '-') : '-'}</Descriptions.Item>
           <Descriptions.Item label="Total">${amount.toFixed(2)}</Descriptions.Item>
           <Descriptions.Item label="Refunded">${(order.refundAmount ?? 0).toFixed(2)}</Descriptions.Item>
-          <Descriptions.Item label="Stripe Session ID">{order.stripeSessionId || '-'}</Descriptions.Item>
           <Descriptions.Item label="Stripe Payment Intent">{order.stripePaymentIntentId || '-'}</Descriptions.Item>
         </Descriptions>
       </Card>

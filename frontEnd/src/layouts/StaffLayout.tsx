@@ -79,9 +79,9 @@ export function StaffLayout() {
             ) : (
               <MenuFoldOutlined style={{ fontSize: 18, cursor: 'pointer', color: '#374151' }} onClick={() => setCollapsed(true)} />
             )}
-            <span style={{ color: '#6b7280', fontSize: 14 }}>员工入口 · 仅处理订单</span>
+            <span style={{ color: '#6b7280', fontSize: 14 }}>Staff portal · Orders only</span>
             <Link to="/" style={{ marginLeft: 'auto', color: '#059669' }}>
-              返回店铺
+              Back to store
             </Link>
           </Header>
           <Content style={{ margin: 16, overflow: 'auto', background: '#ecfdf5' }}>
