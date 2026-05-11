@@ -13,5 +13,25 @@ public interface IResendEmailService
         string pickupCode,
         string orderType,
         DateTime? pickupTimeUtc,
+        string? deliveryAddress,
+        string? pickupAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>退款申请已同意并通过 Stripe 处理。</summary>
+    Task<bool> SendRefundApprovedAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        decimal refundAmount,
+        DateTime processedAtUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>退款申请已拒绝，包含拒绝原因。</summary>
+    Task<bool> SendRefundRejectedAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        string reason,
+        DateTime processedAtUtc,
         CancellationToken cancellationToken = default);
 }

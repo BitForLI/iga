@@ -18,7 +18,6 @@ interface OrderDetail {
   pickupCode: string;
   pickupTime?: string;
   deliveryAddress?: string;
-  stripePaymentIntentId?: string;
   items: {
     id: number;
     productId: number;
@@ -78,7 +77,6 @@ export function OrderDetailPage() {
         pickupCode: String(raw.pickupCode ?? raw.PickupCode ?? ''),
         pickupTime: raw.pickupTime as string | undefined,
         deliveryAddress: raw.deliveryAddress as string | undefined,
-        stripePaymentIntentId: raw.stripePaymentIntentId as string | undefined,
         items,
         createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
       };
@@ -195,7 +193,7 @@ export function OrderDetailPage() {
     {
       title: 'Actual (kg)',
       key: 'actualW',
-      width: 200,
+      width: 240,
       render: (_: unknown, r: OrderDetail['items'][number]) => {
         if (!r.isWeighingRequired) return '—';
         if (!canEnterWeight) {
@@ -205,26 +203,38 @@ export function OrderDetailPage() {
             </Typography.Text>
           );
         }
+        const expected = Number(r.expectedWeight ?? 0);
+        const actual = Number(weightDraft[r.id] ?? 0);
+        const previousActual = r.actualWeight != null ? Number(r.actualWeight) : null;
+        const price = Number(r.priceAtPurchase ?? 0);
+        const newLineRefund = Math.max(0, expected - actual) * price;
+        const oldLineRefund = previousActual == null ? 0 : Math.max(0, expected - previousActual) * price;
+        const deltaRefund = Math.max(0, newLineRefund - oldLineRefund);
         return (
-          <Space size="small" wrap>
-            <InputNumber
-              min={0}
-              step={0.01}
-              precision={3}
-              style={{ width: 110 }}
-              value={weightDraft[r.id] ?? null}
-              onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
-              placeholder="Actual"
-            />
-            <Button
-              type="primary"
-              size="small"
-              loading={savingWeightId === r.id}
-              onClick={() => void handleSaveActualWeight(r.id)}
-            >
-              Save & refund
-            </Button>
-          </Space>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <Space size="small" wrap>
+              <InputNumber
+                min={0}
+                step={0.01}
+                precision={3}
+                style={{ width: 110 }}
+                value={weightDraft[r.id] ?? null}
+                onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
+                placeholder="Actual"
+              />
+              <Button
+                type="primary"
+                size="small"
+                loading={savingWeightId === r.id}
+                onClick={() => void handleSaveActualWeight(r.id)}
+              >
+                {deltaRefund > 0 ? `Save & refund $${deltaRefund.toFixed(2)}` : 'Save'}
+              </Button>
+            </Space>
+            <Typography.Text type={deltaRefund > 0 ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+              Refund: ${deltaRefund.toFixed(2)}
+            </Typography.Text>
+          </div>
         );
       },
     },
@@ -242,6 +252,19 @@ export function OrderDetailPage() {
   }
 
   const amount = order.finalAmount ?? order.totalAmount;
+  const estimatedRefund = order.items.reduce((sum, item) => {
+    if (!item.isWeighingRequired) return sum;
+    const expected = Number(item.expectedWeight ?? 0);
+    const actual = weightDraft[item.id];
+    if (actual == null) return sum;
+    const previousActual = item.actualWeight != null ? Number(item.actualWeight) : null;
+    const price = Number(item.priceAtPurchase ?? 0);
+    const newLineRefund = Math.max(0, expected - Number(actual)) * price;
+    const oldLineRefund = previousActual == null ? 0 : Math.max(0, expected - previousActual) * price;
+    return sum + Math.max(0, newLineRefund - oldLineRefund);
+  }, 0);
+  const refundableRemaining = Math.max(0, Number(order.totalAmount ?? 0) - Number(order.refundAmount ?? 0));
+  const cappedEstimatedRefund = Math.min(estimatedRefund, refundableRemaining);
 
   return (
     <div>
@@ -254,13 +277,6 @@ export function OrderDetailPage() {
         title={<span style={{ fontSize: 18, fontWeight: 700 }}>Items to Prepare</span>}
         style={{ marginBottom: 16 }}
         styles={{ body: { paddingTop: 12 } }}
-        extra={
-          canEnterWeight ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 360 }}>
-              Weighed items: enter the <strong>actual total weight</strong>. If the actual weight is lower than expected, paid orders are automatically partially refunded through Stripe, capped by the paid amount.
-            </Typography.Text>
-          ) : null
-        }
       >
         <Table
           dataSource={order.items ?? []}
@@ -278,6 +294,18 @@ export function OrderDetailPage() {
                   <strong>${amount.toFixed(2)}</strong>
                 </Table.Summary.Cell>
               </Table.Summary.Row>
+              {canEnterWeight ? (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={5}>
+                    <Typography.Text type="secondary">Estimated refund after saving actual weights</Typography.Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1}>
+                    <Typography.Text type={cappedEstimatedRefund > 0 ? 'danger' : 'secondary'}>
+                      ${cappedEstimatedRefund.toFixed(2)}
+                    </Typography.Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              ) : null}
             </Table.Summary>
           )}
         />
@@ -311,7 +339,6 @@ export function OrderDetailPage() {
           <Descriptions.Item label="Delivery address">{order.orderType === 'Delivery' ? (order.deliveryAddress || '-') : '-'}</Descriptions.Item>
           <Descriptions.Item label="Total">${amount.toFixed(2)}</Descriptions.Item>
           <Descriptions.Item label="Refunded">${(order.refundAmount ?? 0).toFixed(2)}</Descriptions.Item>
-          <Descriptions.Item label="Stripe Payment Intent">{order.stripePaymentIntentId || '-'}</Descriptions.Item>
         </Descriptions>
       </Card>
     </div>

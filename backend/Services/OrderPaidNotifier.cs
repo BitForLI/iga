@@ -13,6 +13,8 @@ public static class OrderPaidNotifier
         IResendEmailService resend,
         int orderId,
         ILogger logger,
+        string? paymentContactEmail = null,
+        string? pickupAddress = null,
         CancellationToken cancellationToken = default)
     {
         var order = await db.Orders
@@ -25,7 +27,7 @@ public static class OrderPaidNotifier
             return;
         }
 
-        var addr = order.User.Email?.Trim();
+        var addr = ChooseCustomerEmail(paymentContactEmail, order.User.Email);
         if (string.IsNullOrEmpty(addr) || addr.EndsWith("@iga.local", StringComparison.OrdinalIgnoreCase))
             return;
 
@@ -38,9 +40,20 @@ public static class OrderPaidNotifier
             code,
             order.OrderType ?? "Pickup",
             order.PickupTime,
+            order.DeliveryAddress,
+            pickupAddress,
             cancellationToken);
 
         if (ok)
             logger.LogInformation("[OrderPaid] Pickup email sent for order {OrderId}", orderId);
+    }
+
+    private static string? ChooseCustomerEmail(string? paymentContactEmail, string? registeredEmail)
+    {
+        var paymentEmail = paymentContactEmail?.Trim();
+        if (!string.IsNullOrWhiteSpace(paymentEmail) && paymentEmail.Contains('@'))
+            return paymentEmail;
+
+        return registeredEmail?.Trim();
     }
 }

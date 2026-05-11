@@ -66,6 +66,7 @@ namespace igaServer.Controllers
 
             // === 步骤 1: 读取订单及其关联商品 ===
             var order = await _context.Orders
+                .Include(o => o.User)
                 .Include(o => o.Items)
                 .ThenInclude(oi => oi.Product)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
@@ -154,6 +155,12 @@ namespace igaServer.Controllers
                 CancelUrl = cancelUrl,
                 ClientReferenceId = orderId.ToString(), // 关联订单 ID
             };
+
+            var registeredEmail = order.User?.Email?.Trim();
+            if (!string.IsNullOrWhiteSpace(registeredEmail) && registeredEmail.Contains('@'))
+            {
+                options.CustomerEmail = registeredEmail;
+            }
 
             // 部分 Stripe 账户在开启「收集手机号」时创建 Session 会失败；默认关闭，需要时在 appsettings 设 Stripe:CheckoutCollectPhone=true
             if (_configuration.GetValue("Stripe:CheckoutCollectPhone", false))
@@ -268,7 +275,14 @@ namespace igaServer.Controllers
 
                 try
                 {
-                    await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger, HttpContext.RequestAborted);
+                    await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                        _context,
+                        _resendEmail,
+                        orderId,
+                        _logger,
+                        session.CustomerDetails?.Email ?? session.CustomerEmail,
+                        _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills",
+                        HttpContext.RequestAborted);
                 }
                 catch (Exception ex)
                 {
@@ -346,7 +360,13 @@ namespace igaServer.Controllers
 
                     try
                     {
-                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger);
+                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                            _context,
+                            _resendEmail,
+                            orderId,
+                            _logger,
+                            session.CustomerDetails?.Email ?? session.CustomerEmail,
+                            _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
                     }
                     catch (Exception ex)
                     {
@@ -392,7 +412,13 @@ namespace igaServer.Controllers
 
                     try
                     {
-                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(_context, _resendEmail, orderId, _logger);
+                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                            _context,
+                            _resendEmail,
+                            orderId,
+                            _logger,
+                            session.CustomerDetails?.Email ?? session.CustomerEmail,
+                            _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
                     }
                     catch (Exception ex)
                     {

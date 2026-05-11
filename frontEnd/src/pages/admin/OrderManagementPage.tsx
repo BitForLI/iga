@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Table, Button, message } from 'antd';
+import { Table, Button, message, Modal, Input } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { apiClient } from '../../api/client';
@@ -106,6 +106,11 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   const visibleTabs = visibleTabKeys ? TAB_ITEMS.filter((tab) => visibleTabKeys.includes(tab.key)) : TAB_ITEMS;
   /** 首次拉取 Paid 列表完成后才允许响铃，避免把页面里已有订单当「新单」；从空队列出现首条 Paid 时也会响 */
   const paidAlertsInitRef = useRef(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   const fetchOrders = useCallback(async (page = 1, pageSize = 10, tabKey?: string, silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -192,6 +197,9 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
 
   const [acceptingId, setAcceptingId] = useState<number | null>(null);
   const [refundingId, setRefundingId] = useState<number | null>(null);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [rejectModalOrderId, setRejectModalOrderId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const handleAcceptOrder = async (orderId: number) => {
     setAcceptingId(orderId);
@@ -224,6 +232,34 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       message.error((e as Error).message);
     } finally {
       setRefundingId(null);
+    }
+  };
+
+  const handleRejectRefund = async (orderId: number) => {
+    setRejectModalOrderId(orderId);
+    setRejectReason('');
+  };
+
+  const confirmRejectRefund = async () => {
+    if (rejectModalOrderId == null) return;
+    const trimmed = rejectReason.trim();
+    if (!trimmed) {
+      message.warning('Rejection reason is required');
+      return;
+    }
+
+    setRejectingId(rejectModalOrderId);
+    try {
+      await apiClient.post(`/admin/order-refund-reject/${rejectModalOrderId}`, { reason: trimmed });
+      message.success('Refund request rejected');
+      setRejectModalOrderId(null);
+      setRejectReason('');
+      fetchCounts();
+      fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -311,14 +347,23 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
             <span style={{ fontSize: 12, color: '#d97706' }}>Awaiting payment</span>
           )}
           {r.orderStatus === 'RefundRequested' && (
-            <Button
-              danger
-              size="small"
-              loading={refundingId === r.id}
-              onClick={() => handleApproveRefund(r.id)}
-            >
-              Approve refund
-            </Button>
+            <>
+              <Button
+                danger
+                size="small"
+                loading={refundingId === r.id}
+                onClick={() => handleApproveRefund(r.id)}
+              >
+                Approve refund
+              </Button>
+              <Button
+                size="small"
+                loading={rejectingId === r.id}
+                onClick={() => handleRejectRefund(r.id)}
+              >
+                Reject refund
+              </Button>
+            </>
           )}
           {r.orderStatus === 'Paid' && (
             <Button
@@ -419,6 +464,29 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           },
         }}
       />
+      <Modal
+        title={`Reject refund${rejectModalOrderId != null ? ` for order #${rejectModalOrderId}` : ''}`}
+        open={rejectModalOrderId != null}
+        okText="Reject refund"
+        okButtonProps={{ danger: true, loading: rejectingId === rejectModalOrderId }}
+        onOk={confirmRejectRefund}
+        onCancel={() => {
+          setRejectModalOrderId(null);
+          setRejectReason('');
+        }}
+      >
+        <p style={{ color: '#6b7280', marginTop: 0 }}>
+          Please enter the reason shown to the customer.
+        </p>
+        <Input.TextArea
+          rows={4}
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="Example: This order is already prepared and cannot be refunded."
+          maxLength={500}
+          showCount
+        />
+      </Modal>
     </div>
   );
 }

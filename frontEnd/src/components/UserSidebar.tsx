@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type User } from '../context/AuthContext';
 import { authAPI } from '../api';
 import { orderAPI } from '../api';
 import userIcon from '../assets/images/user.png';
@@ -487,7 +487,7 @@ function AuthForms({
   );
 }
 
-function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; onClose: () => void }) {
+function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -504,6 +504,7 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
     totalAmount: Number(raw?.totalAmount ?? raw?.TotalAmount ?? 0),
     finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
     refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
+    refundRejectionReason: raw?.refundRejectionReason ?? raw?.RefundRejectionReason ?? '',
     orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
     orderType: raw?.orderType ?? raw?.OrderType ?? '',
     pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
@@ -648,6 +649,10 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
           <p style={{ fontSize: '0.85rem', color: '#991b1b', background: '#fee2e2', padding: '0.75rem', borderRadius: 6 }}>
             Refund request submitted. Store staff will review this order.
           </p>
+        ) : selectedOrder.refundRejectionReason ? (
+          <p style={{ fontSize: '0.85rem', color: '#92400e', background: '#fef3c7', padding: '0.75rem', borderRadius: 6 }}>
+            Refund request rejected: {selectedOrder.refundRejectionReason}
+          </p>
         ) : (
           <button
             type="button"
@@ -673,8 +678,13 @@ function OrderHistory({ user, onClose }: { user: { id: number; role?: string }; 
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1rem', fontWeight: 'bold' }}>Order History</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '1rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>Order History</h3>
+          <div style={{ fontSize: '0.8rem', color: '#6b7280', wordBreak: 'break-all' }}>
+            Signed in as {user.email}
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {user?.role === 'Admin' ? (
             <>

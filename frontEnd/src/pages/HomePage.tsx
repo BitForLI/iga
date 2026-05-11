@@ -37,9 +37,9 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
   );
 }
 
-/** 首页 Special 横条：真实库中上架的前 5 个（名称排序，稳定） */
+/** 首页 Special 横条：仅显示后台分类为 Special 的上架商品。 */
 function pickSpecialStripProducts(list: Product[]): Product[] {
-  const eligible = list.filter((p) => p.isActive !== false);
+  const eligible = list.filter((p) => p.isActive !== false && (p.category ?? '').trim().toLowerCase() === 'special');
   return [...eligible]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     .slice(0, 5)
@@ -209,9 +209,10 @@ function SpecialProductList({
   return (
     <div
       style={{
-        display: 'grid',
+        display: 'flex',
+        justifyContent: 'center',
+        flexWrap: 'wrap',
         alignItems: 'start',
-        gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(160px, 1fr))',
         gap: isNarrow ? '10px' : '1rem',
       }}
     >
@@ -411,7 +412,8 @@ function SpecialCard({
   return (
     <div
       style={{
-        width: '100%',
+        width: compact ? 'calc((100% - 10px) / 2)' : 160,
+        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '0 0 160px',
         minWidth: 0,
         alignSelf: 'start',
         backgroundColor: 'white',

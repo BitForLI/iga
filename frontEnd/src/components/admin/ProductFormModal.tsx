@@ -8,6 +8,7 @@ import { resolveProductImageUrl } from '../../utils/imageUrl';
 import productImage from '../../assets/images/main.png';
 
 const CATEGORY_OPTIONS = [
+  { value: 'Special', label: 'Special' },
   { value: 'Fruit', label: 'Fruit' },
   { value: 'Vegetables', label: 'Vegetables' },
   { value: 'Dairy', label: 'Dairy' },

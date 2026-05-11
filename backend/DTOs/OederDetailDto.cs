@@ -21,6 +21,8 @@ namespace igaServer.DTOs
 
         public decimal RefundAmount { get; set; }
 
+        public string? RefundRejectionReason { get; set; }
+
         // 订单状态
         public string OrderStatus { get; set; } // Pending, Paid, Prepared, Completed
 

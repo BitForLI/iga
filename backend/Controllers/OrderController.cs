@@ -246,6 +246,8 @@ namespace igaServer.Controllers
                 return BadRequest(new { error = $"Order status is {order.OrderStatus}; refund request is not available" });
             }
 
+            order.RefundRequestPreviousStatus = order.OrderStatus;
+            order.RefundRejectionReason = null;
             order.OrderStatus = "RefundRequested";
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
@@ -547,6 +549,7 @@ namespace igaServer.Controllers
                 TotalAmount = order.TotalAmount,
                 FinalAmount = order.FinalAmount,
                 RefundAmount = order.RefundAmount,
+                RefundRejectionReason = order.RefundRejectionReason,
                 OrderStatus = order.OrderStatus,
                 OrderType = order.OrderType,
                 StripeSessionId = order.StripeSessionId,

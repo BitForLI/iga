@@ -23,6 +23,7 @@ public class ResendEmailService : IResendEmailService
 
     private string? ApiKey => (_configuration["Resend:ApiKey"] ?? "").Trim();
     private string FromEmail => (_configuration["Resend:FromEmail"] ?? "onboarding@resend.dev").Trim();
+    private string Currency => (_configuration["Stripe:CheckoutCurrency"] ?? "aud").Trim().ToUpperInvariant();
 
     private static string DescribeEmail(string email)
     {
@@ -55,30 +56,76 @@ public class ResendEmailService : IResendEmailService
         string pickupCode,
         string orderType,
         DateTime? pickupTimeUtc,
+        string? deliveryAddress,
+        string? pickupAddress,
         CancellationToken cancellationToken = default)
     {
-        var subject = $"Order #{orderId} confirmed — pickup code";
-        string pickupLine;
+        var isPickup = string.Equals(orderType, "Pickup", StringComparison.OrdinalIgnoreCase);
+        var subject = isPickup ? $"Order #{orderId} confirmed — pickup code" : $"Order #{orderId} confirmed";
+        string fulfillmentLine;
         if (string.Equals(orderType, "Pickup", StringComparison.OrdinalIgnoreCase))
         {
             var when = pickupTimeUtc.HasValue
                 ? $"{pickupTimeUtc.Value:yyyy-MM-dd HH:mm} UTC"
                 : "as selected";
-            pickupLine =
+            fulfillmentLine =
                 $"<p><strong>Pickup code:</strong> {System.Net.WebUtility.HtmlEncode(pickupCode)}</p>" +
-                $"<p>Pickup time: {System.Net.WebUtility.HtmlEncode(when)}</p>";
+                $"<p><strong>Pickup time:</strong> {System.Net.WebUtility.HtmlEncode(when)}</p>" +
+                $"<p><strong>Pickup address:</strong> {System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(pickupAddress) ? "IGA Beverly Hills" : pickupAddress)}</p>";
         }
         else
         {
-            pickupLine = "<p>Your delivery order is confirmed. We will prepare it shortly.</p>";
+            fulfillmentLine =
+                "<p>Your delivery order is confirmed. We will prepare it shortly.</p>" +
+                $"<p><strong>Delivery address:</strong> {System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(deliveryAddress) ? "as provided at checkout" : deliveryAddress)}</p>";
         }
 
         var html =
             $"""
             <p>Hi {System.Net.WebUtility.HtmlEncode(customerName)},</p>
             <p>Thank you! Order <strong>#{orderId}</strong> is paid.</p>
-            {pickupLine}
+            {fulfillmentLine}
             <p>See you at IGA.</p>
+            """;
+        return await SendEmailAsync(toEmail, subject, html, cancellationToken);
+    }
+
+    public async Task<bool> SendRefundApprovedAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        decimal refundAmount,
+        DateTime processedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var subject = $"Refund approved for order #{orderId}";
+        var html =
+            $"""
+            <p>Hi {System.Net.WebUtility.HtmlEncode(customerName)},</p>
+            <p>Your refund request for order <strong>#{orderId}</strong> has been approved and processed.</p>
+            <p><strong>Refund amount:</strong> {System.Net.WebUtility.HtmlEncode(Currency)} ${refundAmount:0.00}</p>
+            <p><strong>Processed at:</strong> {processedAtUtc:yyyy-MM-dd HH:mm} UTC</p>
+            <p>Stripe has accepted the refund. Most card refunds appear on the customer's statement within 5-10 business days, depending on the card issuer.</p>
+            """;
+        return await SendEmailAsync(toEmail, subject, html, cancellationToken);
+    }
+
+    public async Task<bool> SendRefundRejectedAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        string reason,
+        DateTime processedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var subject = $"Refund request update for order #{orderId}";
+        var html =
+            $"""
+            <p>Hi {System.Net.WebUtility.HtmlEncode(customerName)},</p>
+            <p>Your refund request for order <strong>#{orderId}</strong> has been reviewed and rejected.</p>
+            <p><strong>Processed at:</strong> {processedAtUtc:yyyy-MM-dd HH:mm} UTC</p>
+            <p><strong>Reason:</strong> {System.Net.WebUtility.HtmlEncode(reason)}</p>
+            <p>No refund has been issued for this request.</p>
             """;
         return await SendEmailAsync(toEmail, subject, html, cancellationToken);
     }

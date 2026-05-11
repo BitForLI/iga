@@ -21,17 +21,23 @@ namespace igaServer.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _configuration;
         private readonly IStripeService _stripeService;
+        private readonly IResendEmailService _resendEmail;
+        private readonly ILogger<AdminProductController> _logger;
 
         public AdminProductController(
             ApplicationDbContext context,
             IWebHostEnvironment env,
             IConfiguration configuration,
-            IStripeService stripeService)
+            IStripeService stripeService,
+            IResendEmailService resendEmail,
+            ILogger<AdminProductController> logger)
         {
             _context = context;
             _env = env;
             _configuration = configuration;
             _stripeService = stripeService;
+            _resendEmail = resendEmail;
+            _logger = logger;
         }
 
         private async Task<IActionResult?> RequireAdminAsync()
@@ -60,6 +66,7 @@ namespace igaServer.Controllers
 
             var since = DateTime.UtcNow.AddDays(-2);
             var candidates = await _context.Orders
+                .Include(o => o.User)
                 .Where(o => o.OrderStatus == "Pending" &&
                             o.StripeSessionId != null &&
                             o.StripeSessionId != "" &&
@@ -73,6 +80,7 @@ namespace igaServer.Controllers
             StripeConfiguration.ApiKey = stripeSecret;
             var sessionService = new SessionService();
             var updated = 0;
+            var paidNotifications = new List<(int OrderId, string? ContactEmail)>();
 
             foreach (var order in candidates)
             {
@@ -87,6 +95,7 @@ namespace igaServer.Controllers
                     {
                         order.StripePaymentIntentId = session.PaymentIntentId;
                     }
+                    paidNotifications.Add((order.Id, session.CustomerDetails?.Email ?? session.CustomerEmail));
                     updated++;
                 }
                 catch (StripeException ex)
@@ -98,6 +107,16 @@ namespace igaServer.Controllers
             if (updated > 0)
             {
                 await _context.SaveChangesAsync();
+                foreach (var (orderId, contactEmail) in paidNotifications)
+                {
+                    await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                        _context,
+                        _resendEmail,
+                        orderId,
+                        _logger,
+                        contactEmail,
+                        _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
+                }
             }
 
             return updated;
@@ -210,7 +229,9 @@ namespace igaServer.Controllers
         public async Task<IActionResult> AcceptOrder(int orderId)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
-            var order = await _context.Orders.FindAsync(orderId);
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null) return NotFound("Order not found");
             if (order.OrderStatus != "Paid")
                 return BadRequest("Can only accept Paid orders");
@@ -293,7 +314,10 @@ namespace igaServer.Controllers
             order.RefundAmount += refundableRemaining;
             order.FinalAmount = 0;
             order.OrderStatus = "Refunded";
+            order.RefundRequestPreviousStatus = null;
             await _context.SaveChangesAsync();
+
+            await TrySendRefundApprovedEmailAsync(order, refundableRemaining, HttpContext.RequestAborted);
 
             return Ok(new
             {
@@ -304,6 +328,75 @@ namespace igaServer.Controllers
                 stripeRefundId = refundId,
                 message = "Refund approved and processed through Stripe"
             });
+        }
+
+        [HttpPost("order-refund-reject/{orderId}")]
+        public async Task<IActionResult> RejectRefundRequest(int orderId, [FromBody] RejectRefundRequestDto? request)
+        {
+            if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            var reason = request?.Reason?.Trim();
+            if (string.IsNullOrWhiteSpace(reason))
+                return BadRequest(new { error = "Rejection reason is required." });
+
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+            if (order == null) return NotFound("Order not found");
+            if (order.OrderStatus != "RefundRequested")
+                return BadRequest("Can only reject RefundRequested orders");
+
+            order.OrderStatus = string.IsNullOrWhiteSpace(order.RefundRequestPreviousStatus)
+                ? "Paid"
+                : order.RefundRequestPreviousStatus;
+            order.RefundRejectionReason = reason;
+            order.RefundRequestPreviousStatus = null;
+            await _context.SaveChangesAsync();
+
+            await TrySendRefundRejectedEmailAsync(order, reason, HttpContext.RequestAborted);
+
+            return Ok(new
+            {
+                id = order.Id,
+                orderStatus = order.OrderStatus,
+                refundRejectionReason = order.RefundRejectionReason,
+                message = "Refund request rejected"
+            });
+        }
+
+        private async Task TrySendRefundApprovedEmailAsync(Order order, decimal amount, CancellationToken cancellationToken)
+        {
+            var email = order.User?.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(email) || email.EndsWith("@iga.local", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var ok = await _resendEmail.SendRefundApprovedAsync(
+                email,
+                order.User?.Name ?? "Customer",
+                order.Id,
+                amount,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            if (!ok)
+                _logger.LogWarning("[Refund] Approved email failed for order {OrderId}", order.Id);
+        }
+
+        private async Task TrySendRefundRejectedEmailAsync(Order order, string reason, CancellationToken cancellationToken)
+        {
+            var email = order.User?.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(email) || email.EndsWith("@iga.local", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var ok = await _resendEmail.SendRefundRejectedAsync(
+                email,
+                order.User?.Name ?? "Customer",
+                order.Id,
+                reason,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            if (!ok)
+                _logger.LogWarning("[Refund] Rejected email failed for order {OrderId}", order.Id);
         }
 
         private async Task<IActionResult> MarkOrderPickedUpCore(int orderId)
@@ -318,6 +411,11 @@ namespace igaServer.Controllers
             order.PickedUpAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
             return Ok(new { id = order.Id, orderStatus = order.OrderStatus, pickedUpAt = order.PickedUpAt, message = "Marked as picked up" });
+        }
+
+        public sealed class RejectRefundRequestDto
+        {
+            public string? Reason { get; set; }
         }
 
         [HttpGet("users")]
