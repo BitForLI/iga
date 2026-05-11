@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout, Menu, ConfigProvider } from 'antd';
-import { ShoppingCartOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { DollarOutlined, ShoppingCartOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 
 const { Header, Sider, Content } = Layout;
 
@@ -18,14 +18,17 @@ const STAFF_THEME = {
   },
 };
 
-const MENU_ITEMS = [{ key: '/staff/orders', icon: <ShoppingCartOutlined />, label: 'Orders' }];
+const MENU_ITEMS = [
+  { key: '/staff/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
+  { key: '/staff/refunds', icon: <DollarOutlined />, label: 'Refunds' },
+];
 
 /** 员工：仅订单备货，与 /admin 分离 */
 export function StaffLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const selectedKey = location.pathname.startsWith('/staff/orders') ? '/staff/orders' : '/staff/orders';
+  const selectedKey = MENU_ITEMS.find((m) => location.pathname.startsWith(m.key))?.key ?? '/staff/orders';
 
   return (
     <ConfigProvider theme={STAFF_THEME}>
