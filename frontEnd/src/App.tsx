@@ -204,7 +204,7 @@ function MainApp() {
                   display: 'flex',
                   alignItems: 'center',
                   width: '100%',
-                  maxWidth: 'min(560px, calc(100vw - 5.5rem))',
+                  maxWidth: 'min(560px, calc(100vw - 7rem))',
                   minWidth: 0,
                   border: '1px solid #d1d5db',
                   borderRadius: 10,

@@ -249,8 +249,9 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
           <div
             style={{
               flex: 1,
-              overflowY: orderType === 'Delivery' ? 'visible' : 'auto',
-              overflowX: 'visible',
+              minHeight: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
               padding: '1rem 1.25rem',
             }}
           >
@@ -592,7 +593,86 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
                     )}
                   </>
                 ) : (
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>Add VITE_MAPBOX_ACCESS_TOKEN in .env to enable address search.</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#92400e', background: '#fffbeb', padding: '8px 10px', borderRadius: 6, lineHeight: 1.4 }}>
+                      Mapbox address search is not configured. Enter your street and suburb manually (same delivery areas as when search is enabled).
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="Street address"
+                      value={deliveryInfo.address ?? ''}
+                      onChange={(e) => {
+                        setAddressInputDirty(true);
+                        setAddressError('');
+                        setDeliveryInfo({ ...deliveryInfo, address: e.target.value });
+                      }}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 6,
+                        fontSize: '0.875rem',
+                        outline: 'none',
+                      }}
+                    />
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      Suburb (delivery area)
+                      <select
+                        value={deliveryInfo.suburb ?? ''}
+                        onChange={(e) => {
+                          const suburb = e.target.value;
+                          setAddressInputDirty(false);
+                          if (!suburb) {
+                            setDeliveryInfo({ ...deliveryInfo, suburb: '' });
+                            setAddressError('');
+                            return;
+                          }
+                          if (isInDeliveryZone(suburb)) {
+                            setDeliveryInfo({ ...deliveryInfo, suburb });
+                            setAddressError('');
+                          } else {
+                            setDeliveryInfo({ ...deliveryInfo, suburb });
+                            setAddressError('Please choose Hurstville, Allawah, Carlton, or Roseland.');
+                          }
+                        }}
+                        style={{
+                          padding: '0.5rem 0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: 6,
+                          fontSize: '0.875rem',
+                          background: 'white',
+                        }}
+                      >
+                        <option value="">Select suburb…</option>
+                        {DELIVERY_SUBURBS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Postcode"
+                      value={deliveryInfo.postcode ?? ''}
+                      onChange={(e) => {
+                        setDeliveryInfo({ ...deliveryInfo, postcode: e.target.value });
+                      }}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: 6,
+                        fontSize: '0.875rem',
+                        outline: 'none',
+                      }}
+                    />
+                    {addressError ? (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#dc2626' }}>{addressError}</p>
+                    ) : null}
+                    {!addressError && deliveryInfo.suburb && isInDeliveryZone(deliveryInfo.suburb) ? (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#16a34a' }}>✓ Delivery area: {deliveryInfo.suburb}</p>
+                    ) : null}
+                  </div>
                 )}
                 <input
                   type="text"
