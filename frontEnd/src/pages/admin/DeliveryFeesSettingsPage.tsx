@@ -92,7 +92,8 @@ export function DeliveryFeesSettingsPage() {
         dataSource={zones}
         pagination={false}
         size="small"
-        style={{ maxWidth: 560, marginBottom: 16 }}
+        scroll={{ x: 'max-content' }}
+        style={{ maxWidth: '100%', marginBottom: 16 }}
       />
       <Space>
         <Button type="primary" onClick={save} loading={saving}>

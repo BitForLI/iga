@@ -44,8 +44,8 @@ export function StorePublicSettingsProvider({ children }: { children: ReactNode 
     setLoading(true);
     setError(null);
     try {
-      const { data } = await storePublicAPI.getPublicSettings();
-      const parsed = data as StorePublicSettings;
+      // apiClient 拦截器已返回 response.data，此处不是 AxiosResponse，勿解构 .data
+      const parsed = (await storePublicAPI.getPublicSettings()) as unknown as StorePublicSettings;
       setSettings({
         freeShippingMinAud: Number(parsed.freeShippingMinAud) || 69,
         deliveryZones: Array.isArray(parsed.deliveryZones) ? parsed.deliveryZones : defaultSettings().deliveryZones,

@@ -3,6 +3,7 @@ import { Button, Space, Typography, Upload, message, Image } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { adminStoreAPI } from '../../api';
 import { API_ORIGIN } from '../../config/apiEnv';
+import { useMaxWidth } from '../../hooks/useMediaQuery';
 
 function absUrl(path: string) {
   const p = path.trim();
@@ -13,6 +14,7 @@ function absUrl(path: string) {
 }
 
 export function HomeHeroSettingsPage() {
+  const isNarrow = useMaxWidth(576);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [urls, setUrls] = useState<string[]>([]);
@@ -68,7 +70,7 @@ export function HomeHeroSettingsPage() {
       <Typography.Paragraph type="secondary">
         Up to 6 images. If none are set, the storefront uses the default built-in hero images. Use wide landscape photos for best results.
       </Typography.Paragraph>
-      <Space style={{ marginBottom: 16 }}>
+      <Space wrap style={{ marginBottom: 16, width: '100%' }}>
         <Upload {...uploadProps} accept="image/*">
           <Button icon={<PlusOutlined />} loading={loading}>
             Upload image
@@ -81,28 +83,43 @@ export function HomeHeroSettingsPage() {
           Reload
         </Button>
       </Space>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 720 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 720, width: '100%' }}>
         {urls.map((u, i) => (
           <div
             key={`${u}-${i}`}
             style={{
               display: 'flex',
-              alignItems: 'center',
+              flexDirection: isNarrow ? 'column' : 'row',
+              alignItems: isNarrow ? 'stretch' : 'center',
               gap: 12,
               border: '1px solid #e5e7eb',
               borderRadius: 8,
               padding: 8,
               background: '#fafafa',
+              maxWidth: '100%',
+              boxSizing: 'border-box',
             }}
           >
-            <Image src={absUrl(u)} alt="" width={160} style={{ objectFit: 'cover', borderRadius: 4 }} />
-            <Typography.Text code copyable style={{ flex: 1, wordBreak: 'break-all' }}>
+            <Image
+              src={absUrl(u)}
+              alt=""
+              width={isNarrow ? undefined : 160}
+              style={{
+                width: isNarrow ? '100%' : 160,
+                maxWidth: '100%',
+                height: isNarrow ? 160 : undefined,
+                objectFit: 'cover',
+                borderRadius: 4,
+              }}
+            />
+            <Typography.Text code copyable style={{ flex: 1, minWidth: 0, wordBreak: 'break-all' }}>
               {u}
             </Typography.Text>
             <Button
               danger
               type="text"
               icon={<DeleteOutlined />}
+              style={{ alignSelf: isNarrow ? 'flex-end' : 'center' }}
               onClick={() => setUrls((prev) => prev.filter((_, j) => j !== i))}
             />
           </div>
