@@ -115,6 +115,14 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   const isRefundsOnlyPage = Boolean(
     visibleTabKeys?.length === 1 && visibleTabKeys[0] === 'RefundRequested'
   );
+  const hideTabBar = Boolean(visibleTabKeys?.length === 1);
+  const pageTitle = useMemo(() => {
+    if (hideTabBar && visibleTabKeys?.[0]) {
+      const item = TAB_ITEMS.find((t) => t.key === visibleTabKeys[0]);
+      return item?.label ?? 'Orders';
+    }
+    return 'Order management';
+  }, [hideTabBar, visibleTabKeys]);
   /** 首次拉取 Paid 列表完成后才允许响铃，避免把页面里已有订单当「新单」；从空队列出现首条 Paid 时也会响 */
   const paidAlertsInitRef = useRef(false);
 
@@ -221,7 +229,11 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       await apiClient.post(`/admin/order-accept/${orderId}`, {});
       message.success('Order accepted, moved to preparing');
       stopAlert();
-      setActiveTab('Preparing');
+      if (adminBasePath === '/staff') {
+        navigate(`${adminBasePath}/orders/preparing`);
+      } else {
+        setActiveTab('Preparing');
+      }
       fetchCounts();
     } catch (e) {
       message.error((e as Error).message);
@@ -278,13 +290,18 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   };
 
   const [pickedUpId, setPickedUpId] = useState<number | null>(null);
-  const handleMarkPickedUp = async (orderId: number) => {
+  const handleMarkPickedUp = async (orderId: number, orderType: string) => {
     setPickedUpId(orderId);
     try {
       await apiClient.post(`/admin/order-picked-up/${orderId}`, {});
-      message.success('Marked as picked up — see Completed tab for this order');
+      message.success('Marked as picked up — see Completed in the Orders menu');
       fetchCounts();
       fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
+      if (adminBasePath === '/staff') {
+        const next =
+          orderType === 'Delivery' ? `${adminBasePath}/orders/completed-delivery` : `${adminBasePath}/orders/completed-pickup`;
+        navigate(next);
+      }
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -293,13 +310,18 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   };
 
   const [readyId, setReadyId] = useState<number | null>(null);
-  const handleMarkReady = async (orderId: number) => {
+  const handleMarkReady = async (orderId: number, orderType: string) => {
     setReadyId(orderId);
     try {
       await apiClient.post(`/admin/order-ready/${orderId}`, {});
-      message.success('Moved to ready for pickup');
+      message.success('Moved to ready queue');
       fetchCounts();
       fetchOrders(1, pagination.pageSize, activeTab, true);
+      if (adminBasePath === '/staff') {
+        const next =
+          orderType === 'Delivery' ? `${adminBasePath}/orders/delivery` : `${adminBasePath}/orders/pickup`;
+        navigate(next);
+      }
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -410,7 +432,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
             <Button
               size="small"
               loading={readyId === r.id}
-              onClick={() => handleMarkReady(r.id)}
+              onClick={() => handleMarkReady(r.id, r.orderType)}
             >
               Ready
             </Button>
@@ -419,7 +441,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
             <Button
               size="small"
               loading={pickedUpId === r.id}
-              onClick={() => handleMarkPickedUp(r.id)}
+              onClick={() => handleMarkPickedUp(r.id, r.orderType)}
             >
               {r.orderType === 'Delivery' ? 'Handed off' : 'Picked up'}
             </Button>
@@ -436,7 +458,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0 }}>{isRefundsOnlyPage ? 'Refund requests' : 'Order management'}</h2>
+          <h2 style={{ margin: 0 }}>{pageTitle}</h2>
           {isRefundsOnlyPage && (
             <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6b7280' }}>
               Open requests: <strong>{tabCounts.RefundRequested ?? 0}</strong>
@@ -452,7 +474,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           <span style={{ color: '#dc2626', fontSize: 14 }}>🔔 Alerts enabled</span>
         )}
       </div>
-      {!isRefundsOnlyPage && (
+      {!hideTabBar && (
         <div
           style={{
             display: 'flex',

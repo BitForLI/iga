@@ -152,7 +152,7 @@ export function AdminLayout() {
                 onClick={() => setCollapsed(true)}
               />
             )}
-            <Link to="/staff/orders" style={{ color: '#6b7280', fontSize: 13, whiteSpace: 'nowrap' }}>
+            <Link to="/staff/orders/to-accept" style={{ color: '#6b7280', fontSize: 13, whiteSpace: 'nowrap' }}>
               Orders (staff)
             </Link>
             <Link to="/" style={{ marginLeft: 'auto', color: '#6b7280', fontSize: 13, whiteSpace: 'nowrap' }}>

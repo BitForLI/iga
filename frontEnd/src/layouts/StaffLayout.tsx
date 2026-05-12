@@ -1,12 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Layout, Menu, ConfigProvider } from 'antd';
+import type { MenuProps } from 'antd';
 import { DollarOutlined, ShoppingCartOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { useMaxWidth } from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
 
 const STAFF_COMPACT_MAX_PX = 992;
+
+/** Orders 子菜单路径（须与 App.tsx 路由一致） */
+const STAFF_ORDER_SUBMENU_KEY = 'staff-orders-submenu';
+
+const STAFF_ORDER_LEAF_PATHS = [
+  '/staff/orders/to-accept',
+  '/staff/orders/preparing',
+  '/staff/orders/pickup',
+  '/staff/orders/delivery',
+  '/staff/orders/completed-pickup',
+  '/staff/orders/completed-delivery',
+] as const;
 
 const STAFF_THEME = {
   token: {
@@ -21,10 +34,29 @@ const STAFF_THEME = {
   },
 };
 
-const MENU_ITEMS = [
-  { key: '/staff/orders', icon: <ShoppingCartOutlined />, label: 'Orders' },
+const STAFF_MENU_ITEMS: MenuProps['items'] = [
+  {
+    key: STAFF_ORDER_SUBMENU_KEY,
+    icon: <ShoppingCartOutlined />,
+    label: 'Orders',
+    children: [
+      { key: '/staff/orders/to-accept', label: 'To accept' },
+      { key: '/staff/orders/preparing', label: 'Preparing' },
+      { key: '/staff/orders/pickup', label: 'Pickup' },
+      { key: '/staff/orders/delivery', label: 'Delivery' },
+      { key: '/staff/orders/completed-pickup', label: 'Completed (pickup)' },
+      { key: '/staff/orders/completed-delivery', label: 'Completed (delivery)' },
+    ],
+  },
   { key: '/staff/refunds', icon: <DollarOutlined />, label: 'Refunds' },
 ];
+
+function staffMenuSelectedKeys(pathname: string): string[] {
+  if ((STAFF_ORDER_LEAF_PATHS as readonly string[]).includes(pathname)) return [pathname];
+  if (/^\/staff\/orders\/\d+$/.test(pathname)) return [];
+  if (pathname.startsWith('/staff/refunds')) return ['/staff/refunds'];
+  return ['/staff/orders/to-accept'];
+}
 
 /** 员工：仅订单备货，与 /admin 分离 */
 export function StaffLayout() {
@@ -32,12 +64,19 @@ export function StaffLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const selectedKey = MENU_ITEMS.find((m) => location.pathname.startsWith(m.key))?.key ?? '/staff/orders';
+  const selectedKeys = useMemo(() => staffMenuSelectedKeys(location.pathname), [location.pathname]);
+  const [openKeys, setOpenKeys] = useState<string[]>([STAFF_ORDER_SUBMENU_KEY]);
 
   useEffect(() => {
     if (isCompact) setCollapsed(true);
     else setCollapsed(false);
   }, [isCompact]);
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/staff/orders')) {
+      setOpenKeys((prev) => (prev.includes(STAFF_ORDER_SUBMENU_KEY) ? prev : [...prev, STAFF_ORDER_SUBMENU_KEY]));
+    }
+  }, [location.pathname]);
 
   const drawerOpen = isCompact && !collapsed;
 
@@ -47,6 +86,7 @@ export function StaffLayout() {
         .staff-layout .ant-menu-dark { background: #065f46 !important; }
         .staff-layout .ant-menu-dark .ant-menu-item-selected { background: #059669 !important; color: #fff !important; }
         .staff-layout .ant-menu-dark .ant-menu-item:hover { background: #047857 !important; }
+        .staff-layout .ant-menu-dark .ant-menu-submenu-title:hover { background: #047857 !important; }
         .staff-layout .ant-layout-sider-children { display: flex; flex-direction: column; min-height: 0; }
       `}</style>
       <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#ecfdf5' }}>
@@ -103,9 +143,12 @@ export function StaffLayout() {
           <Menu
             theme="dark"
             mode="inline"
-            selectedKeys={[selectedKey]}
-            items={MENU_ITEMS}
+            selectedKeys={selectedKeys}
+            openKeys={openKeys}
+            onOpenChange={setOpenKeys}
+            items={STAFF_MENU_ITEMS}
             onClick={({ key }) => {
+              if (!key.startsWith('/')) return;
               navigate(key);
               if (isCompact) setCollapsed(true);
             }}

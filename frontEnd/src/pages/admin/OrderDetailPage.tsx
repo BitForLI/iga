@@ -289,7 +289,7 @@ export function OrderDetailPage() {
   if (loading || !order) {
     return (
       <div>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`${adminBasePath}/orders`)} style={{ marginBottom: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`${adminBasePath}/orders/to-accept`)} style={{ marginBottom: 16 }}>
           Back
         </Button>
         <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div>
@@ -314,7 +314,7 @@ export function OrderDetailPage() {
 
   return (
     <div>
-      <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`${adminBasePath}/orders`)} style={{ marginBottom: 16 }}>
+      <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`${adminBasePath}/orders/to-accept`)} style={{ marginBottom: 16 }}>
         Back
       </Button>
       <h2 style={{ marginBottom: 16 }}>Order #{order.id}</h2>

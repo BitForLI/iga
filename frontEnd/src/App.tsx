@@ -309,7 +309,7 @@ function App() {
             }
           >
             <Route index element={<Navigate to="/admin/products" replace />} />
-            <Route path="orders" element={<Navigate to="/staff/orders" replace />} />
+            <Route path="orders" element={<Navigate to="/staff/orders/to-accept" replace />} />
             <Route path="orders/:id" element={<RedirectAdminOrderToStaff />} />
             <Route path="dashboard" element={<Navigate to="/admin/products" replace />} />
             <Route path="products" element={<ProductManagementPage />} />
@@ -327,23 +327,33 @@ function App() {
               </RequireStaffOrAdmin>
             }
           >
-            <Route index element={<Navigate to="/staff/orders" replace />} />
+            <Route index element={<Navigate to="/staff/orders/to-accept" replace />} />
+            <Route path="orders" element={<Navigate to="/staff/orders/to-accept" replace />} />
+            <Route path="orders/to-accept" element={<OrderManagementPage initialTab="Paid" visibleTabKeys={['Paid']} />} />
+            <Route path="orders/preparing" element={<OrderManagementPage initialTab="Preparing" visibleTabKeys={['Preparing']} />} />
             <Route
-              path="orders"
-              element={
-                <OrderManagementPage
-                  initialTab="Paid"
-                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'CompletedPickup', 'CompletedDelivery']}
-                />
-              }
+              path="orders/pickup"
+              element={<OrderManagementPage initialTab="PreparedPickup" visibleTabKeys={['PreparedPickup']} />}
             />
+            <Route
+              path="orders/delivery"
+              element={<OrderManagementPage initialTab="PreparedDelivery" visibleTabKeys={['PreparedDelivery']} />}
+            />
+            <Route
+              path="orders/completed-pickup"
+              element={<OrderManagementPage initialTab="CompletedPickup" visibleTabKeys={['CompletedPickup']} />}
+            />
+            <Route
+              path="orders/completed-delivery"
+              element={<OrderManagementPage initialTab="CompletedDelivery" visibleTabKeys={['CompletedDelivery']} />}
+            />
+            <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route
               path="refunds"
               element={
                 <OrderManagementPage initialTab="RefundRequested" visibleTabKeys={['RefundRequested']} />
               }
             />
-            <Route path="orders/:id" element={<OrderDetailPage />} />
           </Route>
         </Routes>
         </OrderModeProvider>

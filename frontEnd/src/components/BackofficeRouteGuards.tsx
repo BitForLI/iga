@@ -11,7 +11,7 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
   if (user?.role === 'Staff') {
-    return <Navigate to="/staff/orders" replace />;
+    return <Navigate to="/staff/orders/to-accept" replace />;
   }
   if (user?.role !== 'Admin') {
     return <Navigate to="/" replace />;

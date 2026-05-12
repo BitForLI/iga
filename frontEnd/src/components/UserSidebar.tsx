@@ -827,7 +827,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                 Admin
               </Link>
               <Link
-                to="/staff/orders"
+                to="/staff/orders/to-accept"
                 title="View and process orders (same view as staff)"
                 style={{
                   padding: '0.35rem 0.75rem',
@@ -845,7 +845,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
           ) : null}
           {user?.role === 'Staff' ? (
             <Link
-              to="/staff/orders"
+              to="/staff/orders/to-accept"
               style={{
                 padding: '0.35rem 0.75rem',
                 fontSize: '0.8rem',
