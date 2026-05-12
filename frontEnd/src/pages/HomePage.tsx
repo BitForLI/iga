@@ -96,20 +96,11 @@ const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
 
-/** 窄屏首行固定展示的 4 个分类（其余收入「更多」） */
-const NARROW_PINNED_CATEGORY_VALUES = ['Special', 'Recommended', 'Vegetables', 'Fruit'] as const;
+/** 窄屏首行展示的分类个数（其余进「More categories」） */
+const NARROW_VISIBLE_CATEGORY_COUNT = 6;
 
-function partitionHomeCategories() {
-  const pinned = NARROW_PINNED_CATEGORY_VALUES.map((value) =>
-    HOME_CATEGORIES.find((c) => c.value === value)
-  ).filter((c): c is (typeof HOME_CATEGORIES)[number] => c != null);
-  const rest = HOME_CATEGORIES.filter(
-    (c) => !(NARROW_PINNED_CATEGORY_VALUES as readonly string[]).includes(c.value)
-  );
-  return { pinned, rest };
-}
-
-const { pinned: NARROW_PINNED_CATEGORIES, rest: NARROW_MORE_CATEGORIES } = partitionHomeCategories();
+const NARROW_PINNED_CATEGORIES = HOME_CATEGORIES.slice(0, NARROW_VISIBLE_CATEGORY_COUNT);
+const NARROW_MORE_CATEGORIES = HOME_CATEGORIES.slice(NARROW_VISIBLE_CATEGORY_COUNT);
 
 function isCategoryInMoreSection(value: string): boolean {
   return NARROW_MORE_CATEGORIES.some((c) => c.value === value);
@@ -122,6 +113,8 @@ function CategoryChipButton({
   padY = CHIP_PAD_Y,
   padX = CHIP_PAD_X,
   fontSize = CHIP_FS,
+  /** 窄屏：图标在上、文案可换行，便于一行 6 格完整显示名称 */
+  narrowChips = false,
 }: {
   cat: (typeof HOME_CATEGORIES)[number];
   selectedCategory: string;
@@ -129,6 +122,7 @@ function CategoryChipButton({
   padY?: string;
   padX?: string;
   fontSize?: string;
+  narrowChips?: boolean;
 }) {
   const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
   return (
@@ -140,11 +134,13 @@ function CategoryChipButton({
       }}
       style={{
         display: 'flex',
+        flexDirection: narrowChips ? 'column' : 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 'clamp(2px, 0.6vw, 6px)',
+        gap: narrowChips ? 'clamp(2px, 0.5vw, 4px)' : 'clamp(2px, 0.6vw, 6px)',
         minWidth: 0,
         width: '100%',
+        minHeight: narrowChips ? 'clamp(2.75rem, 14vw, 3.6rem)' : undefined,
         padding: `${padY} ${padX}`,
         borderRadius: 'clamp(6px, 1.2vw, 10px)',
         border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
@@ -155,9 +151,9 @@ function CategoryChipButton({
         cursor: 'pointer',
         lineHeight: 1.2,
         textAlign: 'center',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+        overflow: 'visible',
       }}
     >
       {cat.icon ? (
@@ -176,7 +172,7 @@ function CategoryChipButton({
           style={{ fontSize: CHIP_ICON, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
         />
       )}
-      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+      <span style={{ minWidth: 0, maxWidth: '100%', whiteSpace: 'normal', wordBreak: 'break-word' }}>{cat.label}</span>
     </button>
   );
 }
@@ -243,13 +239,19 @@ function HomeCategoryBar({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
           gap: CHIP_GRID_GAP,
           width: '100%',
         }}
       >
         {NARROW_PINNED_CATEGORIES.map((cat) => (
-          <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
+          <CategoryChipButton
+            key={cat.label}
+            cat={cat}
+            selectedCategory={selectedCategory}
+            onSelectCategory={onSelectCategory}
+            narrowChips
+          />
         ))}
       </div>
 
@@ -264,7 +266,13 @@ function HomeCategoryBar({
           }}
         >
           {NARROW_MORE_CATEGORIES.map((cat) => (
-            <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
+            <CategoryChipButton
+              key={cat.label}
+              cat={cat}
+              selectedCategory={selectedCategory}
+              onSelectCategory={onSelectCategory}
+              narrowChips
+            />
           ))}
         </div>
       )}
@@ -417,7 +425,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
           boxSizing: 'border-box',
         }}
       >
-        {/* 分类：窄屏首行 4 个 + 展开更多；宽屏流体列数 */}
+        {/* 分类：窄屏首行 6 个 + More；宽屏流体列数；名称不省略可换行 */}
         <HomeCategoryBar selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} compact={isNarrow} />
 
         {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
