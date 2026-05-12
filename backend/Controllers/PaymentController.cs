@@ -16,6 +16,7 @@ namespace igaServer.Controllers
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
         private readonly IResendEmailService _resendEmail;
+        private readonly ITelegramNotificationService _telegram;
         private readonly ILogger<PaymentController> _logger;
 
         public PaymentController(
@@ -23,12 +24,14 @@ namespace igaServer.Controllers
             IConfiguration configuration,
             ApplicationDbContext context,
             IResendEmailService resendEmail,
+            ITelegramNotificationService telegram,
             ILogger<PaymentController> logger)
         {
             _stripeService = stripeService;
             _configuration = configuration;
             _context = context;
             _resendEmail = resendEmail;
+            _telegram = telegram;
             _logger = logger;
         }
 
@@ -310,6 +313,15 @@ namespace igaServer.Controllers
                     _logger.LogWarning(ex, "[Payment] 取件码邮件发送失败 order {OrderId}", orderId);
                 }
 
+                try
+                {
+                    await _telegram.NotifyOrderPaidAsync(orderId, HttpContext.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Payment] Telegram 已支付通知失败 order {OrderId}", orderId);
+                }
+
                 return Ok(new { orderStatus = order.OrderStatus, synced = true });
             }
             catch (StripeException ex)
@@ -365,7 +377,8 @@ namespace igaServer.Controllers
                     if (order == null)
                         return BadRequest(new { error = $"Order {orderId} not found" });
 
-                    if (order.OrderStatus != "Paid")
+                    var wasAlreadyPaid = string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
+                    if (!wasAlreadyPaid)
                     {
                         order.OrderStatus = "Paid";
                         order.StripePaymentIntentId = session.PaymentIntentId;
@@ -379,19 +392,31 @@ namespace igaServer.Controllers
                     });
                     await _context.SaveChangesAsync();
 
-                    try
+                    if (!wasAlreadyPaid)
                     {
-                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(
-                            _context,
-                            _resendEmail,
-                            orderId,
-                            _logger,
-                            session.CustomerDetails?.Email ?? session.CustomerEmail,
-                            _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Webhook] 取件码邮件发送失败 order {OrderId}", orderId);
+                        try
+                        {
+                            await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                                _context,
+                                _resendEmail,
+                                orderId,
+                                _logger,
+                                session.CustomerDetails?.Email ?? session.CustomerEmail,
+                                _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Webhook] 取件码邮件发送失败 order {OrderId}", orderId);
+                        }
+
+                        try
+                        {
+                            await _telegram.NotifyOrderPaidAsync(orderId, HttpContext.RequestAborted);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Webhook] Telegram 已支付通知失败 order {OrderId}", orderId);
+                        }
                     }
 
                     return Ok();
@@ -416,7 +441,8 @@ namespace igaServer.Controllers
                         return BadRequest();
 
                     var order = await _context.Orders.FindAsync(orderId);
-                    if (order != null && order.OrderStatus != "Paid")
+                    var wasAlreadyPaid = order != null && string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
+                    if (order != null && !wasAlreadyPaid)
                     {
                         order.OrderStatus = "Paid";
                         if (string.IsNullOrEmpty(order.StripePaymentIntentId) && !string.IsNullOrEmpty(session.PaymentIntentId))
@@ -431,19 +457,31 @@ namespace igaServer.Controllers
                     });
                     await _context.SaveChangesAsync();
 
-                    try
+                    if (order != null && !wasAlreadyPaid)
                     {
-                        await OrderPaidNotifier.TryNotifyPickupEmailAsync(
-                            _context,
-                            _resendEmail,
-                            orderId,
-                            _logger,
-                            session.CustomerDetails?.Email ?? session.CustomerEmail,
-                            _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Webhook] async 取件码邮件发送失败 order {OrderId}", orderId);
+                        try
+                        {
+                            await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                                _context,
+                                _resendEmail,
+                                orderId,
+                                _logger,
+                                session.CustomerDetails?.Email ?? session.CustomerEmail,
+                                _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Webhook] async 取件码邮件发送失败 order {OrderId}", orderId);
+                        }
+
+                        try
+                        {
+                            await _telegram.NotifyOrderPaidAsync(orderId, HttpContext.RequestAborted);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Webhook] async Telegram 已支付通知失败 order {OrderId}", orderId);
+                        }
                     }
 
                     return Ok();

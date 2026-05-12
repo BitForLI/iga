@@ -9,4 +9,7 @@ public interface ITelegramNotificationService
 {
     /// <summary>顾客提交新订单（待支付）时调用；未配置 Token/Chat 时静默跳过。</summary>
     Task NotifyNewOrderCreatedAsync(Order order, User user, CancellationToken cancellationToken = default);
+
+    /// <summary>订单标记为已支付后调用（Webhook / 同步支付）；含备货指引；未配置时静默跳过。</summary>
+    Task NotifyOrderPaidAsync(int orderId, CancellationToken cancellationToken = default);
 }
