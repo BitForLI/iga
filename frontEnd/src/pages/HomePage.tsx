@@ -11,6 +11,9 @@ import { resolveProductImageUrl } from '../utils/imageUrl';
 import { useMaxWidth } from '../hooks/useMediaQuery';
 import plusIcon from '../assets/images/加.png';
 import minusIcon from '../assets/images/减.png';
+import { AppstoreOutlined } from '@ant-design/icons';
+import vegetableIcon from '../assets/images/vegetable.png';
+import fruitIcon from '../assets/images/fruit.png';
 
 interface Product {
   id: number;
@@ -47,6 +50,91 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
   );
 }
 
+/** 与后台分类一致；value 空字符串表示「全部」 */
+const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
+  { label: 'All Products', value: '' },
+  { label: 'Vegetables', value: 'Vegetables', icon: vegetableIcon },
+  { label: 'Fruit', value: 'Fruit', icon: fruitIcon },
+  { label: 'Grocery', value: 'Grocery', icon: fruitIcon },
+  { label: 'Frozen', value: 'Frozen', icon: vegetableIcon },
+  { label: 'Drink', value: 'Drink', icon: fruitIcon },
+  { label: 'Dairy', value: 'Dairy', icon: fruitIcon },
+  { label: 'Meat', value: 'Meat', icon: vegetableIcon },
+  { label: 'Bakery', value: 'Bakery', icon: vegetableIcon },
+  { label: 'Pantry', value: 'Pantry', icon: fruitIcon },
+];
+
+function HomeCategoryBar({
+  selectedCategory,
+  onSelectCategory,
+  compact,
+}: {
+  selectedCategory: string;
+  onSelectCategory: (v: string) => void;
+  compact: boolean;
+}) {
+  const mid = Math.ceil(HOME_CATEGORIES.length / 2);
+  const row1 = HOME_CATEGORIES.slice(0, mid);
+  const row2 = HOME_CATEGORIES.slice(mid);
+  const gap = compact ? 6 : 8;
+  const padY = compact ? '0.35rem' : '0.45rem';
+  const padX = compact ? '0.5rem' : '0.65rem';
+  const fontSize = compact ? '0.72rem' : '0.8rem';
+
+  const chip = (cat: (typeof HOME_CATEGORIES)[number]) => {
+    const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
+    return (
+      <button
+        key={cat.label}
+        type="button"
+        onClick={() => {
+          if (cat.value === '') onSelectCategory('');
+          else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
+        }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: `${padY} ${padX}`,
+          borderRadius: 9999,
+          border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
+          backgroundColor: isSelected ? '#fef2f2' : 'white',
+          color: isSelected ? '#dc2626' : '#374151',
+          fontWeight: 600,
+          fontSize,
+          cursor: 'pointer',
+          lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {cat.icon ? (
+          <img src={cat.icon} alt="" style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, objectFit: 'contain' }} />
+        ) : (
+          <AppstoreOutlined style={{ fontSize: compact ? 16 : 18, color: isSelected ? '#dc2626' : '#6b7280' }} />
+        )}
+        {cat.label}
+      </button>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 900,
+        margin: '0 auto 1.5rem',
+        padding: compact ? '0.5rem 0' : '0.65rem 0',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compact ? 8 : 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap }}>{row1.map(chip)}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap }}>{row2.map(chip)}</div>
+      </div>
+    </div>
+  );
+}
+
 /** 首页 Special 横条：优先显示后台分类为 Special 的商品；未配置前回退显示前 5 个上架商品，避免整块消失。 */
 function pickSpecialStripProducts(list: Product[]): Product[] {
   const active = list.filter((p) => p.isActive !== false);
@@ -63,10 +151,11 @@ function pickSpecialStripProducts(list: Product[]): Product[] {
 
 interface HomePageProps {
   selectedCategory: string;
+  onSelectCategory: (category: string) => void;
   searchKeyword: string;
 }
 
-export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
+export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: HomePageProps) {
   const isNarrow = useMaxWidth(768);
   const [products, setProducts] = useState<Product[]>([]);
   const [specialProducts, setSpecialProducts] = useState<Product[]>([]);
@@ -145,6 +234,9 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
       {!selectedCategory && !searchKeyword.trim() && (
         <HomeCarousel images={[home1, home2, home3]} isNarrow={isNarrow} />
       )}
+
+      {/* 分类：主图下方、商品区上方，固定两行 */}
+      <HomeCategoryBar selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} compact={isNarrow} />
 
       {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
       {!selectedCategory && !searchKeyword.trim() && specialProducts.length > 0 && (

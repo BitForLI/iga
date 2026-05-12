@@ -7,7 +7,7 @@ import { HomePage } from './pages/HomePage';
 import { CartSidebar } from './components/CartSidebar';
 import { UserSidebar } from './components/UserSidebar';
 import { PickupDeliverySidebar } from './components/PickupDeliverySidebar';
-import { Sidebar } from './components/Sidebar';
+import { ContactService } from './components/ContactService';
 import { AdminLayout } from './layouts/AdminLayout';
 import { StaffLayout } from './layouts/StaffLayout';
 import { RequireAdmin, RequireStaffOrAdmin } from './components/BackofficeRouteGuards';
@@ -68,21 +68,10 @@ function MainAppWithPaymentReturn() {
 function MainApp() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth > MOBILE_NAV_BREAKPOINT : true
-  );
   const isNarrow = useMaxWidth(MOBILE_NAV_BREAKPOINT);
   const navRef = useRef<HTMLElement>(null);
-  /** 实测顶栏高度，供左侧固定栏 top 使用 */
+  /** 顶栏高度（主区 min-height 等） */
   const [navBarHeightPx, setNavBarHeightPx] = useState(() => (typeof window !== 'undefined' && window.innerWidth <= MOBILE_NAV_BREAKPOINT ? 56 : 90));
-
-  useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth <= MOBILE_NAV_BREAKPOINT) setSidebarOpen(false);
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -114,8 +103,8 @@ function MainApp() {
         ref={navRef}
         style={{
           backgroundColor: 'white',
-          borderBottom: isNarrow && sidebarOpen ? 'none' : '1px solid #e5e7eb',
-          padding: isNarrow ? '0.45rem 0.6rem 0.45rem 0' : '0.75rem 1.5rem',
+          borderBottom: '1px solid #e5e7eb',
+          padding: isNarrow ? '0.45rem 0.6rem' : '0.75rem 1.5rem',
           minHeight: isNarrow ? undefined : 90,
           display: 'flex',
           flexDirection: 'row',
@@ -139,44 +128,12 @@ function MainApp() {
             justifyContent: 'center',
           }}
         >
-          {isNarrow && (
-            <button
-              type="button"
-              aria-label={sidebarOpen ? 'Close categories' : 'Open categories'}
-              onClick={() => setSidebarOpen((o) => !o)}
-              style={{
-                backgroundColor: '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0 10px 10px 0',
-                width: 46,
-                minHeight: 44,
-                alignSelf: 'stretch',
-                position: 'relative',
-                zIndex: 2,
-                marginTop: '-0.45rem',
-                marginBottom: '-0.45rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                cursor: 'pointer',
-                fontSize: '1.15rem',
-                fontWeight: 'bold',
-                lineHeight: 1,
-                padding: 0,
-                boxSizing: 'border-box',
-              }}
-            >
-              ☰
-            </button>
-          )}
           {!isNarrow && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                width: 'min(900px, calc(100vw - 320px))',
+                width: 'min(900px, calc(100vw - 200px))',
                 minWidth: 360,
                 margin: '0 auto',
                 position: 'absolute',
@@ -232,7 +189,7 @@ function MainApp() {
                 display: 'flex',
                 alignItems: 'center',
                 alignSelf: 'center',
-                width: 'min(560px, calc(100vw - 132px))',
+                width: 'min(560px, calc(100vw - 5.5rem))',
                 minWidth: 0,
                 margin: '0 auto',
                 position: 'absolute',
@@ -301,19 +258,22 @@ function MainApp() {
         </div>
       </nav>
 
-      {/* Main Content Area */}
-      <div style={{ display: 'flex', minHeight: `calc(100dvh - ${navBarHeightPx}px)` }}>
-        <Sidebar
+      <main
+        style={{
+          minHeight: `calc(100dvh - ${navBarHeightPx}px)`,
+          padding: isNarrow ? '0.75rem' : '1.5rem',
+          minWidth: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+        }}
+      >
+        <HomePage
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
-          navHeight={navBarHeightPx}
-          isOpen={sidebarOpen}
-          onOpenChange={setSidebarOpen}
+          searchKeyword={searchKeyword}
         />
-        <main style={{ flex: 1, padding: isNarrow ? '0.75rem' : '1.5rem', minWidth: 0 }}>
-          <HomePage selectedCategory={selectedCategory} searchKeyword={searchKeyword} />
-        </main>
-      </div>
+      </main>
+      <ContactService />
     </div>
   );
 }
