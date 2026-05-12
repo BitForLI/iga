@@ -5,19 +5,12 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useOrderMode } from '../context/OrderModeContext';
 import { orderAPI, paymentAPI, ApiRequestError } from '../api';
+import { useStorePublicSettings, computeDeliveryFeeAud } from '../context/StorePublicSettingsContext';
 import { DELIVERY_SUBURBS } from './PickupDeliverySidebar';
 import cartIcon from '../assets/images/cart.png';
 import deleteIcon from '../assets/images/删除.png';
 import productImage from '../assets/images/main.png';
 import { resolveProductImageUrl } from '../utils/imageUrl';
-
-// 配送费：消费越多越便宜，50 以上免运费
-function getDeliveryFee(subtotal: number): number {
-  if (subtotal >= 50) return 0;
-  if (subtotal >= 35) return 3;
-  if (subtotal >= 20) return 5;
-  return 8;
-}
 
 export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const iconPx = compact ? 24 : 32;
@@ -26,7 +19,10 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const hasWeighedItems = items.some((i) => i.isWeighingRequired);
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
-  const deliveryFee = orderType === 'Delivery' ? getDeliveryFee(total) : 0;
+  const { settings: storeSettings } = useStorePublicSettings();
+  const deliveryFee =
+    orderType === 'Delivery' ? computeDeliveryFeeAud(total, deliveryInfo.suburb, storeSettings) : 0;
+  const freeShipMin = storeSettings?.freeShippingMinAud ?? 69;
   const grandTotal = total + deliveryFee;
   const {
     panelMounted,
@@ -325,7 +321,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                     <span>${deliveryFee.toFixed(2)}</span>
                   </div>
                 )}
-                {orderType === 'Delivery' && deliveryFee === 0 && total >= 50 && (
+                {orderType === 'Delivery' && deliveryFee === 0 && total >= freeShipMin && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a' }}>
                     <span>Delivery fee:</span>
                     <span>Free delivery</span>

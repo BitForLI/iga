@@ -65,12 +65,39 @@ export function UserSidebar({ compact = false }: { compact?: boolean }) {
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               padding: '1rem',
               borderBottom: '1px solid #e5e7eb',
             }}
           >
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Account</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, minWidth: 0, flex: 1 }}>
+              {isLoggedIn && user ? (
+                <>
+                  <h2
+                    style={{
+                      fontSize: '1.25rem',
+                      fontWeight: 'bold',
+                      margin: 0,
+                      lineHeight: 1.2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '100%',
+                    }}
+                    title={user.name?.trim() || user.email}
+                  >
+                    {user.name?.trim() || user.email}
+                  </h2>
+                  {user.name?.trim() ? (
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all', lineHeight: 1.25 }}>
+                      {user.email}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: 0 }}>Account</h2>
+              )}
+            </div>
             <button
               type="button"
               onClick={closePanel}
@@ -780,9 +807,6 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '1rem' }}>
         <div>
           <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>Order History</h3>
-          <div style={{ fontSize: '0.8rem', color: '#6b7280', wordBreak: 'break-all' }}>
-            Signed in as {user.email}
-          </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {user?.role === 'Admin' ? (

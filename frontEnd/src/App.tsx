@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useSearchParams, useParams } from 'react-route
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { OrderModeProvider } from './context/OrderModeContext';
+import { StorePublicSettingsProvider } from './context/StorePublicSettingsContext';
 import { HomePage } from './pages/HomePage';
 import { CartSidebar } from './components/CartSidebar';
 import { UserSidebar } from './components/UserSidebar';
@@ -16,6 +17,8 @@ import { OrderManagementPage } from './pages/admin/OrderManagementPage';
 import { OrderDetailPage } from './pages/admin/OrderDetailPage';
 import { CustomerManagementPage } from './pages/admin/CustomerManagementPage';
 import { CustomerDetailPage } from './pages/admin/CustomerDetailPage';
+import { DeliveryFeesSettingsPage } from './pages/admin/DeliveryFeesSettingsPage';
+import { HomeHeroSettingsPage } from './pages/admin/HomeHeroSettingsPage';
 import searchIcon from './assets/images/搜索.png';
 import { useCart } from './context/CartContext';
 import { paymentAPI } from './api';
@@ -284,7 +287,14 @@ function App() {
       <CartProvider>
         <OrderModeProvider>
         <Routes>
-          <Route path="/" element={<MainAppWithPaymentReturn />} />
+          <Route
+            path="/"
+            element={
+              <StorePublicSettingsProvider>
+                <MainAppWithPaymentReturn />
+              </StorePublicSettingsProvider>
+            }
+          />
           <Route
             path="/admin"
             element={
@@ -298,6 +308,8 @@ function App() {
             <Route path="orders/:id" element={<RedirectAdminOrderToStaff />} />
             <Route path="dashboard" element={<Navigate to="/admin/products" replace />} />
             <Route path="products" element={<ProductManagementPage />} />
+            <Route path="store/delivery-fees" element={<DeliveryFeesSettingsPage />} />
+            <Route path="store/home-hero" element={<HomeHeroSettingsPage />} />
             <Route path="refunds" element={<OrderManagementPage initialTab="RefundRequested" />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />

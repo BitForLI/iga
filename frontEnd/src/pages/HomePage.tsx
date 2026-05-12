@@ -9,6 +9,7 @@ import home3 from '../assets/images/主页3.png';
 import productImage from '../assets/images/main.png';
 import { resolveProductImageUrl } from '../utils/imageUrl';
 import { useMaxWidth } from '../hooks/useMediaQuery';
+import { useStorePublicSettings } from '../context/StorePublicSettingsContext';
 import plusIcon from '../assets/images/加.png';
 import minusIcon from '../assets/images/减.png';
 import { AppstoreOutlined } from '@ant-design/icons';
@@ -188,6 +189,12 @@ interface HomePageProps {
 
 export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: HomePageProps) {
   const isNarrow = useMaxWidth(768);
+  const { settings: storeSettings } = useStorePublicSettings();
+  const heroSlideUrls = React.useMemo(() => {
+    const raw = storeSettings?.homeCarouselImageUrls?.filter((u) => u?.trim()) ?? [];
+    if (raw.length === 0) return [home1, home2, home3];
+    return raw.map((u) => resolveProductImageUrl(u, home1));
+  }, [storeSettings?.homeCarouselImageUrls]);
   const [products, setProducts] = useState<Product[]>([]);
   const [specialProducts, setSpecialProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -263,7 +270,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
       )}
       {/* 轮换图 - 未选分类且未在搜索时显示 */}
       {!selectedCategory && !searchKeyword.trim() && (
-        <HomeCarousel images={[home1, home2, home3]} isNarrow={isNarrow} />
+        <HomeCarousel images={heroSlideUrls} isNarrow={isNarrow} />
       )}
 
       {/* 分类：主图下方、商品区上方，固定两行 */}
@@ -304,6 +311,10 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
   const slides = images.map((src, i) => ({ src, alt: `Home ${i + 1}` }));
   const [current, setCurrent] = useState(0);
   const heroH = isNarrow ? 200 : 400;
+
+  useEffect(() => {
+    setCurrent((c) => (images.length === 0 ? 0 : Math.min(c, images.length - 1)));
+  }, [images.length]);
 
   return (
     <div
@@ -350,7 +361,7 @@ function SpecialProductList({
     <div
       style={{
         display: 'flex',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         flexWrap: 'wrap',
         alignItems: 'start',
         gap: isNarrow ? '10px' : '1.25rem',
@@ -593,7 +604,7 @@ function SpecialCard({
     <div
       style={{
         width: compact ? 'calc((100% - 10px) / 2)' : 'clamp(196px, 20vw, 240px)',
-        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '1 1 196px',
+        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '0 1 auto',
         maxWidth: compact ? undefined : 240,
         minWidth: compact ? 0 : 196,
         alignSelf: 'start',

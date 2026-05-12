@@ -10,8 +10,14 @@ namespace igaServer.Models
         // --- 配送限制 ---
         // 对应功能：配送距离检测
         public double MaxDeliveryDistanceKm { get; set; } = 5.0; // 默认 5km
-        public decimal DeliveryBaseFee { get; set; } = 5.0m; // 基础运费
-        public decimal FreeDeliveryThreshold { get; set; } = 100.0m; // 满多少免运费
+        public decimal DeliveryBaseFee { get; set; } = 5.0m; // 基础运费（历史字段；配送费以分区为准）
+        public decimal FreeDeliveryThreshold { get; set; } = 69.0m; // 满多少免配送费（AUD）
+
+        /// <summary>JSON array of relative or absolute image URLs for the storefront hero carousel, e.g. ["/uploads/store/a.png"].</summary>
+        public string HomeCarouselImagesJson { get; set; } = "[]";
+
+        /// <summary>JSON array: [{"suburb":"hurstville","fee":10},...] suburb keys lowercase; empty = default $10 per zone.</summary>
+        public string DeliveryZoneFeesJson { get; set; } = "[]";
 
         // --- 运营设置 ---
         // 对应功能：自提时间选择 (存为 JSON 字符串，如 ["10:00-11:00", "14:00-15:00"])

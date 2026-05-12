@@ -44,6 +44,48 @@ export const productAPI = {
   get: (id: number) => apiClient.get(`/product/${id}`),
 };
 
+export const storePublicAPI = {
+  getPublicSettings: () => apiClient.get<unknown>('/store/public-settings'),
+};
+
+export const adminStoreAPI = {
+  getSettings: () => apiClient.get<unknown>('/admin/store/settings'),
+  putSettings: (body: {
+    freeShippingMinAud?: number;
+    deliveryZoneFees?: { suburb: string; feeAud: number }[];
+    homeCarouselImageUrls?: string[];
+  }) => apiClient.put<{ message?: string }>('/admin/store/settings', body),
+  uploadCarouselImage: async (file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('token');
+    const rawUser = localStorage.getItem('user');
+    let userId = '';
+    if (rawUser) {
+      try {
+        const u = JSON.parse(rawUser) as { id?: number };
+        if (u?.id != null) userId = String(u.id);
+      } catch {
+        /* ignore */
+      }
+    }
+    const res = await fetch(`${API_BASE}/admin/store/upload-carousel-image`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(userId ? { 'X-User-Id': userId } : {}),
+      },
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string; url?: string };
+    if (!res.ok) {
+      throw new Error(data.error || data.message || res.statusText || 'Upload failed');
+    }
+    if (!data.url) throw new Error('Invalid upload response');
+    return { url: data.url };
+  },
+};
+
 export const adminProductAPI = {
   getList: (
     page = 1,

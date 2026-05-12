@@ -7,6 +7,8 @@ import {
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  CarOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
 
 const { Header, Sider, Content } = Layout;
@@ -27,6 +29,8 @@ const ADMIN_THEME = {
 /** 管理员：商品、客户；订单在 /staff（员工与管理员均可从账户入口进入） */
 const MENU_ITEMS = [
   { key: '/admin/products', icon: <ShoppingOutlined />, label: 'Products' },
+  { key: '/admin/store/delivery-fees', icon: <CarOutlined />, label: '分区运费' },
+  { key: '/admin/store/home-hero', icon: <PictureOutlined />, label: '首页轮播图' },
   { key: '/admin/refunds', icon: <DollarOutlined />, label: 'Refunds' },
   { key: '/admin/customers', icon: <UserOutlined />, label: 'Customers' },
 ];
@@ -35,7 +39,9 @@ export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const selectedKey = MENU_ITEMS.find((m) => location.pathname.startsWith(m.key))?.key ?? '/admin/products';
+  const selectedKey =
+    MENU_ITEMS.find((m) => location.pathname === m.key || location.pathname.startsWith(`${m.key}/`))?.key ??
+    '/admin/products';
 
   return (
     <ConfigProvider theme={ADMIN_THEME}>

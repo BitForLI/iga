@@ -4,6 +4,7 @@ using IGA.Services;
 using igaServer.Data;
 using igaServer.Models;
 using igaServer.DTOs;
+using igaServer.Utils;
 
 namespace igaServer.Controllers
 {
@@ -73,15 +74,17 @@ namespace igaServer.Controllers
                 }
             }
 
-            // === 步骤 3.5: 配送订单需校验区域并计算运费 ===
-            var allowedSuburbs = new[] { "hurstville", "allawah", "carlton", "roseland" };
+            // === 步骤 3.5: 配送订单需校验区域（运费在商品小计后按分区 + 满额包邮计算） ===
             if (request.OrderType == "Delivery")
             {
                 var suburb = (request.DeliverySuburb ?? "").Trim();
                 if (string.IsNullOrEmpty(suburb))
                     return BadRequest(new { error = "Please select delivery suburb" });
-                if (!allowedSuburbs.Contains(suburb.ToLowerInvariant()))
-                    return BadRequest(new { error = "We only deliver to Hurstville, Allawah, Carlton, Roseland" });
+                if (!StoreDeliveryHelper.IsAllowedSuburb(suburb))
+                {
+                    var names = string.Join(", ", StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(StoreDeliveryHelper.DisplaySuburb));
+                    return BadRequest(new { error = $"We only deliver to {names}" });
+                }
             }
 
             // === 步骤 4: 创建订单对象 ===
@@ -138,13 +141,19 @@ namespace igaServer.Controllers
                 totalAmount += lineAmount;
             }
 
-            // 配送订单：按消费金额计算运费，50 以上免运费
+            // 配送订单：分区运费（StoreConfigs.DeliveryZoneFeesJson，空则每区默认 $10），满 FreeDeliveryThreshold 包邮
             if (request.OrderType == "Delivery")
             {
-                decimal deliveryFee = totalAmount >= 50 ? 0
-                    : totalAmount >= 35 ? 3
-                    : totalAmount >= 20 ? 5
-                    : 8;
+                var store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+                var freeMin = store != null && store.FreeDeliveryThreshold > 0
+                    ? store.FreeDeliveryThreshold
+                    : StoreDeliveryHelper.DefaultFreeShippingMinAud;
+                var itemsSubtotal = totalAmount;
+                var deliveryFee = StoreDeliveryHelper.ComputeDeliveryFeeAud(
+                    request.DeliverySuburb,
+                    itemsSubtotal,
+                    store?.DeliveryZoneFeesJson,
+                    freeMin);
                 totalAmount += deliveryFee;
             }
 
