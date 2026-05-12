@@ -118,23 +118,25 @@ export function StaffLayout() {
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item-selected .anticon {
           color: #ecfdf5 !important;
         }
-        /* Orders 子菜单内联区域：仅子列表浅灰底，与侧栏深绿区分 */
+        /* Orders 子菜单内联区：与侧栏同色绿底，白字加粗 */
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline {
-          background: #e8edf0 !important;
+          background: #064e3b !important;
         }
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item {
-          color: #1e293b !important;
+          color: #ffffff !important;
+          font-weight: 700 !important;
         }
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item:hover {
-          background: #dce3e8 !important;
-          color: #0f172a !important;
+          background: rgba(16, 185, 129, 0.22) !important;
+          color: #ffffff !important;
         }
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item-selected {
-          background: #d1fae5 !important;
-          color: #065f46 !important;
+          background: #047857 !important;
+          color: #ecfdf5 !important;
+          font-weight: 700 !important;
         }
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item-selected .anticon {
-          color: #047857 !important;
+          color: #ecfdf5 !important;
         }
       `}</style>
       <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#c9d4cf' }}>
