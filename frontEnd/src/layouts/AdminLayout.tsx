@@ -73,7 +73,7 @@ export function AdminLayout() {
               position: 'fixed',
               inset: 0,
               zIndex: 1000,
-              background: 'rgba(0, 0, 0, 0.45)',
+              background: 'rgba(100, 116, 139, 0.28)',
             }}
           />
         )}
@@ -95,7 +95,7 @@ export function AdminLayout() {
                   zIndex: 1001,
                   height: '100vh',
                   overflowY: 'auto',
-                  boxShadow: '4px 0 24px rgba(0, 0, 0, 0.12)',
+                  boxShadow: '4px 0 20px rgba(55, 65, 81, 0.1)',
                 }
               : {}),
           }}

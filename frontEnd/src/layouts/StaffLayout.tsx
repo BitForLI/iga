@@ -25,7 +25,8 @@ const STAFF_THEME = {
   token: {
     colorPrimary: '#059669',
     colorBgContainer: '#ffffff',
-    colorBgLayout: '#ecfdf5',
+    /** 主区浅灰绿，与侧栏浅灰统一，不抢绿色焦点 */
+    colorBgLayout: '#f1f5f4',
     colorBgElevated: '#ffffff',
     colorText: '#1f2937',
     colorBorder: '#e5e7eb',
@@ -33,6 +34,9 @@ const STAFF_THEME = {
     borderRadius: 6,
   },
 };
+
+const STAFF_SIDER_BG = '#e8edeb';
+const STAFF_OVERLAY = 'rgba(100, 116, 139, 0.28)';
 
 const STAFF_MENU_ITEMS: MenuProps['items'] = [
   {
@@ -83,13 +87,27 @@ export function StaffLayout() {
   return (
     <ConfigProvider theme={STAFF_THEME}>
       <style>{`
-        .staff-layout .ant-menu-dark { background: #065f46 !important; }
-        .staff-layout .ant-menu-dark .ant-menu-item-selected { background: #059669 !important; color: #fff !important; }
-        .staff-layout .ant-menu-dark .ant-menu-item:hover { background: #047857 !important; }
-        .staff-layout .ant-menu-dark .ant-menu-submenu-title:hover { background: #047857 !important; }
         .staff-layout .ant-layout-sider-children { display: flex; flex-direction: column; min-height: 0; }
+        .staff-layout .staff-sider-menu.ant-menu-light {
+          background: transparent !important;
+          color: #334155 !important;
+          border-inline-end: none !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-item-selected {
+          background: #d1fae5 !important;
+          color: #047857 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-item:hover,
+        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-title:hover {
+          background: #ecfdf5 !important;
+          color: #065f46 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title {
+          color: #047857 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-arrow { color: #94a3b8 !important; }
       `}</style>
-      <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#ecfdf5' }}>
+      <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#f1f5f4' }}>
         {drawerOpen && (
           <div
             role="presentation"
@@ -99,7 +117,7 @@ export function StaffLayout() {
               position: 'fixed',
               inset: 0,
               zIndex: 1000,
-              background: 'rgba(0, 0, 0, 0.45)',
+              background: STAFF_OVERLAY,
             }}
           />
         )}
@@ -111,7 +129,8 @@ export function StaffLayout() {
           width={220}
           collapsedWidth={isCompact ? 0 : 72}
           style={{
-            background: '#065f46',
+            background: STAFF_SIDER_BG,
+            borderRight: '1px solid #d1dcd8',
             ...(drawerOpen
               ? {
                   position: 'fixed',
@@ -121,7 +140,7 @@ export function StaffLayout() {
                   zIndex: 1001,
                   height: '100vh',
                   overflowY: 'auto',
-                  boxShadow: '4px 0 24px rgba(0, 0, 0, 0.12)',
+                  boxShadow: '4px 0 20px rgba(6, 95, 70, 0.08)',
                 }
               : {}),
           }}
@@ -133,7 +152,7 @@ export function StaffLayout() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: collapsed && !isCompact ? 'center' : 'flex-start',
-              color: '#fff',
+              color: '#14532d',
               fontSize: 18,
               fontWeight: 600,
             }}
@@ -141,7 +160,8 @@ export function StaffLayout() {
             {collapsed && !isCompact ? 'IGA' : 'IGA Prep'}
           </div>
           <Menu
-            theme="dark"
+            className="staff-sider-menu"
+            theme="light"
             mode="inline"
             selectedKeys={selectedKeys}
             openKeys={openKeys}
@@ -155,7 +175,7 @@ export function StaffLayout() {
             style={{ flex: 1, background: 'transparent', border: 'none' }}
           />
         </Sider>
-        <Layout style={{ background: '#ecfdf5', minWidth: 0, flex: 1 }}>
+        <Layout style={{ background: '#f1f5f4', minWidth: 0, flex: 1 }}>
           <Header
             style={{
               padding: isCompact ? '0 10px' : '0 16px',
@@ -190,7 +210,7 @@ export function StaffLayout() {
             style={{
               margin: isCompact ? 8 : 16,
               overflow: 'auto',
-              background: '#ecfdf5',
+              background: '#f1f5f4',
               minWidth: 0,
               boxSizing: 'border-box',
             }}
