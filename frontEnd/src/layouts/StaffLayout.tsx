@@ -118,6 +118,24 @@ export function StaffLayout() {
         .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item-selected .anticon {
           color: #ecfdf5 !important;
         }
+        /* Orders 子菜单内联区域：仅子列表浅灰底，与侧栏深绿区分 */
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline {
+          background: #e8edf0 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item {
+          color: #1e293b !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item:hover {
+          background: #dce3e8 !important;
+          color: #0f172a !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item-selected {
+          background: #d1fae5 !important;
+          color: #065f46 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-sub.ant-menu-inline > .ant-menu-item-selected .anticon {
+          color: #047857 !important;
+        }
       `}</style>
       <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#c9d4cf' }}>
         {drawerOpen && (
