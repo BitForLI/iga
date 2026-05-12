@@ -123,31 +123,34 @@ function MainApp() {
         <div
           style={{
             display: 'flex',
+            flexDirection: 'row',
             alignItems: 'center',
-            gap: isNarrow ? '0.35rem' : '0.5rem',
-            width: '100%',
+            gap: isNarrow ? '0.75rem' : '2rem',
+            flex: 1,
             minWidth: 0,
-            position: 'relative',
-            justifyContent: 'center',
           }}
         >
           {!isNarrow && (
             <div
               style={{
+                flex: 1,
+                minWidth: 0,
                 display: 'flex',
-                alignItems: 'center',
-                width: 'min(900px, calc(100vw - 200px))',
-                minWidth: 360,
-                margin: '0 auto',
-                position: 'absolute',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                border: '1px solid #d1d5db',
-                borderRadius: '20px',
-                overflow: 'hidden',
-                backgroundColor: 'white',
+                justifyContent: 'flex-start',
               }}
             >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: 'min(900px, 100%)',
+                  minWidth: 280,
+                  border: '1px solid #d1d5db',
+                  borderRadius: '20px',
+                  overflow: 'hidden',
+                  backgroundColor: 'white',
+                }}
+              >
               <button
                 type="button"
                 onClick={scrollToSearchResults}
@@ -183,27 +186,32 @@ function MainApp() {
                   padding: '0.5rem 1rem 0.5rem 0',
                 }}
               />
+              </div>
             </div>
           )}
 
           {isNarrow && (
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                alignSelf: 'center',
-                width: 'min(560px, calc(100vw - 5.5rem))',
+                flex: 1,
                 minWidth: 0,
-                margin: '0 auto',
-                position: 'absolute',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                border: '1px solid #d1d5db',
-                borderRadius: 10,
-                overflow: 'hidden',
-                backgroundColor: 'white',
+                display: 'flex',
+                justifyContent: 'flex-start',
               }}
             >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: '100%',
+                  maxWidth: 'min(560px, calc(100vw - 5.5rem))',
+                  minWidth: 0,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  backgroundColor: 'white',
+                }}
+              >
               <button
                 type="button"
                 onClick={scrollToSearchResults}
@@ -239,6 +247,7 @@ function MainApp() {
                   padding: '0.32rem 0.55rem 0.32rem 0',
                 }}
               />
+              </div>
             </div>
           )}
 
@@ -247,11 +256,7 @@ function MainApp() {
               display: 'flex',
               gap: isNarrow ? '0.5rem' : '1rem',
               alignItems: 'center',
-              alignSelf: isNarrow ? 'center' : undefined,
               flexShrink: 0,
-              marginLeft: 'auto',
-              position: 'relative',
-              zIndex: 2,
             }}
           >
             <PickupDeliverySidebar compact={isNarrow} />
