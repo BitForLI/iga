@@ -53,20 +53,24 @@ function useOrderAlertSound() {
   return { play, stop, enable, isEnabled: enabled };
 }
 
-/** 履约订单：待支付 → 待接单(Paid) → 备货 → 待取/送 */
+/** 履约订单：待支付 → 待接单 → 备货 → 待取/待送 → 已完成（已取/已交接） */
 const TAB_ITEMS = [
   { key: 'Pending', label: 'Awaiting payment' },
   { key: 'Paid', label: 'To accept' },
   { key: 'Preparing', label: 'Preparing' },
   { key: 'PreparedPickup', label: 'Ready for pickup' },
   { key: 'PreparedDelivery', label: 'Ready for delivery' },
+  { key: 'CompletedPickup', label: 'Completed (pickup)' },
+  { key: 'CompletedDelivery', label: 'Completed (delivery)' },
   { key: 'RefundRequested', label: 'Refund requests' },
 ] as const;
 
-function resolveTabParams(tab: string | undefined): { status?: string; orderType?: string } {
+function resolveTabParams(tab: string | undefined): { status?: string; orderType?: string; pickedUp?: boolean } {
   if (!tab) return { status: 'Pending' };
-  if (tab === 'PreparedPickup') return { status: 'Prepared', orderType: 'Pickup' };
-  if (tab === 'PreparedDelivery') return { status: 'Prepared', orderType: 'Delivery' };
+  if (tab === 'PreparedPickup') return { status: 'Prepared', orderType: 'Pickup', pickedUp: false };
+  if (tab === 'PreparedDelivery') return { status: 'Prepared', orderType: 'Delivery', pickedUp: false };
+  if (tab === 'CompletedPickup') return { status: 'Prepared', orderType: 'Pickup', pickedUp: true };
+  if (tab === 'CompletedDelivery') return { status: 'Prepared', orderType: 'Delivery', pickedUp: true };
   if (tab === 'Pending' || tab === 'Paid' || tab === 'Preparing' || tab === 'RefundRequested') return { status: tab };
   return { status: 'Pending' };
 }
@@ -121,13 +125,14 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   const fetchOrders = useCallback(async (page = 1, pageSize = 10, tabKey?: string, silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { status, orderType } = resolveTabParams(tabKey);
+      const { status, orderType, pickedUp } = resolveTabParams(tabKey);
       const res = (await apiClient.get('/admin/orders', {
         params: {
           page,
           pageSize,
           ...(status ? { status } : {}),
           ...(orderType ? { orderType } : {}),
+          ...(pickedUp !== undefined ? { pickedUp } : {}),
         },
       })) as { items?: any[]; total?: number };
       const list = res?.items ?? [];
@@ -176,6 +181,8 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
         Preparing: (c?.preparing ?? c?.Preparing) ?? 0,
         PreparedPickup: (c?.preparedPickup ?? c?.PreparedPickup) ?? 0,
         PreparedDelivery: (c?.preparedDelivery ?? c?.PreparedDelivery) ?? 0,
+        CompletedPickup: (c?.completedPickup ?? c?.CompletedPickup) ?? 0,
+        CompletedDelivery: (c?.completedDelivery ?? c?.CompletedDelivery) ?? 0,
         RefundRequested: (c?.refundRequested ?? c?.RefundRequested) ?? 0,
       });
     } catch (_) {}
@@ -275,7 +282,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     setPickedUpId(orderId);
     try {
       await apiClient.post(`/admin/order-picked-up/${orderId}`, {});
-      message.success('Marked as picked up');
+      message.success('Marked as picked up — see Completed tab for this order');
       fetchCounts();
       fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
     } catch (e) {
@@ -329,13 +336,30 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     {
       title: 'Pickup / Delivery',
       key: 'pickupOrDelivery',
-      width: 140,
-      render: (_: unknown, r: OrderRow) =>
-        r.orderType === 'Pickup' && r.pickupTime
-          ? new Date(r.pickupTime).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : r.orderType === 'Delivery' && r.deliveryAddress
-            ? (r.deliveryAddress.length > 12 ? r.deliveryAddress.slice(0, 12) + '…' : r.deliveryAddress)
-            : '-',
+      width: 160,
+      render: (_: unknown, r: OrderRow) => {
+        if (r.pickedUpAt) {
+          const t = new Date(r.pickedUpAt).toLocaleString('en-AU', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          return <span style={{ color: '#059669' }}>Done {t}</span>;
+        }
+        if (r.orderType === 'Pickup' && r.pickupTime) {
+          return new Date(r.pickupTime).toLocaleString('zh-CN', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        }
+        if (r.orderType === 'Delivery' && r.deliveryAddress) {
+          return r.deliveryAddress.length > 12 ? `${r.deliveryAddress.slice(0, 12)}…` : r.deliveryAddress;
+        }
+        return '-';
+      },
     },
     {
       title: 'Total',
@@ -401,7 +425,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
             </Button>
           )}
           {r.orderStatus === 'Prepared' && r.pickedUpAt && (
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>Marked</span>
+            <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>Completed</span>
           )}
         </span>
       ),

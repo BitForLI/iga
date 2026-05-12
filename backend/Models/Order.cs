@@ -38,7 +38,7 @@ namespace igaServer.Models
         public string? DeliveryAddress { get; set; } // 配送地址
         public double? DeliveryDistanceKm { get; set; } // 配送距离
 
-        /// <summary>顾客已取货/已交接（Ready 列表内置底）；仍为 Prepared 状态。</summary>
+        /// <summary>顾客已取货/已交接时间；仍为 Prepared，在后台「Completed *」列表中展示。</summary>
         public DateTime? PickedUpAt { get; set; }
 
         // --- 关联 ---

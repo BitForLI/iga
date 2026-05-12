@@ -333,7 +333,7 @@ function App() {
               element={
                 <OrderManagementPage
                   initialTab="Paid"
-                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery']}
+                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'CompletedPickup', 'CompletedDelivery']}
                 />
               }
             />

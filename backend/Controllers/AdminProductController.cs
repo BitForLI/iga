@@ -148,9 +148,16 @@ namespace igaServer.Controllers
                 .ToListAsync();
             var total = await _context.Orders.CountAsync();
             var dict = counts.ToDictionary(x => string.IsNullOrEmpty(x.status) ? "" : x.status, x => x.count);
-            var preparedPickup = await _context.Orders.CountAsync(o => o.OrderStatus == "Prepared" && o.OrderType == "Pickup");
-            var preparedDelivery = await _context.Orders.CountAsync(o => o.OrderStatus == "Prepared" && o.OrderType == "Delivery");
-            var totalPrepared = preparedPickup + preparedDelivery;
+            // Ready：Prepared 且尚未标记取走/交接；Completed*：已标记（仍存为 Prepared + PickedUpAt）
+            var preparedPickup = await _context.Orders.CountAsync(o =>
+                o.OrderStatus == "Prepared" && o.OrderType == "Pickup" && !o.PickedUpAt.HasValue);
+            var preparedDelivery = await _context.Orders.CountAsync(o =>
+                o.OrderStatus == "Prepared" && o.OrderType == "Delivery" && !o.PickedUpAt.HasValue);
+            var completedPickup = await _context.Orders.CountAsync(o =>
+                o.OrderStatus == "Prepared" && o.OrderType == "Pickup" && o.PickedUpAt.HasValue);
+            var completedDelivery = await _context.Orders.CountAsync(o =>
+                o.OrderStatus == "Prepared" && o.OrderType == "Delivery" && o.PickedUpAt.HasValue);
+            var totalPrepared = preparedPickup + preparedDelivery + completedPickup + completedDelivery;
             return Ok(new
             {
                 total,
@@ -159,6 +166,8 @@ namespace igaServer.Controllers
                 Prepared = dict.GetValueOrDefault("Prepared", 0),
                 PreparedPickup = preparedPickup,
                 PreparedDelivery = preparedDelivery,
+                CompletedPickup = completedPickup,
+                CompletedDelivery = completedDelivery,
                 TotalPrepared = totalPrepared,
                 Completed = dict.GetValueOrDefault("Completed", 0),
                 Pending = dict.GetValueOrDefault("Pending", 0),
@@ -172,7 +181,8 @@ namespace igaServer.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10,
             [FromQuery] string? status = null,
-            [FromQuery] string? orderType = null)
+            [FromQuery] string? orderType = null,
+            [FromQuery] bool? pickedUp = null)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
             if (string.IsNullOrEmpty(status) || status == "Pending" || status == "Paid")
@@ -186,8 +196,19 @@ namespace igaServer.Controllers
                 query = query.Where(o => o.OrderStatus == status);
             if (!string.IsNullOrEmpty(orderType))
                 query = query.Where(o => o.OrderType == orderType);
-            // Prepared：未标记已取货的在上，已取货置底；同组内按时间倒序
-            if (status == "Prepared")
+            // Prepared + 指定 Pickup/Delivery：默认只列「待取/待交接」；pickedUp=true 只列已完成（有 PickedUpAt）
+            if (string.Equals(status, "Prepared", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(orderType))
+            {
+                if (pickedUp == true)
+                    query = query.Where(o => o.PickedUpAt != null);
+                else
+                    query = query.Where(o => o.PickedUpAt == null);
+                query = pickedUp == true
+                    ? query.OrderByDescending(o => o.PickedUpAt)
+                    : query.OrderByDescending(o => o.CreatedAt);
+            }
+            else if (string.Equals(status, "Prepared", StringComparison.OrdinalIgnoreCase))
             {
                 query = query
                     .OrderBy(o => o.PickedUpAt.HasValue)
@@ -257,7 +278,7 @@ namespace igaServer.Controllers
         }
 
         /// <summary>
-        /// 标记顾客已取货/已交接：仍为 Prepared，列表内置底（与 order-ready 同风格路径）。
+        /// 标记顾客已取货/已交接：仍为 Prepared；从 Ready 列表消失，出现在 Completed pickup/delivery 列表。
         /// </summary>
         [HttpPost("order-picked-up/{orderId}")]
         public Task<IActionResult> MarkOrderPickedUp(int orderId) => MarkOrderPickedUpCore(orderId);
