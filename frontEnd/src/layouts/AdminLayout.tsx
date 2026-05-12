@@ -93,7 +93,7 @@ export function AdminLayout() {
               <MenuFoldOutlined style={{ fontSize: 18, cursor: 'pointer', color: '#374151' }} onClick={() => setCollapsed(true)} />
             )}
             <Link to="/staff/orders" style={{ color: '#6b7280', fontSize: 13 }}>
-              订单备货（员工入口）
+              Orders (staff)
             </Link>
             <Link to="/" style={{ marginLeft: 'auto', color: '#6b7280' }}>
               Back to store

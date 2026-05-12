@@ -73,63 +73,83 @@ function HomeCategoryBar({
   onSelectCategory: (v: string) => void;
   compact: boolean;
 }) {
-  const mid = Math.ceil(HOME_CATEGORIES.length / 2);
-  const row1 = HOME_CATEGORIES.slice(0, mid);
-  const row2 = HOME_CATEGORIES.slice(mid);
   const gap = compact ? 6 : 8;
   const padY = compact ? '0.35rem' : '0.45rem';
-  const padX = compact ? '0.5rem' : '0.65rem';
-  const fontSize = compact ? '0.72rem' : '0.8rem';
-
-  const chip = (cat: (typeof HOME_CATEGORIES)[number]) => {
-    const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
-    return (
-      <button
-        key={cat.label}
-        type="button"
-        onClick={() => {
-          if (cat.value === '') onSelectCategory('');
-          else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
-        }}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: `${padY} ${padX}`,
-          borderRadius: 9999,
-          border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
-          backgroundColor: isSelected ? '#fef2f2' : 'white',
-          color: isSelected ? '#dc2626' : '#374151',
-          fontWeight: 600,
-          fontSize,
-          cursor: 'pointer',
-          lineHeight: 1.2,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {cat.icon ? (
-          <img src={cat.icon} alt="" style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, objectFit: 'contain' }} />
-        ) : (
-          <AppstoreOutlined style={{ fontSize: compact ? 16 : 18, color: isSelected ? '#dc2626' : '#6b7280' }} />
-        )}
-        {cat.label}
-      </button>
-    );
-  };
+  const padX = compact ? '0.4rem' : '0.5rem';
+  const fontSize = compact ? '0.68rem' : '0.78rem';
+  /** 6 列：第一行 6 个、第二行 5 个自动落位，列宽一致，末格留空 */
+  const cols = 6;
 
   return (
     <div
       style={{
         width: '100%',
-        maxWidth: 900,
+        maxWidth: compact ? '100%' : 960,
         margin: '0 auto 1.5rem',
         padding: compact ? '0.5rem 0' : '0.65rem 0',
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compact ? 8 : 10 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap }}>{row1.map(chip)}</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap }}>{row2.map(chip)}</div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gap,
+          width: '100%',
+        }}
+      >
+        {HOME_CATEGORIES.map((cat) => {
+          const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
+          return (
+            <button
+              key={cat.label}
+              type="button"
+              onClick={() => {
+                if (cat.value === '') onSelectCategory('');
+                else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                minWidth: 0,
+                width: '100%',
+                padding: `${padY} ${padX}`,
+                borderRadius: 8,
+                border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
+                backgroundColor: isSelected ? '#fef2f2' : 'white',
+                color: isSelected ? '#dc2626' : '#374151',
+                fontWeight: 600,
+                fontSize,
+                cursor: 'pointer',
+                lineHeight: 1.2,
+                textAlign: 'center',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {cat.icon ? (
+                <img
+                  src={cat.icon}
+                  alt=""
+                  style={{
+                    width: compact ? 14 : 16,
+                    height: compact ? 14 : 16,
+                    objectFit: 'contain',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <AppstoreOutlined
+                  style={{ fontSize: compact ? 14 : 16, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
+                />
+              )}
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -186,7 +206,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
         setProducts(list);
         setSpecialProducts(list.length > 0 ? pickSpecialStripProducts(list) : []);
       } catch (e) {
-        const msg = (e as Error)?.message ?? '加载商品失败';
+        const msg = (e as Error)?.message ?? 'Failed to load products';
         setFetchError(msg);
         setProducts([]);
         setSpecialProducts([]);
@@ -227,7 +247,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
             whiteSpace: 'pre-wrap',
           }}
         >
-          无法从服务器加载商品：{fetchError}
+          Could not load products from the server: {fetchError}
         </div>
       )}
       {/* 轮换图 - 未选分类且未在搜索时显示 */}

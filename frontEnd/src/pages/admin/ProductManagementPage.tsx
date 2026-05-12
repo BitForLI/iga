@@ -90,7 +90,7 @@ export function ProductManagementPage() {
       } catch (e) {
         if (isRequestAborted(e)) return;
         const detail = e instanceof Error ? e.message : String(e);
-        message.warning(`无法加载商品：${detail}（已显示示例数据）`);
+        message.warning(`Could not load products: ${detail}. Showing sample data.`);
         setData(MOCK_PRODUCTS);
         setPagination((p) => ({ ...p, current: 1, total: MOCK_PRODUCTS.length }));
         setUseMock(true);

@@ -24,6 +24,17 @@ export const authAPI = {
     apiClient.post<{ emailSent: boolean; message: string }>('/auth/resend-verification', data),
   login: (data: { email: string; password: string }) =>
     apiClient.post<{ id: number; name: string; email: string; phoneNumber: string }>('/auth/login', data),
+  forgotPassword: (data: { email: string }) =>
+    apiClient.post<{ message: string }>('/auth/forgot-password', data),
+  resendPasswordReset: (data: { email: string }) =>
+    apiClient.post<{ message: string }>('/auth/resend-password-reset', data),
+  resetPasswordWithCode: (data: { email: string; code: string; newPassword: string }) =>
+    apiClient.post<{ message: string }>('/auth/reset-password', data),
+};
+
+export const contactAPI = {
+  sendInquiry: (data: { name: string; email: string; message: string }) =>
+    apiClient.post<{ ok?: boolean; message?: string }>('/contact/inquiry', data),
 };
 
 export const productAPI = {

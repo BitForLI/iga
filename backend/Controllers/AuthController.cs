@@ -27,7 +27,7 @@ namespace igaServer.Controllers
             _logger = logger;
         }
 
-        /// <summary>注册：仅写入待验证表 <see cref="PendingRegistration"/>，验证通过后才创建 <see cref="User"/>。</summary>
+        /// <summary>Register: writes only to <see cref="PendingRegistration"/> until email is verified, then creates <see cref="User"/>.</summary>
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest? request)
         {
@@ -75,7 +75,7 @@ namespace igaServer.Controllers
             if (!sent)
             {
                 _logger.LogWarning(
-                    "[Auth] 注册验证码邮件未发出（Resend 未配置或失败）。开发环境可在控制台查找日志。邮箱: {Email} 验证码: {Code}",
+                    "[Auth] Registration verification email was not sent (Resend missing or failed). In development, check logs for the code. Email: {Email} Code: {Code}",
                     email,
                     code);
             }
@@ -93,7 +93,7 @@ namespace igaServer.Controllers
             });
         }
 
-        /// <summary>提交邮箱验证码，通过后首次写入 <see cref="User"/>（已验证）。</summary>
+        /// <summary>Submit email verification code; on success creates verified <see cref="User"/>.</summary>
         [HttpPost("verify-email")]
         public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
         {
@@ -141,7 +141,7 @@ namespace igaServer.Controllers
             });
         }
 
-        /// <summary>重新发送验证码（仅待验证注册 <see cref="PendingRegistration"/>）。</summary>
+        /// <summary>Resend verification code for pending <see cref="PendingRegistration"/> only.</summary>
         [HttpPost("resend-verification")]
         public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest? request)
         {
@@ -167,7 +167,7 @@ namespace igaServer.Controllers
 
             var sent = await _resendEmail.SendRegistrationVerificationAsync(email, pending.Name, code);
             if (!sent)
-                _logger.LogWarning("[Auth] 重发验证码失败。邮箱: {Email} 验证码: {Code}", email, code);
+                _logger.LogWarning("[Auth] Failed to resend verification email. Email: {Email} Code: {Code}", email, code);
 
             return Ok(new { emailSent = sent, message = sent ? "Verification code resent. Check your email to complete registration." : "Could not send email. Check logs." });
         }
@@ -201,6 +201,77 @@ namespace igaServer.Controllers
             });
         }
 
+        private const string PasswordResetUserMessage =
+            "If an account exists for this email, a verification code has been sent. It expires in 15 minutes.";
+
+        /// <summary>Sends a 6-digit code to verified accounts for password reset. Unknown emails get the same response to avoid enumeration.</summary>
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest? request)
+        {
+            if (request == null)
+                return BadRequest("Invalid JSON body");
+            if (string.IsNullOrWhiteSpace(request.Email))
+                return BadRequest("Email is required");
+
+            var email = NormalizeEmail(request.Email);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            if (user != null && user.EmailVerified)
+            {
+                var code = Random.Shared.Next(100000, 1000000).ToString("D6");
+                user.EmailVerificationCodeHash = HashPasswordResetCode(email, code);
+                user.EmailVerificationExpiresUtc = DateTime.UtcNow.AddMinutes(15);
+                await _context.SaveChangesAsync();
+
+                var sent = await _resendEmail.SendPasswordResetVerificationAsync(email, user.Name, code);
+                if (!sent)
+                    _logger.LogWarning("[Auth] Password reset verification email was not sent. Email: {Email} Code: {Code}", email, code);
+            }
+
+            return Ok(new { message = PasswordResetUserMessage });
+        }
+
+        /// <summary>Resend password-reset code (same behaviour as forgot-password).</summary>
+        [HttpPost("resend-password-reset")]
+        public Task<IActionResult> ResendPasswordReset([FromBody] ForgotPasswordRequest? request) =>
+            ForgotPassword(request);
+
+        /// <summary>Validates email code and updates the sign-in password.</summary>
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest? request)
+        {
+            if (request == null)
+                return BadRequest("Invalid JSON body");
+            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.NewPassword))
+                return BadRequest("Email and new password are required");
+
+            var email = NormalizeEmail(request.Email);
+            if (request.NewPassword.Length < 6)
+                return BadRequest("New password must be at least 6 characters.");
+
+            var codeDigits = new string((request.Code ?? "").Where(char.IsDigit).ToArray());
+            if (codeDigits.Length != 6)
+                return BadRequest("Invalid verification code");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            if (user == null || !user.EmailVerified || string.IsNullOrEmpty(user.EmailVerificationCodeHash) ||
+                !user.EmailVerificationExpiresUtc.HasValue)
+                return BadRequest("Invalid or expired verification code.");
+
+            if (user.EmailVerificationExpiresUtc.Value < DateTime.UtcNow)
+                return BadRequest("Invalid or expired verification code.");
+
+            var inputHash = HashPasswordResetCode(email, codeDigits);
+            if (user.EmailVerificationCodeHash != inputHash)
+                return BadRequest("Invalid or expired verification code.");
+
+            user.PasswordHash = HashPassword(request.NewPassword);
+            user.EmailVerificationCodeHash = null;
+            user.EmailVerificationExpiresUtc = null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password has been updated. You can sign in now." });
+        }
+
         private static string HashPassword(string password)
         {
             using var sha256 = SHA256.Create();
@@ -213,6 +284,15 @@ namespace igaServer.Controllers
         private static string HashVerificationCode(string email, string code)
         {
             var raw = $"{email.Trim().ToLowerInvariant()}:{code.Trim()}";
+            using var sha256 = SHA256.Create();
+            var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(raw));
+            return BitConverter.ToString(hashedBytes).Replace("-", "").ToLowerInvariant();
+        }
+
+        /// <summary>Hash for password-reset codes; distinct from registration verification to avoid collisions.</summary>
+        private static string HashPasswordResetCode(string email, string code)
+        {
+            var raw = $"pwreset:v1|{email.Trim().ToLowerInvariant()}|{code.Trim()}";
             using var sha256 = SHA256.Create();
             var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(raw));
             return BitConverter.ToString(hashedBytes).Replace("-", "").ToLowerInvariant();
@@ -241,5 +321,17 @@ namespace igaServer.Controllers
     {
         public string? Email { get; set; }
         public string? Password { get; set; }
+    }
+
+    public class ForgotPasswordRequest
+    {
+        public string? Email { get; set; }
+    }
+
+    public class ResetPasswordRequest
+    {
+        public string? Email { get; set; }
+        public string? Code { get; set; }
+        public string? NewPassword { get; set; }
     }
 }

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { authAPI } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { PasswordResetForm } from '../components/PasswordResetForm';
 
 export function Register() {
   const [formData, setFormData] = useState({
@@ -14,6 +15,8 @@ export function Register() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const [successBanner, setSuccessBanner] = useState('');
   const { setUser } = useAuth();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,6 +26,7 @@ export function Register() {
   const handleSubmitRegister = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessBanner('');
     setLoading(true);
     try {
       await authAPI.register({
@@ -78,6 +82,23 @@ export function Register() {
     }
   };
 
+  if (passwordResetOpen) {
+    return (
+      <div className="space-y-4 max-w-md mx-auto p-4">
+        <h2 className="text-2xl font-bold">Change password</h2>
+        <PasswordResetForm
+          initialEmail={formData.Email}
+          onBack={() => { setPasswordResetOpen(false); setError(''); }}
+          onSuccess={() => {
+            setPasswordResetOpen(false);
+            setSuccessBanner('Your password has been updated. Please sign in with your new password.');
+            setStep('form');
+          }}
+        />
+      </div>
+    );
+  }
+
   if (step === 'verify') {
     return (
       <form onSubmit={handleVerify} className="space-y-4 max-w-md mx-auto p-4">
@@ -119,6 +140,13 @@ export function Register() {
         >
           Back
         </button>
+        <button
+          type="button"
+          onClick={() => { setSuccessBanner(''); setPasswordResetOpen(true); setError(''); }}
+          className="w-full text-sm text-gray-600 hover:underline"
+        >
+          Change password
+        </button>
       </form>
     );
   }
@@ -126,6 +154,7 @@ export function Register() {
   return (
     <form onSubmit={handleSubmitRegister} className="space-y-4 max-w-md mx-auto p-4">
       <h2 className="text-2xl font-bold">Register</h2>
+      {successBanner && <p className="text-sm text-green-700 bg-green-50 p-2 rounded">{successBanner}</p>}
       {error && <p className="text-red-500">{error}</p>}
 
       <input
@@ -168,7 +197,7 @@ export function Register() {
         <button
           type="button"
           tabIndex={-1}
-          aria-label={showPassword ? '隐藏密码' : '显示密码'}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
           onClick={() => setShowPassword((v) => !v)}
           style={{
             position: 'absolute',
@@ -201,6 +230,13 @@ export function Register() {
         className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
       >
         {loading ? 'Sending code...' : 'Send verification code'}
+      </button>
+      <button
+        type="button"
+        onClick={() => { setSuccessBanner(''); setPasswordResetOpen(true); setError(''); }}
+        className="w-full text-sm text-gray-600 hover:underline"
+      >
+        Change password
       </button>
     </form>
   );

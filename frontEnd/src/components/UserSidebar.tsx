@@ -5,6 +5,7 @@ import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
 import { useAuth, type User } from '../context/AuthContext';
 import { authAPI } from '../api';
 import { orderAPI } from '../api';
+import { PasswordResetForm } from './PasswordResetForm';
 import userIcon from '../assets/images/user.png';
 
 export function UserSidebar({ compact = false }: { compact?: boolean }) {
@@ -134,10 +135,13 @@ function AuthForms({
   const [loading, setLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const [authSuccessMessage, setAuthSuccessMessage] = useState('');
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setAuthSuccessMessage('');
     setLoading(true);
     try {
       const res = await authAPI.login({
@@ -222,10 +226,26 @@ function AuthForms({
 
   return (
     <div>
+      {authSuccessMessage && (
+        <div
+          style={{
+            backgroundColor: '#dcfce7',
+            color: '#166534',
+            padding: '0.75rem',
+            borderRadius: '6px',
+            marginBottom: '1rem',
+            fontSize: '0.875rem',
+          }}
+        >
+          {authSuccessMessage}
+        </div>
+      )}
+
+      {!passwordResetOpen && (
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button
           type="button"
-          onClick={() => { setTab('login'); setError(''); setRegisterStep('form'); }}
+          onClick={() => { setTab('login'); setError(''); setRegisterStep('form'); setPasswordResetOpen(false); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -241,7 +261,7 @@ function AuthForms({
         </button>
         <button
           type="button"
-          onClick={() => { setTab('register'); setError(''); setRegisterStep('form'); }}
+          onClick={() => { setTab('register'); setError(''); setRegisterStep('form'); setPasswordResetOpen(false); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -256,7 +276,24 @@ function AuthForms({
           Register
         </button>
       </div>
+      )}
 
+      {passwordResetOpen ? (
+        <div>
+          <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '1rem' }}>Change password</h3>
+          <PasswordResetForm
+            initialEmail={tab === 'login' ? loginData.Email : registerData.Email}
+            onBack={() => { setPasswordResetOpen(false); setError(''); }}
+            onSuccess={() => {
+              setPasswordResetOpen(false);
+              setAuthSuccessMessage('Your password has been updated. Please sign in with your new password.');
+              setTab('login');
+              setRegisterStep('form');
+            }}
+          />
+        </div>
+      ) : (
+        <>
       {error && (
         <div
           style={{
@@ -304,7 +341,7 @@ function AuthForms({
               <button
                 type="button"
                 tabIndex={-1}
-                aria-label={showLoginPassword ? '隐藏密码' : '显示密码'}
+                aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
                 onClick={() => setShowLoginPassword((v) => !v)}
                 style={{
                   position: 'absolute',
@@ -343,6 +380,26 @@ function AuthForms({
             }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthSuccessMessage('');
+              setPasswordResetOpen(true);
+              setError('');
+            }}
+            style={{
+              alignSelf: 'flex-start',
+              border: 'none',
+              background: 'none',
+              color: '#6b7280',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              textDecoration: 'underline',
+              padding: 0,
+            }}
+          >
+            Change password
           </button>
         </form>
       ) : registerStep === 'verify' ? (
@@ -398,6 +455,26 @@ function AuthForms({
           >
             Back
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthSuccessMessage('');
+              setPasswordResetOpen(true);
+              setError('');
+            }}
+            style={{
+              alignSelf: 'flex-start',
+              border: 'none',
+              background: 'none',
+              color: '#6b7280',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              textDecoration: 'underline',
+              padding: 0,
+            }}
+          >
+            Change password
+          </button>
         </form>
       ) : (
         <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -441,7 +518,7 @@ function AuthForms({
               <button
                 type="button"
                 tabIndex={-1}
-                aria-label={showRegisterPassword ? '隐藏密码' : '显示密码'}
+                aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
                 onClick={() => setShowRegisterPassword((v) => !v)}
                 style={{
                   position: 'absolute',
@@ -481,7 +558,29 @@ function AuthForms({
           >
             {loading ? 'Sending...' : 'Send verification code'}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthSuccessMessage('');
+              setPasswordResetOpen(true);
+              setError('');
+            }}
+            style={{
+              alignSelf: 'flex-start',
+              border: 'none',
+              background: 'none',
+              color: '#6b7280',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              textDecoration: 'underline',
+              padding: 0,
+            }}
+          >
+            Change password
+          </button>
         </form>
+      )}
+        </>
       )}
     </div>
   );
@@ -690,7 +789,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
             <>
               <Link
                 to="/admin/products"
-                title="商品、客户、数据看板"
+                title="Products, customers, and dashboard"
                 style={{
                   padding: '0.35rem 0.75rem',
                   fontSize: '0.8rem',
@@ -701,11 +800,11 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                   textDecoration: 'none',
                 }}
               >
-                商品后台
+                Admin
               </Link>
               <Link
                 to="/staff/orders"
-                title="查看与处理订单（与员工同一界面）"
+                title="View and process orders (same view as staff)"
                 style={{
                   padding: '0.35rem 0.75rem',
                   fontSize: '0.8rem',
@@ -716,7 +815,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                   textDecoration: 'none',
                 }}
               >
-                订单备货
+                Orders
               </Link>
             </>
           ) : null}
@@ -733,7 +832,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                 textDecoration: 'none',
               }}
             >
-              订单备货
+              Orders
             </Link>
           ) : null}
           <button

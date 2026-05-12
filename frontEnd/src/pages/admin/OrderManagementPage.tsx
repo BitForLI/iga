@@ -268,7 +268,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     setPickedUpId(orderId);
     try {
       await apiClient.post(`/admin/order-picked-up/${orderId}`, {});
-      message.success('已标记为已取走');
+      message.success('Marked as picked up');
       fetchCounts();
       fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
     } catch (e) {
@@ -390,11 +390,11 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
               loading={pickedUpId === r.id}
               onClick={() => handleMarkPickedUp(r.id)}
             >
-              {r.orderType === 'Delivery' ? '已交接' : '已取走'}
+              {r.orderType === 'Delivery' ? 'Handed off' : 'Picked up'}
             </Button>
           )}
           {r.orderStatus === 'Prepared' && r.pickedUpAt && (
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>已标记</span>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Marked</span>
           )}
         </span>
       ),

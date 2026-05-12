@@ -264,33 +264,69 @@ using (var scope = app.Services.CreateScope())
     // Railway / 生产库需与代码迁移一致；未执行迁移会出现「column ... does not exist」
     await db.Database.MigrateAsync();
 
-    const string bossEmail = "boss@igabeverlyhills.com";
-    const string bossPasswordHash = "00c698e75d4ec54b27ae2501f08bfbd15b0a6cd0902330ac3cad18f890d706bc"; // Boss@IGA2026!
-    var boss = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == bossEmail);
-    if (boss == null)
+    const string legacyBossEmail = "boss@igabeverlyhills.com";
+    const string bossEmail = "igabeverlyhills@gmail.com";
+    const string staffEmail = "igabeverlyhills+staff@gmail.com";
+    const string bossName = "David";
+    const string staffName = "Staff";
+    const string passwordHash = "6260025bb23c806be4a95b1829bffe9d9e98de1ff2a14c6db5da669dddbaac2e";
+
+    var legacyBoss = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == legacyBossEmail);
+    var bossByGmail = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == bossEmail);
+
+    if (bossByGmail != null)
+    {
+        bossByGmail.Name = bossName;
+        bossByGmail.PasswordHash = passwordHash;
+        bossByGmail.Role = "Admin";
+        bossByGmail.EmailVerified = true;
+        if (legacyBoss != null && legacyBoss.Id != bossByGmail.Id)
+            db.Users.Remove(legacyBoss);
+    }
+    else if (legacyBoss != null)
+    {
+        legacyBoss.Email = bossEmail;
+        legacyBoss.Name = bossName;
+        legacyBoss.PasswordHash = passwordHash;
+        legacyBoss.Role = "Admin";
+        legacyBoss.EmailVerified = true;
+    }
+    else
     {
         db.Users.Add(new User
         {
-            Name = "Boss",
+            Name = bossName,
             Email = bossEmail,
             PhoneNumber = null,
-            PasswordHash = bossPasswordHash,
+            PasswordHash = passwordHash,
             Role = "Admin",
             EmailVerified = true
         });
-        await db.SaveChangesAsync();
-        Console.WriteLine("[数据库] 已创建老板账号 boss@igabeverlyhills.com。");
     }
-    else if (boss.Email != bossEmail || !string.Equals(boss.Role, "Admin", StringComparison.OrdinalIgnoreCase) || !boss.EmailVerified || boss.PasswordHash != bossPasswordHash)
+
+    var staffUser = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == staffEmail);
+    if (staffUser == null)
     {
-        boss.Name = "Boss";
-        boss.Email = bossEmail;
-        boss.PasswordHash = bossPasswordHash;
-        boss.Role = "Admin";
-        boss.EmailVerified = true;
-        await db.SaveChangesAsync();
-        Console.WriteLine("[数据库] 已更新老板账号 boss@igabeverlyhills.com。");
+        db.Users.Add(new User
+        {
+            Name = staffName,
+            Email = staffEmail,
+            PhoneNumber = null,
+            PasswordHash = passwordHash,
+            Role = "Staff",
+            EmailVerified = true
+        });
     }
+    else
+    {
+        staffUser.Name = staffName;
+        staffUser.PasswordHash = passwordHash;
+        staffUser.Role = "Staff";
+        staffUser.EmailVerified = true;
+    }
+
+    await db.SaveChangesAsync();
+    Console.WriteLine("[数据库] 已同步老板/员工账号（Admin / Staff）。");
 
     // 蔬菜/水果清单：按「分类 + 名称」判断是否存在（避免误把水果写在 Vegetables 时，同名挡住 Fruit 插入）
     var (vegAdded, fruitAdded) = await CatalogDatabaseSync.SeedMissingCatalogProductsAsync(db);

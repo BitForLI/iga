@@ -2,10 +2,13 @@ namespace IGA.Services;
 
 public interface IResendEmailService
 {
-    /// <summary>发送注册邮箱验证码。</summary>
+    /// <summary>Sends the registration email verification code.</summary>
     Task<bool> SendRegistrationVerificationAsync(string toEmail, string name, string code, CancellationToken cancellationToken = default);
 
-    /// <summary>支付成功后发送取件码（自取）或订单确认（配送）。</summary>
+    /// <summary>Sends the password-reset verification code.</summary>
+    Task<bool> SendPasswordResetVerificationAsync(string toEmail, string name, string code, CancellationToken cancellationToken = default);
+
+    /// <summary>After payment: pickup code (pickup) or order confirmation (delivery).</summary>
     Task<bool> SendOrderPaidPickupAsync(
         string toEmail,
         string customerName,
@@ -17,7 +20,7 @@ public interface IResendEmailService
         string? pickupAddress,
         CancellationToken cancellationToken = default);
 
-    /// <summary>退款申请已同意并通过 Stripe 处理。</summary>
+    /// <summary>Refund approved and processed via Stripe.</summary>
     Task<bool> SendRefundApprovedAsync(
         string toEmail,
         string customerName,
@@ -26,12 +29,20 @@ public interface IResendEmailService
         DateTime processedAtUtc,
         CancellationToken cancellationToken = default);
 
-    /// <summary>退款申请已拒绝，包含拒绝原因。</summary>
+    /// <summary>Refund rejected, including the reason.</summary>
     Task<bool> SendRefundRejectedAsync(
         string toEmail,
         string customerName,
         int orderId,
         string reason,
         DateTime processedAtUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Website contact form: notify admin/staff; optional Reply-To customer email.</summary>
+    Task<bool> SendContactInquiryAsync(
+        IReadOnlyList<string> toEmails,
+        string customerName,
+        string customerEmail,
+        string message,
         CancellationToken cancellationToken = default);
 }

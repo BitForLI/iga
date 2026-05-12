@@ -13,7 +13,7 @@ export function OrderVerify({ orderId }: { orderId: number }) {
     setMessage('');
     const digits = pickupCode.replace(/\D/g, '').slice(0, 6);
     if (digits.length !== 6) {
-      setError('请输入邮件中的 6 位取货码');
+      setError('Please enter the 6-digit pickup code from your email');
       return;
     }
     setLoading(true);

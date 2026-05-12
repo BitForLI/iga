@@ -1,9 +1,52 @@
 import { useState } from 'react';
+import { message } from 'antd';
+import { contactAPI, ApiRequestError } from '../api';
 import serviceIcon from '../assets/images/客服.png';
 
-/** 原左侧栏底部「联系客服」，侧栏移除后改为左下角浮动入口 */
+/** Bottom-left contact: submits to the backend; Resend emails admin/staff with Reply-To set to the customer. */
 export function ContactService() {
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [msg, setMsg] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const resetAndClose = () => {
+    setOpen(false);
+    setName('');
+    setEmail('');
+    setMsg('');
+  };
+
+  const handleSend = async () => {
+    const n = name.trim();
+    const e = email.trim();
+    const m = msg.trim();
+    if (!n) {
+      message.warning('Please enter your name');
+      return;
+    }
+    if (!e || !e.includes('@')) {
+      message.warning('Please enter a valid email');
+      return;
+    }
+    if (!m) {
+      message.warning('Please enter a message');
+      return;
+    }
+    setSending(true);
+    try {
+      const res = (await contactAPI.sendInquiry({ name: n, email: e, message: m })) as { message?: string };
+      message.success(res?.message ?? 'Sent. We will get back to you soon.');
+      resetAndClose();
+    } catch (err) {
+      const ae = err as ApiRequestError;
+      const detail = (ae?.apiData as { error?: string } | undefined)?.error ?? ae?.message ?? 'Send failed';
+      message.error(detail);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <>
@@ -38,7 +81,7 @@ export function ContactService() {
         <>
           <div
             role="presentation"
-            onClick={() => setOpen(false)}
+            onClick={() => !sending && setOpen(false)}
             style={{
               position: 'fixed',
               inset: 0,
@@ -62,17 +105,19 @@ export function ContactService() {
               flexDirection: 'column',
               gap: '0.75rem',
             }}
+            onClick={(ev) => ev.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Contact Service</h3>
               <button
                 type="button"
+                disabled={sending}
                 onClick={() => setOpen(false)}
                 style={{
                   backgroundColor: 'transparent',
                   border: 'none',
                   fontSize: '1.25rem',
-                  cursor: 'pointer',
+                  cursor: sending ? 'not-allowed' : 'pointer',
                   color: '#999',
                 }}
               >
@@ -82,6 +127,9 @@ export function ContactService() {
             <input
               type="text"
               placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={sending}
               style={{
                 padding: '0.5rem 0.75rem',
                 border: '1px solid #e5e7eb',
@@ -91,7 +139,10 @@ export function ContactService() {
             />
             <input
               type="email"
-              placeholder="Email"
+              placeholder="Your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={sending}
               style={{
                 padding: '0.5rem 0.75rem',
                 border: '1px solid #e5e7eb',
@@ -102,6 +153,9 @@ export function ContactService() {
             <textarea
               placeholder="Your message..."
               rows={3}
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              disabled={sending}
               style={{
                 padding: '0.5rem 0.75rem',
                 border: '1px solid #e5e7eb',
@@ -112,18 +166,20 @@ export function ContactService() {
             />
             <button
               type="button"
+              disabled={sending}
+              onClick={() => void handleSend()}
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: '#dc2626',
+                backgroundColor: sending ? '#9ca3af' : '#dc2626',
                 color: 'white',
                 border: 'none',
                 borderRadius: '6px',
                 fontWeight: 'bold',
                 fontSize: '0.875rem',
-                cursor: 'pointer',
+                cursor: sending ? 'not-allowed' : 'pointer',
               }}
             >
-              Send
+              {sending ? 'Sending…' : 'Send'}
             </button>
           </div>
         </>
