@@ -12,6 +12,7 @@ import productImageFallback from '../../assets/images/main.png';
 const CATEGORY_FILTER_OPTIONS = [
   { value: '', label: 'All categories' },
   { value: 'Special', label: 'Special' },
+  { value: 'Recommended', label: 'Recommended' },
   { value: 'Fruit', label: 'Fruit' },
   { value: 'Vegetables', label: 'Vegetables' },
   { value: 'Grocery', label: 'Grocery' },

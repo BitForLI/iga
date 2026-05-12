@@ -14,6 +14,15 @@ import minusIcon from '../assets/images/减.png';
 import { AppstoreOutlined } from '@ant-design/icons';
 import vegetableIcon from '../assets/images/vegetable.png';
 import fruitIcon from '../assets/images/fruit.png';
+import specialCategoryIcon from '../assets/images/Discount-打折-1.png';
+import recommendedCategoryIcon from '../assets/images/推荐.png';
+import groceryCategoryIcon from '../assets/images/杂货其他-01.png';
+import frozenCategoryIcon from '../assets/images/冷冻食品.png';
+import drinkCategoryIcon from '../assets/images/饮料.png';
+import dairyCategoryIcon from '../assets/images/DairyProducts,乳制品.png';
+import meatCategoryIcon from '../assets/images/肉.png';
+import bakeryCategoryIcon from '../assets/images/面包.png';
+import pantryCategoryIcon from '../assets/images/Pantry.png';
 
 interface Product {
   id: number;
@@ -50,18 +59,20 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
   );
 }
 
-/** 与后台分类一致；value 空字符串表示「全部」 */
+/** Aligned with admin product categories; empty value = all products */
 const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'All Products', value: '' },
+  { label: 'Special', value: 'Special', icon: specialCategoryIcon },
+  { label: 'Recommended', value: 'Recommended', icon: recommendedCategoryIcon },
   { label: 'Vegetables', value: 'Vegetables', icon: vegetableIcon },
   { label: 'Fruit', value: 'Fruit', icon: fruitIcon },
-  { label: 'Grocery', value: 'Grocery', icon: fruitIcon },
-  { label: 'Frozen', value: 'Frozen', icon: vegetableIcon },
-  { label: 'Drink', value: 'Drink', icon: fruitIcon },
-  { label: 'Dairy', value: 'Dairy', icon: fruitIcon },
-  { label: 'Meat', value: 'Meat', icon: vegetableIcon },
-  { label: 'Bakery', value: 'Bakery', icon: vegetableIcon },
-  { label: 'Pantry', value: 'Pantry', icon: fruitIcon },
+  { label: 'Grocery', value: 'Grocery', icon: groceryCategoryIcon },
+  { label: 'Frozen', value: 'Frozen', icon: frozenCategoryIcon },
+  { label: 'Drink', value: 'Drink', icon: drinkCategoryIcon },
+  { label: 'Dairy', value: 'Dairy', icon: dairyCategoryIcon },
+  { label: 'Meat', value: 'Meat', icon: meatCategoryIcon },
+  { label: 'Bakery', value: 'Bakery', icon: bakeryCategoryIcon },
+  { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
 
 function HomeCategoryBar({

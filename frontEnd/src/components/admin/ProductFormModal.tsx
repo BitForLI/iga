@@ -9,6 +9,7 @@ import productImage from '../../assets/images/main.png';
 
 const CATEGORY_OPTIONS = [
   { value: 'Special', label: 'Special' },
+  { value: 'Recommended', label: 'Recommended' },
   { value: 'Fruit', label: 'Fruit' },
   { value: 'Vegetables', label: 'Vegetables' },
   { value: 'Grocery', label: 'Grocery' },
