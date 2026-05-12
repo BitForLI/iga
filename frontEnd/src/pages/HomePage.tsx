@@ -253,6 +253,22 @@ function HomeCategoryBar({
         ))}
       </div>
 
+      {moreExpanded && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: CATEGORY_GRID_NARROW_MORE,
+            gap: CHIP_GRID_GAP,
+            width: '100%',
+            marginTop: 'clamp(8px, 1.8vw, 12px)',
+          }}
+        >
+          {NARROW_MORE_CATEGORIES.map((cat) => (
+            <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
+          ))}
+        </div>
+      )}
+
       <button
         type="button"
         onClick={() => setMoreExpanded((e) => !e)}
@@ -281,22 +297,6 @@ function HomeCategoryBar({
         )}
         {moreExpanded ? 'Show less' : 'More categories'}
       </button>
-
-      {moreExpanded && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: CATEGORY_GRID_NARROW_MORE,
-            gap: CHIP_GRID_GAP,
-            width: '100%',
-            marginTop: 'clamp(8px, 1.8vw, 12px)',
-          }}
-        >
-          {NARROW_MORE_CATEGORIES.map((cat) => (
-            <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
