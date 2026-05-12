@@ -96,7 +96,9 @@ function generateDayCardsForPickup(now: Date): { key: string; dayTop: string; da
 
 export const DELIVERY_SUBURBS = ['Hurstville', 'Allawah', 'Carlton', 'Roseland'] as const;
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+const MAPBOX_TOKEN_RAW = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+/** trim 避免 .env 里 token 首尾空格导致 Mapbox 请求失败 */
+const MAPBOX_TOKEN = typeof MAPBOX_TOKEN_RAW === 'string' && MAPBOX_TOKEN_RAW.trim() ? MAPBOX_TOKEN_RAW.trim() : undefined;
 
 function getSuburbFromFeature(props: { context?: { locality?: { name?: string }; place?: { name?: string } }; place_formatted?: string }): string {
   const ctx = props?.context;
@@ -164,6 +166,12 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);
   };
+
+  /** Mapbox 联想列表在 overflow:auto 的祖先内会被裁切；配送 + 已配置 token 时用 visible */
+  const deliveryMapboxScroll =
+    orderType === 'Delivery' && MAPBOX_TOKEN
+      ? { overflowY: 'visible' as const, overflowX: 'visible' as const }
+      : { overflowY: 'auto' as const, overflowX: 'hidden' as const };
 
   return (
     <>
@@ -250,8 +258,7 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
             style={{
               flex: 1,
               minHeight: 0,
-              overflowY: 'auto',
-              overflowX: 'hidden',
+              ...deliveryMapboxScroll,
               padding: '1rem 1.25rem',
             }}
           >
@@ -493,6 +500,7 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
                     >
                       <AddressAutofill
                         accessToken={MAPBOX_TOKEN}
+                        popoverOptions={{ placement: 'bottom-start', flip: true, offset: 6 }}
                         onChange={() => {
                           setAddressInputDirty(true);
                           setAddressError('');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Table, Button, message, Modal, Input } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -103,7 +103,14 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const seenOrderIdsRef = useRef<Set<number>>(new Set());
-  const visibleTabs = visibleTabKeys ? TAB_ITEMS.filter((tab) => visibleTabKeys.includes(tab.key)) : TAB_ITEMS;
+  const visibleTabs = useMemo(() => {
+    if (!visibleTabKeys?.length) return [...TAB_ITEMS];
+    const filtered = TAB_ITEMS.filter((tab) => visibleTabKeys.includes(tab.key));
+    return filtered.length > 0 ? filtered : [...TAB_ITEMS];
+  }, [visibleTabKeys]);
+  const isRefundsOnlyPage = Boolean(
+    visibleTabKeys?.length === 1 && visibleTabKeys[0] === 'RefundRequested'
+  );
   /** 首次拉取 Paid 列表完成后才允许响铃，避免把页面里已有订单当「新单」；从空队列出现首条 Paid 时也会响 */
   const paidAlertsInitRef = useRef(false);
 
@@ -405,7 +412,12 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0 }}>Order Management</h2>
+          <h2 style={{ margin: 0 }}>{isRefundsOnlyPage ? 'Refund requests' : 'Order management'}</h2>
+          {isRefundsOnlyPage && (
+            <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6b7280' }}>
+              Open requests: <strong>{tabCounts.RefundRequested ?? 0}</strong>
+            </p>
+          )}
         </div>
         {activeTab === 'Paid' && !broadcastEnabled && (
           <Button type="primary" ghost onClick={enableBroadcast}>
@@ -416,37 +428,39 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           <span style={{ color: '#dc2626', fontSize: 14 }}>🔔 Alerts enabled</span>
         )}
       </div>
-      <div
-        style={{
-          display: 'flex',
-          gap: 0,
-          borderBottom: '1px solid #e5e5e5',
-          marginBottom: 16,
-        }}
-      >
-        {visibleTabs.map(({ key, label }) => {
-          const count = tabCounts[key] ?? '-';
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setActiveTab(key)}
-              style={{
-                padding: '12px 24px',
-                border: 'none',
-                borderBottom: activeTab === key ? '2px solid #dc2626' : '2px solid transparent',
-                background: 'none',
-                cursor: 'pointer',
-                fontSize: 15,
-                fontWeight: activeTab === key ? 600 : 400,
-                color: activeTab === key ? '#dc2626' : '#525252',
-              }}
-            >
-              {label} ({count})
-            </button>
-          );
-        })}
-      </div>
+      {!isRefundsOnlyPage && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 0,
+            borderBottom: '1px solid #e5e5e5',
+            marginBottom: 16,
+          }}
+        >
+          {visibleTabs.map(({ key, label }) => {
+            const count = tabCounts[key] ?? '-';
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                style={{
+                  padding: '12px 24px',
+                  border: 'none',
+                  borderBottom: activeTab === key ? '2px solid #dc2626' : '2px solid transparent',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: 15,
+                  fontWeight: activeTab === key ? 600 : 400,
+                  color: activeTab === key ? '#dc2626' : '#525252',
+                }}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
       <Table<OrderRow>
         rowKey="id"
         columns={columns}

@@ -315,7 +315,7 @@ function App() {
             <Route path="products" element={<ProductManagementPage />} />
             <Route path="store/delivery-fees" element={<DeliveryFeesSettingsPage />} />
             <Route path="store/home-hero" element={<HomeHeroSettingsPage />} />
-            <Route path="refunds" element={<OrderManagementPage initialTab="RefundRequested" />} />
+            <Route path="refunds" element={<OrderManagementPage initialTab="RefundRequested" visibleTabKeys={['RefundRequested']} />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
           </Route>
@@ -333,17 +333,14 @@ function App() {
               element={
                 <OrderManagementPage
                   initialTab="Paid"
-                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'RefundRequested']}
+                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery']}
                 />
               }
             />
             <Route
               path="refunds"
               element={
-                <OrderManagementPage
-                  initialTab="RefundRequested"
-                  visibleTabKeys={['Paid', 'Preparing', 'PreparedPickup', 'PreparedDelivery', 'RefundRequested']}
-                />
+                <OrderManagementPage initialTab="RefundRequested" visibleTabKeys={['RefundRequested']} />
               }
             />
             <Route path="orders/:id" element={<OrderDetailPage />} />
