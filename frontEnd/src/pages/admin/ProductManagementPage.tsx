@@ -14,6 +14,9 @@ const CATEGORY_FILTER_OPTIONS = [
   { value: 'Special', label: 'Special' },
   { value: 'Fruit', label: 'Fruit' },
   { value: 'Vegetables', label: 'Vegetables' },
+  { value: 'Grocery', label: 'Grocery' },
+  { value: 'Frozen', label: 'Frozen' },
+  { value: 'Drink', label: 'Drink' },
   { value: 'Dairy', label: 'Dairy' },
   { value: 'Meat', label: 'Meat' },
   { value: 'Bakery', label: 'Bakery' },
@@ -56,6 +59,10 @@ export function ProductManagementPage() {
       unit: p.unit ?? p.Unit ?? '',
       isActive: p.isActive ?? p.IsActive ?? true,
       isWeighingRequired: p.isWeighingRequired ?? p.IsWeighingRequired ?? false,
+      defaultExpectedWeightKg:
+        p.defaultExpectedWeightKg != null || p.DefaultExpectedWeightKg != null
+          ? Number(p.defaultExpectedWeightKg ?? p.DefaultExpectedWeightKg ?? 0)
+          : undefined,
     }));
   };
 

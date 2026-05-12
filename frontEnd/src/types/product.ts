@@ -9,6 +9,8 @@ export interface Product {
   unit: string;
   isActive: boolean;
   isWeighingRequired?: boolean;
+  /** 称重商品默认预估重量（kg），用于顾客端展示与加购初值 */
+  defaultExpectedWeightKg?: number;
 }
 
 /** 商品表单值（新增/编辑） */
@@ -21,6 +23,7 @@ export interface ProductFormValues {
   unit: string;
   isActive: boolean;
   isWeighingRequired: boolean;
+  defaultExpectedWeightKg?: number;
 }
 
 /** 分页响应 */

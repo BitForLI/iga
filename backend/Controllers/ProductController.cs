@@ -58,7 +58,7 @@ namespace igaServer.Controllers
 
             // 顾客端不暴露成本价，仅返回卖价等字段
             var items = await query
-                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.IsActive, p.IsWeighingRequired })
+                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.IsActive, p.IsWeighingRequired, p.DefaultExpectedWeightKg })
                 .ToListAsync();
             return Ok(items);
         }
@@ -75,7 +75,7 @@ namespace igaServer.Controllers
                 return NotFound();
             }
 
-            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.IsActive, product.IsWeighingRequired });
+            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg });
         }
 
         // ==========================================

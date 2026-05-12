@@ -92,9 +92,27 @@ namespace igaServer.Controllers
 
             foreach (var item in order.Items)
             {
-                if (item.Quantity < 1)
-                    return BadRequest(new { error = $"Invalid quantity for line item: {item.ProductName}" });
-                var unitCents = (long)Math.Round(item.PriceAtPurchase * 100m, MidpointRounding.AwayFromZero);
+                var isWeighed = item.Product?.IsWeighingRequired == true;
+                decimal lineTotal;
+                long stripeQty;
+                long unitCents;
+                if (isWeighed)
+                {
+                    lineTotal = item.PriceAtPurchase * (decimal)item.ExpectedWeight;
+                    if (lineTotal <= 0)
+                        return BadRequest(new { error = $"Invalid weighed line amount for {item.ProductName}" });
+                    stripeQty = 1;
+                    unitCents = (long)Math.Round(lineTotal * 100m, MidpointRounding.AwayFromZero);
+                }
+                else
+                {
+                    if (item.Quantity < 1)
+                        return BadRequest(new { error = $"Invalid quantity for line item: {item.ProductName}" });
+                    lineTotal = item.PriceAtPurchase * item.Quantity;
+                    stripeQty = item.Quantity;
+                    unitCents = (long)Math.Round(item.PriceAtPurchase * 100m, MidpointRounding.AwayFromZero);
+                }
+
                 if (unitCents < 1)
                     return BadRequest(new { error = $"Invalid unit price for {item.ProductName}; Stripe requires a positive amount." });
                 lineItems.Add(new SessionLineItemOptions
@@ -109,14 +127,17 @@ namespace igaServer.Controllers
                             Description = $"商品ID: {item.ProductId}"
                         },
                     },
-                    Quantity = item.Quantity,
+                    Quantity = stripeQty,
                 });
             }
 
             // 配送订单：添加运费行项
             if (order.OrderType == "Delivery")
             {
-                var itemsTotal = order.Items.Sum(i => i.PriceAtPurchase * i.Quantity);
+                var itemsTotal = order.Items.Sum(i =>
+                    i.Product?.IsWeighingRequired == true
+                        ? i.PriceAtPurchase * (decimal)i.ExpectedWeight
+                        : i.PriceAtPurchase * i.Quantity);
                 var deliveryFee = order.TotalAmount - itemsTotal;
                 if (deliveryFee > 0)
                 {

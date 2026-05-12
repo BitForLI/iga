@@ -22,7 +22,7 @@ function getDeliveryFee(subtotal: number): number {
 export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const iconPx = compact ? 24 : 32;
   const badgePx = compact ? 17 : 20;
-  const { items, totalQuantity, removeItem, updateQuantity, total } = useCart();
+  const { items, totalQuantity, removeItem, updateQuantity, updateExpectedWeightKg, total } = useCart();
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
   const deliveryFee = orderType === 'Delivery' ? getDeliveryFee(total) : 0;
@@ -172,12 +172,30 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <p style={{ fontWeight: 'bold', marginBottom: 0, fontSize: '0.9rem' }}>{item.name}</p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <span style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: 'bold' }}>
+                          ${item.price.toFixed(2)}
+                          {item.isWeighingRequired ? '/kg' : ''}
+                        </span>
+                        {item.isWeighingRequired && item.expectedWeightKg != null ? (
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.25 }}>
+                            Line ~${(item.price * item.expectedWeightKg).toFixed(2)} · est. {item.expectedWeightKg.toFixed(2)} kg · Overpayment refunded after weighing
+                          </span>
+                        ) : null}
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: 'bold' }}>${item.price.toFixed(2)}</span>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: '4px', overflow: 'hidden' }}>
                         <button
                           type="button"
-                          onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                          onClick={() => {
+                            if (item.isWeighingRequired && item.expectedWeightKg != null) {
+                              const w = item.expectedWeightKg - 0.25;
+                              if (w < 0.05 - 1e-9) removeItem(item.productId);
+                              else updateExpectedWeightKg(item.productId, Math.round(w * 1000) / 1000);
+                            } else {
+                              updateQuantity(item.productId, item.quantity - 1);
+                            }
+                          }}
                           style={{
                             width: '28px',
                             height: '28px',
@@ -197,21 +215,33 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                         </button>
                         <span
                           style={{
-                            width: '28px',
+                            minWidth: '44px',
                             height: '28px',
+                            padding: '0 4px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             borderRight: '1px solid #d1d5db',
                             fontWeight: 'bold',
-                            fontSize: '0.875rem',
+                            fontSize: item.isWeighingRequired ? '0.72rem' : '0.875rem',
                           }}
                         >
-                          {item.quantity}
+                          {item.isWeighingRequired && item.expectedWeightKg != null
+                            ? `${item.expectedWeightKg.toFixed(2)} kg`
+                            : item.quantity}
                         </span>
                         <button
                           type="button"
-                          onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                          onClick={() => {
+                            if (item.isWeighingRequired && item.expectedWeightKg != null) {
+                              updateExpectedWeightKg(
+                                item.productId,
+                                Math.round((item.expectedWeightKg + 0.25) * 1000) / 1000
+                              );
+                            } else {
+                              updateQuantity(item.productId, item.quantity + 1);
+                            }
+                          }}
                           style={{
                             width: '28px',
                             height: '28px',
@@ -341,8 +371,8 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                       deliverySuburb: orderType === 'Delivery' ? deliveryInfo.suburb : undefined,
                       items: items.map((i) => ({
                         productId: i.productId,
-                        quantity: i.quantity,
-                        expectedWeight: i.quantity,
+                        quantity: i.isWeighingRequired ? 1 : i.quantity,
+                        expectedWeight: i.isWeighingRequired ? Number(i.expectedWeightKg ?? 0) : 0,
                       })),
                     })) as { orderId?: number };
                     const orderId = orderRes?.orderId;

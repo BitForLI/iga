@@ -6,6 +6,20 @@ export interface CartItem {
   price: number;
   quantity: number;
   imageUrl?: string;
+  /** 称重商品：预估 kg；非称重勿设 */
+  isWeighingRequired?: boolean;
+  expectedWeightKg?: number;
+}
+
+function lineAmount(item: CartItem): number {
+  const p = Number(item.price);
+  const priceOk = Number.isFinite(p) ? p : 0;
+  if (item.isWeighingRequired) {
+    const w = Number(item.expectedWeightKg);
+    return priceOk * (Number.isFinite(w) && w > 0 ? w : 0);
+  }
+  const q = Number(item.quantity);
+  return priceOk * (Number.isFinite(q) && q > 0 ? q : 0);
 }
 
 interface CartContextType {
@@ -15,6 +29,7 @@ interface CartContextType {
   addItem: (item: CartItem) => void;
   removeItem: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
+  updateExpectedWeightKg: (productId: number, kg: number) => void;
   clear: () => void;
   total: number;
 }
@@ -33,7 +48,23 @@ function parseCartFromStorage(raw: string | null): CartItem[] {
         const productId = Number(x.productId ?? x.ProductId);
         const qty = Number(x.quantity ?? x.Quantity);
         if (!Number.isFinite(productId) || productId <= 0) return null;
+        const isWeighing = Boolean(x.isWeighingRequired ?? x.IsWeighingRequired);
+        let expectedWeightKg = Number(x.expectedWeightKg ?? x.ExpectedWeightKg);
         const quantity = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
+        if (isWeighing) {
+          if (!Number.isFinite(expectedWeightKg) || expectedWeightKg <= 0) {
+            expectedWeightKg = quantity > 0 ? quantity : 1;
+          }
+          return {
+            productId,
+            name: String(x.name ?? x.Name ?? ''),
+            price: Number.isFinite(Number(x.price ?? x.Price)) ? Number(x.price ?? x.Price) : 0,
+            quantity: 1,
+            imageUrl: typeof x.imageUrl === 'string' ? x.imageUrl : undefined,
+            isWeighingRequired: true,
+            expectedWeightKg,
+          };
+        }
         if (quantity <= 0) return null;
         return {
           productId,
@@ -57,13 +88,9 @@ function parseCartFromStorage(raw: string | null): CartItem[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => parseCartFromStorage(localStorage.getItem('cart')));
 
-  const total = items.reduce((sum, item) => {
-    const p = Number(item.price);
-    const q = Number(item.quantity);
-    const line = (Number.isFinite(p) ? p : 0) * (Number.isFinite(q) && q > 0 ? q : 0);
-    return sum + line;
-  }, 0);
+  const total = items.reduce((sum, item) => sum + lineAmount(item), 0);
   const totalQuantity = items.reduce((sum, item) => {
+    if (item.isWeighingRequired) return sum + 1;
     const q = Number(item.quantity);
     return sum + (Number.isFinite(q) && q > 0 ? q : 0);
   }, 0);
@@ -71,13 +98,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = (newItem: CartItem) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === newItem.productId);
-      const updated = existing
-        ? prev.map((i) =>
-            i.productId === newItem.productId
-              ? { ...i, quantity: i.quantity + newItem.quantity, imageUrl: i.imageUrl || newItem.imageUrl }
-              : i
-          )
-        : [...prev, newItem];
+      let updated: CartItem[];
+      if (existing && existing.isWeighingRequired && newItem.isWeighingRequired) {
+        const w1 = Number(existing.expectedWeightKg ?? 0);
+        const w2 = Number(newItem.expectedWeightKg ?? 0);
+        const nw = (Number.isFinite(w1) ? w1 : 0) + (Number.isFinite(w2) ? w2 : 0);
+        updated = prev.map((i) =>
+          i.productId === newItem.productId
+            ? { ...i, expectedWeightKg: nw > 0 ? nw : i.expectedWeightKg, imageUrl: i.imageUrl || newItem.imageUrl }
+            : i
+        );
+      } else if (existing && !existing.isWeighingRequired && !newItem.isWeighingRequired) {
+        updated = prev.map((i) =>
+          i.productId === newItem.productId
+            ? { ...i, quantity: i.quantity + newItem.quantity, imageUrl: i.imageUrl || newItem.imageUrl }
+            : i
+        );
+      } else if (!existing) {
+        updated = [...prev, newItem];
+      } else {
+        updated = [...prev, newItem];
+      }
       localStorage.setItem('cart', JSON.stringify(updated));
       return updated;
     });
@@ -102,13 +143,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const updateExpectedWeightKg = (productId: number, kg: number) => {
+    setItems((prev) => {
+      const updated =
+        kg <= 0
+          ? prev.filter((i) => i.productId !== productId)
+          : prev.map((i) => (i.productId === productId ? { ...i, expectedWeightKg: kg, quantity: 1 } : i));
+      localStorage.setItem('cart', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const clear = () => {
     setItems([]);
     localStorage.removeItem('cart');
   };
 
   return (
-    <CartContext.Provider value={{ items, totalQuantity, addItem, removeItem, updateQuantity, clear, total }}>
+    <CartContext.Provider
+      value={{ items, totalQuantity, addItem, removeItem, updateQuantity, updateExpectedWeightKg, clear, total }}
+    >
       {children}
     </CartContext.Provider>
   );

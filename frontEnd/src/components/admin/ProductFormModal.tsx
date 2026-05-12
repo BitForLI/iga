@@ -11,6 +11,9 @@ const CATEGORY_OPTIONS = [
   { value: 'Special', label: 'Special' },
   { value: 'Fruit', label: 'Fruit' },
   { value: 'Vegetables', label: 'Vegetables' },
+  { value: 'Grocery', label: 'Grocery' },
+  { value: 'Frozen', label: 'Frozen' },
+  { value: 'Drink', label: 'Drink' },
   { value: 'Dairy', label: 'Dairy' },
   { value: 'Meat', label: 'Meat' },
   { value: 'Bakery', label: 'Bakery' },
@@ -53,6 +56,12 @@ function applyProductToForm(form: FormInstance<ProductFormValues>, data: Product
     unit: data.unit,
     isActive: data.isActive,
     isWeighingRequired: data.isWeighingRequired ?? false,
+    defaultExpectedWeightKg:
+      data.defaultExpectedWeightKg != null && data.defaultExpectedWeightKg > 0
+        ? Number(data.defaultExpectedWeightKg)
+        : data.isWeighingRequired
+          ? 1
+          : undefined,
   });
 }
 
@@ -66,6 +75,9 @@ export function ProductFormModal({
 }: ProductFormModalProps) {
   const [form] = Form.useForm<ProductFormValues>();
   const [imageFileList, setImageFileList] = useState<UploadFile[]>([]);
+  const isWeighingRequiredWatch = Form.useWatch('isWeighingRequired', form);
+  const priceWatch = Form.useWatch('price', form);
+  const kgWatch = Form.useWatch('defaultExpectedWeightKg', form);
 
   const syncImageFileListFromUrl = (url: string | undefined) => {
     if (!url?.trim()) {
@@ -115,10 +127,21 @@ export function ProductFormModal({
     }
   }, [open, mode, initialData, form]);
 
+  useEffect(() => {
+    if (!open || !isWeighingRequiredWatch) return;
+    const cur = form.getFieldValue('defaultExpectedWeightKg');
+    if (cur == null || cur === '' || !(Number(cur) > 0)) {
+      form.setFieldsValue({ defaultExpectedWeightKg: 1 });
+    }
+  }, [open, isWeighingRequiredWatch, form]);
+
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      await onSubmit(values);
+      await onSubmit({
+        ...values,
+        defaultExpectedWeightKg: values.isWeighingRequired ? values.defaultExpectedWeightKg : 0,
+      });
       form.resetFields();
       onClose();
     } catch (err) {
@@ -268,6 +291,30 @@ export function ProductFormModal({
         <Form.Item name="isWeighingRequired" label="Weighing required" valuePropName="checked">
           <Switch checkedChildren="Yes" unCheckedChildren="No" />
         </Form.Item>
+
+        {isWeighingRequiredWatch ? (
+          <>
+            <Form.Item
+              name="defaultExpectedWeightKg"
+              label="Default estimated weight (kg)"
+              rules={[{ required: true, message: 'Enter estimated weight' }]}
+            >
+              <InputNumber min={0.01} step={0.05} precision={3} style={{ width: '100%' }} placeholder="e.g. 1.0" />
+            </Form.Item>
+            <div style={{ marginBottom: 16, fontSize: 13, color: '#64748b' }}>
+              Estimated total at default weight:{' '}
+              <strong style={{ color: '#dc2626' }}>
+                $
+                {(() => {
+                  const price = Number(priceWatch ?? 0);
+                  const kg = Number(kgWatch ?? 0);
+                  const est = Number.isFinite(price) && Number.isFinite(kg) ? price * kg : 0;
+                  return est.toFixed(2);
+                })()}
+              </strong>
+            </div>
+          </>
+        ) : null}
       </Form>
     </Modal>
   );

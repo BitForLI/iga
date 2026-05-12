@@ -22,6 +22,16 @@ interface Product {
   isActive?: boolean;
   wasPrice?: number;
   discountLabel?: string; // "Special" | "30% Off" etc.
+  isWeighingRequired?: boolean;
+  defaultExpectedWeightKg?: number;
+}
+
+const WEIGHT_STEP_KG = 0.25;
+const WEIGHT_MIN_KG = 0.05;
+
+function defaultEstKgForProduct(p: Pick<Product, 'defaultExpectedWeightKg'>): number {
+  const d = Number(p.defaultExpectedWeightKg ?? 0);
+  return Number.isFinite(d) && d > 0 ? Math.round(d * 1000) / 1000 : 1;
 }
 
 /** 名称、分类、单位是否同时包含所有分词（不区分大小写） */
@@ -37,9 +47,11 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
   );
 }
 
-/** 首页 Special 横条：仅显示后台分类为 Special 的上架商品。 */
+/** 首页 Special 横条：优先显示后台分类为 Special 的商品；未配置前回退显示前 5 个上架商品，避免整块消失。 */
 function pickSpecialStripProducts(list: Product[]): Product[] {
-  const eligible = list.filter((p) => p.isActive !== false && (p.category ?? '').trim().toLowerCase() === 'special');
+  const active = list.filter((p) => p.isActive !== false);
+  const special = active.filter((p) => (p.category ?? '').trim().toLowerCase() === 'special');
+  const eligible = special.length > 0 ? special : active;
   return [...eligible]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
     .slice(0, 5)
@@ -76,6 +88,11 @@ export function HomePage({ selectedCategory, searchKeyword }: HomePageProps) {
           unit: (p.unit ?? p.Unit ?? '') as string,
           imageUrl: (p.imageUrl ?? p.ImageUrl ?? '') as string | undefined,
           isActive: (p.isActive ?? p.IsActive ?? true) as boolean,
+          isWeighingRequired: Boolean(p.isWeighingRequired ?? p.IsWeighingRequired),
+          defaultExpectedWeightKg:
+            p.defaultExpectedWeightKg != null || p.DefaultExpectedWeightKg != null
+              ? Number(p.defaultExpectedWeightKg ?? p.DefaultExpectedWeightKg ?? 0)
+              : undefined,
         }));
         setProducts(list);
         setSpecialProducts(list.length > 0 ? pickSpecialStripProducts(list) : []);
@@ -241,8 +258,13 @@ function HomeCartToggle({
   productImage: string;
   compact: boolean;
 }) {
-  const { items, addItem, updateQuantity, removeItem } = useCart();
-  const cartQty = items.find((i) => i.productId === product.id)?.quantity ?? 0;
+  const { items, addItem, updateQuantity, removeItem, updateExpectedWeightKg } = useCart();
+  const line = items.find((i) => i.productId === product.id);
+  const cartQty = line?.quantity ?? 0;
+  const estKg =
+    product.isWeighingRequired && line?.isWeighingRequired
+      ? Number(line.expectedWeightKg ?? defaultEstKgForProduct(product))
+      : 0;
   const stepIconPx = compact ? 14 : 18;
   /** 与加减行同高；红框「Add to cart」与步进器共用此高度 */
   const btnSize = compact ? 28 : 32;
@@ -256,17 +278,45 @@ function HomeCartToggle({
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
-    addItem({ ...base(), quantity: 1 });
+    if (product.isWeighingRequired) {
+      addItem({
+        ...base(),
+        quantity: 1,
+        isWeighingRequired: true,
+        expectedWeightKg: defaultEstKgForProduct(product),
+      });
+    } else {
+      addItem({ ...base(), quantity: 1 });
+    }
   };
 
   const handleMinus = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (product.isWeighingRequired && line?.isWeighingRequired) {
+      const w = estKg - WEIGHT_STEP_KG;
+      if (w < WEIGHT_MIN_KG - 1e-9) removeItem(product.id);
+      else updateExpectedWeightKg(product.id, Math.round(w * 1000) / 1000);
+      return;
+    }
     if (cartQty <= 1) removeItem(product.id);
     else updateQuantity(product.id, cartQty - 1);
   };
 
   const handlePlus = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (product.isWeighingRequired) {
+      if (line?.isWeighingRequired) {
+        updateExpectedWeightKg(product.id, Math.round((estKg + WEIGHT_STEP_KG) * 1000) / 1000);
+      } else {
+        addItem({
+          ...base(),
+          quantity: 1,
+          isWeighingRequired: true,
+          expectedWeightKg: defaultEstKgForProduct(product),
+        });
+      }
+      return;
+    }
     addItem({ ...base(), quantity: 1 });
   };
 
@@ -274,7 +324,10 @@ function HomeCartToggle({
   /** 与加减按钮同高（border-box），避免 Add↔步进切换时商品卡高度变化 */
   const rowMinH = btnSize;
 
-  if (cartQty === 0) {
+  const inCartWeighing = Boolean(product.isWeighingRequired && line?.isWeighingRequired && estKg > 0);
+  const inCartCount = product.isWeighingRequired ? (inCartWeighing ? 1 : 0) : cartQty;
+
+  if (inCartCount === 0) {
     return (
       <div
         style={{
@@ -365,7 +418,7 @@ function HomeCartToggle({
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {cartQty}
+        {product.isWeighingRequired ? `${estKg.toFixed(2)} kg` : cartQty}
       </span>
       <div style={{ display: 'flex', justifyContent: 'flex-start', minWidth: 0 }}>
         <button
@@ -498,7 +551,23 @@ function SpecialCard({
             marginTop: compact ? '0.12rem' : '0.18rem',
           }}
         >
-          <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>${product.price.toFixed(2)}</span>
+          {product.isWeighingRequired ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexWrap: 'wrap', lineHeight: 1.2 }}>
+                <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626' }}>
+                  ${product.price.toFixed(2)}
+                </span>
+                <span style={{ fontSize: compact ? '0.62rem' : '0.72rem', color: '#999' }}>/kg</span>
+              </div>
+              <span style={{ fontSize: compact ? '0.58rem' : '0.65rem', color: '#64748b', lineHeight: 1.3 }}>
+                Est. ~${(product.price * defaultEstKgForProduct(product)).toFixed(2)} ({defaultEstKgForProduct(product)} kg est.). Overpayment is refunded after weighing.
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>
+              ${product.price.toFixed(2)}
+            </span>
+          )}
           <HomeCartToggle product={product} productImage={productImage} compact={compact} />
         </div>
       </div>
@@ -575,10 +644,24 @@ function ProductCard({
         </h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '0.1rem' : '0.14rem', width: '100%', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
-            <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
-            <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/{product.unit}</span>
-          </div>
+          {product.isWeighingRequired ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
+                <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>
+                  ${product.price.toFixed(2)}
+                </span>
+                <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/kg</span>
+              </div>
+              <span style={{ fontSize: compact ? '0.58rem' : '0.68rem', color: '#64748b', lineHeight: 1.3 }}>
+                Est. ~${(product.price * defaultEstKgForProduct(product)).toFixed(2)} ({defaultEstKgForProduct(product)} kg). Overpayment refunded after weighing.
+              </span>
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
+              <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
+              <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/{product.unit}</span>
+            </div>
+          )}
           <HomeCartToggle product={product} productImage={productImage} compact={compact} />
         </div>
       </div>

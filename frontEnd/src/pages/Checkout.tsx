@@ -48,8 +48,8 @@ export function Checkout() {
         PickupTime: pickupTime,
         Items: items.map((item) => ({
           ProductId: item.productId,
-          Quantity: item.quantity,
-          ExpectedWeight: item.quantity,
+          Quantity: item.isWeighingRequired ? 1 : item.quantity,
+          ExpectedWeight: item.isWeighingRequired ? Number(item.expectedWeightKg ?? 0) : 0,
         })),
       });
 

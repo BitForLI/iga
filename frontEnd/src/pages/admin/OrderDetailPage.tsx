@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { Card, Descriptions, Table, Button, message, InputNumber, Space, Typography } from 'antd';
+import { Card, Descriptions, Table, Button, message, InputNumber, Space, Typography, Modal } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { apiClient, ApiRequestError } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -147,6 +147,50 @@ export function OrderDetailPage() {
     }
   };
 
+  const confirmSaveActualWeight = (itemId: number, row: OrderDetail['items'][number]) => {
+    if (!user?.id || !canEnterWeight) return;
+    const v = weightDraft[itemId];
+    if (v == null || Number.isNaN(v) || v < 0) {
+      message.warning('Enter a valid actual weight.');
+      return;
+    }
+    const expected = Number(row.expectedWeight ?? 0);
+    const actual = Number(v);
+    const previousActual = row.actualWeight != null ? Number(row.actualWeight) : null;
+    const price = Number(row.priceAtPurchase ?? 0);
+    const newLineRefund = Math.max(0, expected - actual) * price;
+    const oldLineRefund = previousActual == null ? 0 : Math.max(0, expected - previousActual) * price;
+    const deltaRefund = Math.max(0, newLineRefund - oldLineRefund);
+
+    Modal.confirm({
+      title: 'Confirm actual weight & refund',
+      okText: 'Confirm',
+      cancelText: 'Cancel',
+      content: (
+        <div style={{ lineHeight: 1.6 }}>
+          <div>
+            <strong>Product:</strong> {row.productName}
+          </div>
+          <div>
+            <strong>Expected:</strong> {expected.toFixed(3)} kg
+          </div>
+          <div>
+            <strong>Actual:</strong> {actual.toFixed(3)} kg
+          </div>
+          <div>
+            <strong>Refund for this save:</strong> ${deltaRefund.toFixed(2)}
+          </div>
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+            Stripe will process the refund only when the refund amount is positive and the order is payable via Stripe.
+          </Typography.Text>
+        </div>
+      ),
+      onOk: async () => {
+        await handleSaveActualWeight(itemId);
+      },
+    });
+  };
+
   const handleMarkReady = async () => {
     if (!order || !id || order.orderStatus !== 'Preparing') return;
     setMarkingReady(true);
@@ -180,8 +224,10 @@ export function OrderDetailPage() {
       title: 'Subtotal',
       key: 'subtotal',
       width: 100,
-      render: (_: unknown, r: { quantity: number; priceAtPurchase: number }) =>
-        `$${(r.quantity * r.priceAtPurchase).toFixed(2)}`,
+      render: (_: unknown, r: OrderDetail['items'][number]) =>
+        r.isWeighingRequired
+          ? `$${(Number(r.expectedWeight ?? 0) * Number(r.priceAtPurchase)).toFixed(2)}`
+          : `$${(r.quantity * r.priceAtPurchase).toFixed(2)}`,
     },
     {
       title: 'Expected (kg)',
@@ -226,7 +272,7 @@ export function OrderDetailPage() {
                 type="primary"
                 size="small"
                 loading={savingWeightId === r.id}
-                onClick={() => void handleSaveActualWeight(r.id)}
+                onClick={() => confirmSaveActualWeight(r.id, r)}
               >
                 {deltaRefund > 0 ? `Save & refund $${deltaRefund.toFixed(2)}` : 'Save'}
               </Button>

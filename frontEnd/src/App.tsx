@@ -120,7 +120,8 @@ function MainApp() {
           display: 'flex',
           flexDirection: 'row',
           flexWrap: 'nowrap',
-          alignItems: isNarrow ? 'stretch' : 'center',
+          alignItems: 'center',
+          justifyContent: 'center',
           gap: isNarrow ? '0.35rem' : '1rem',
           position: 'sticky',
           top: 0,
@@ -130,10 +131,12 @@ function MainApp() {
         <div
           style={{
             display: 'flex',
-            alignItems: isNarrow ? 'stretch' : 'center',
+            alignItems: 'center',
             gap: isNarrow ? '0.35rem' : '0.5rem',
             width: '100%',
             minWidth: 0,
+            position: 'relative',
+            justifyContent: 'center',
           }}
         >
           {isNarrow && (
@@ -149,6 +152,8 @@ function MainApp() {
                 width: 46,
                 minHeight: 44,
                 alignSelf: 'stretch',
+                position: 'relative',
+                zIndex: 2,
                 marginTop: '-0.45rem',
                 marginBottom: '-0.45rem',
                 display: 'flex',
@@ -171,10 +176,12 @@ function MainApp() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                flex: '1 1 auto',
-                minWidth: 0,
-                maxWidth: 900,
-                margin: '0 0.5rem',
+                width: 'min(900px, calc(100vw - 320px))',
+                minWidth: 360,
+                margin: '0 auto',
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
                 border: '1px solid #d1d5db',
                 borderRadius: '20px',
                 overflow: 'hidden',
@@ -225,9 +232,12 @@ function MainApp() {
                 display: 'flex',
                 alignItems: 'center',
                 alignSelf: 'center',
-                flex: '1 1 0',
+                width: 'min(560px, calc(100vw - 132px))',
                 minWidth: 0,
-                maxWidth: 240,
+                margin: '0 auto',
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
                 border: '1px solid #d1d5db',
                 borderRadius: 10,
                 overflow: 'hidden',
@@ -280,6 +290,8 @@ function MainApp() {
               alignSelf: isNarrow ? 'center' : undefined,
               flexShrink: 0,
               marginLeft: 'auto',
+              position: 'relative',
+              zIndex: 2,
             }}
           >
             <PickupDeliverySidebar compact={isNarrow} />

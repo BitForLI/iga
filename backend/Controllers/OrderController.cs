@@ -102,20 +102,40 @@ namespace igaServer.Controllers
             {
                 var product = products.First(p => p.Id == item.ProductId);
 
-                // 创建订单项
+                decimal lineAmount;
                 var orderItem = new OrderItem
                 {
                     ProductId = product.Id,
                     ProductName = product.Name,
-                    Quantity = item.Quantity,
                     PriceAtPurchase = product.Price,
-                    ExpectedWeight = item.ExpectedWeight
                 };
 
-                order.Items.Add(orderItem);
+                if (product.IsWeighingRequired)
+                {
+                    var w = item.ExpectedWeight;
+                    if (w <= 0 || double.IsNaN(w) || double.IsInfinity(w))
+                    {
+                        return BadRequest(new { error = $"Estimated weight (kg) is required for weighed item: {product.Name}" });
+                    }
 
-                // 累加总金额
-                totalAmount += product.Price * item.Quantity;
+                    orderItem.Quantity = 1;
+                    orderItem.ExpectedWeight = w;
+                    lineAmount = product.Price * (decimal)w;
+                }
+                else
+                {
+                    if (item.Quantity < 1)
+                    {
+                        return BadRequest(new { error = $"Invalid quantity for {product.Name}" });
+                    }
+
+                    orderItem.Quantity = item.Quantity;
+                    orderItem.ExpectedWeight = item.ExpectedWeight > 0 ? item.ExpectedWeight : 0;
+                    lineAmount = product.Price * item.Quantity;
+                }
+
+                order.Items.Add(orderItem);
+                totalAmount += lineAmount;
             }
 
             // 配送订单：按消费金额计算运费，50 以上免运费
