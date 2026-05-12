@@ -68,7 +68,7 @@ export function HomeHeroSettingsPage() {
         Home hero carousel
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        Up to 6 images. If none are set, the storefront uses the default built-in hero images. Use wide landscape photos for best results.
+        Up to 6 images. The storefront only shows images you configure here; if the list is empty, no hero carousel appears on the home page. Use wide landscape photos for best results.
       </Typography.Paragraph>
       <Space wrap style={{ marginBottom: 16, width: '100%' }}>
         <Upload {...uploadProps} accept="image/*">
@@ -125,7 +125,9 @@ export function HomeHeroSettingsPage() {
           </div>
         ))}
         {urls.length === 0 && !loading && (
-          <Typography.Text type="secondary">No custom images — defaults will show on the home page.</Typography.Text>
+          <Typography.Text type="secondary">
+            No images yet — the home page will not show a hero carousel until you upload and save at least one.
+          </Typography.Text>
         )}
       </div>
     </div>

@@ -3,9 +3,6 @@ import { message } from 'antd';
 import { productAPI } from '../api';
 import { API_BASE } from '../config/apiEnv';
 import { useCart } from '../context/CartContext';
-import home1 from '../assets/images/主页.png';
-import home2 from '../assets/images/主页2.png';
-import home3 from '../assets/images/主页3.png';
 import productImage from '../assets/images/main.png';
 import { resolveProductImageUrl } from '../utils/imageUrl';
 import { useMaxWidth } from '../hooks/useMediaQuery';
@@ -192,8 +189,9 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
   const { settings: storeSettings } = useStorePublicSettings();
   const heroSlideUrls = React.useMemo(() => {
     const raw = storeSettings?.homeCarouselImageUrls?.filter((u) => u?.trim()) ?? [];
-    if (raw.length === 0) return [home1, home2, home3];
-    return raw.map((u) => resolveProductImageUrl(u, home1));
+    return raw
+      .map((u) => resolveProductImageUrl(u.trim(), ''))
+      .filter((src): src is string => Boolean(src));
   }, [storeSettings?.homeCarouselImageUrls]);
   const [products, setProducts] = useState<Product[]>([]);
   const [specialProducts, setSpecialProducts] = useState<Product[]>([]);
@@ -268,8 +266,8 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
           Could not load products from the server: {fetchError}
         </div>
       )}
-      {/* 轮换图 - 未选分类且未在搜索时显示 */}
-      {!selectedCategory && !searchKeyword.trim() && (
+      {/* Hero carousel：仅展示后台配置的图，无配置则不显示 */}
+      {!selectedCategory && !searchKeyword.trim() && heroSlideUrls.length > 0 && (
         <HomeCarousel images={heroSlideUrls} isNarrow={isNarrow} />
       )}
 
@@ -311,10 +309,13 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
   const slides = images.map((src, i) => ({ src, alt: `Home ${i + 1}` }));
   const [current, setCurrent] = useState(0);
   const heroH = isNarrow ? 200 : 400;
+  const multi = slides.length > 1;
 
   useEffect(() => {
     setCurrent((c) => (images.length === 0 ? 0 : Math.min(c, images.length - 1)));
   }, [images.length]);
+
+  if (slides.length === 0) return null;
 
   return (
     <div
@@ -332,18 +333,50 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
       <div style={{ minHeight: heroH, backgroundColor: '#4b5563' }}>
         <img src={slides[current].src} alt={slides[current].alt} style={{ width: '100%', height: heroH, objectFit: 'cover' }} />
       </div>
-      <button
-        onClick={() => setCurrent((c) => (c === 0 ? slides.length - 1 : c - 1))}
-        style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.4)', color: 'white', border: 'none', cursor: 'pointer', fontSize: '1.25rem' }}
-      >
-        ‹
-      </button>
-      <button
-        onClick={() => setCurrent((c) => (c === slides.length - 1 ? 0 : c + 1))}
-        style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.4)', color: 'white', border: 'none', cursor: 'pointer', fontSize: '1.25rem' }}
-      >
-        ›
-      </button>
+      {multi && (
+        <>
+          <button
+            type="button"
+            onClick={() => setCurrent((c) => (c === 0 ? slides.length - 1 : c - 1))}
+            style={{
+              position: 'absolute',
+              left: '1rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '1.25rem',
+            }}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrent((c) => (c === slides.length - 1 ? 0 : c + 1))}
+            style={{
+              position: 'absolute',
+              right: '1rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '1.25rem',
+            }}
+          >
+            ›
+          </button>
+        </>
+      )}
     </div>
   );
 }
