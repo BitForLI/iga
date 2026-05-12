@@ -230,7 +230,11 @@ function SpecialProductList({
         justifyContent: 'center',
         flexWrap: 'wrap',
         alignItems: 'start',
-        gap: isNarrow ? '10px' : '1rem',
+        gap: isNarrow ? '10px' : '1.25rem',
+        width: '100%',
+        maxWidth: isNarrow ? '100%' : 'min(1200px, 100%)',
+        margin: '0 auto',
+        boxSizing: 'border-box',
       }}
     >
       {products.map((p) => (
@@ -465,9 +469,10 @@ function SpecialCard({
   return (
     <div
       style={{
-        width: compact ? 'calc((100% - 10px) / 2)' : 160,
-        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '0 0 160px',
-        minWidth: 0,
+        width: compact ? 'calc((100% - 10px) / 2)' : 'clamp(196px, 20vw, 240px)',
+        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '1 1 196px',
+        maxWidth: compact ? undefined : 240,
+        minWidth: compact ? 0 : 196,
         alignSelf: 'start',
         backgroundColor: 'white',
         borderRadius: compact ? 6 : 8,
@@ -492,11 +497,12 @@ function SpecialCard({
             flexShrink: 0,
             backgroundColor: '#dc2626',
             color: 'white',
-            padding: compact ? '0.18rem 0.25rem' : '0.28rem 0.35rem',
-            fontSize: compact ? '0.6rem' : '0.72rem',
+            padding: compact ? '0.22rem 0.35rem' : '0.36rem 0.5rem',
+            fontSize: compact ? '0.68rem' : '0.82rem',
             fontWeight: 'bold',
             textAlign: 'center',
             lineHeight: 1.2,
+            letterSpacing: '0.06em',
           }}
         >
           {product.discountLabel}
@@ -552,17 +558,12 @@ function SpecialCard({
           }}
         >
           {product.isWeighingRequired ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexWrap: 'wrap', lineHeight: 1.2 }}>
-                <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626' }}>
-                  ${product.price.toFixed(2)}
-                </span>
-                <span style={{ fontSize: compact ? '0.62rem' : '0.72rem', color: '#999' }}>/kg</span>
-              </div>
-              <span style={{ fontSize: compact ? '0.58rem' : '0.65rem', color: '#64748b', lineHeight: 1.3 }}>
-                Est. ~${(product.price * defaultEstKgForProduct(product)).toFixed(2)} ({defaultEstKgForProduct(product)} kg est.). Overpayment is refunded after weighing.
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexWrap: 'wrap', lineHeight: 1.2 }}>
+              <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626' }}>
+                ${product.price.toFixed(2)}
               </span>
-            </>
+              <span style={{ fontSize: compact ? '0.62rem' : '0.72rem', color: '#999' }}>/kg</span>
+            </div>
           ) : (
             <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>
               ${product.price.toFixed(2)}
@@ -645,17 +646,12 @@ function ProductCard({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '0.1rem' : '0.14rem', width: '100%', minWidth: 0 }}>
           {product.isWeighingRequired ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
-                <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>
-                  ${product.price.toFixed(2)}
-                </span>
-                <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/kg</span>
-              </div>
-              <span style={{ fontSize: compact ? '0.58rem' : '0.68rem', color: '#64748b', lineHeight: 1.3 }}>
-                Est. ~${(product.price * defaultEstKgForProduct(product)).toFixed(2)} ({defaultEstKgForProduct(product)} kg). Overpayment refunded after weighing.
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
+              <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>
+                ${product.price.toFixed(2)}
               </span>
-            </>
+              <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/kg</span>
+            </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
               <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>

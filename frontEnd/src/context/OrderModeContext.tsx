@@ -5,7 +5,15 @@ const ORDER_MODE_KEY = 'iga_order_mode';
 
 export type OrderType = 'Pickup' | 'Delivery';
 
-/** 自取时段须在未来且不超过约 14 天（与 UI 最多 7 个可选日 + 跨日边界对齐） */
+/** 与 PickupDeliverySidebar 一致：最早为当前时间 +1 小时，最晚时段在「次日 20:00」前结束 */
+function pickupWindowEndLocal(now: Date): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0, 0, 0);
+}
+
+function pickupWindowStartLocal(now: Date): Date {
+  return new Date(now.getTime() + 60 * 60 * 1000);
+}
+
 function isPickupSlotStillValid(slotValue: string): boolean {
   if (!slotValue) return false;
   try {
@@ -13,8 +21,10 @@ function isPickupSlotStillValid(slotValue: string): boolean {
     const now = new Date();
     if (Number.isNaN(slotDate.getTime())) return false;
     if (slotDate <= now) return false;
-    const max = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-    return slotDate <= max;
+    const wEnd = pickupWindowEndLocal(now);
+    if (slotDate >= wEnd) return false;
+    if (slotDate < pickupWindowStartLocal(now)) return false;
+    return true;
   } catch {
     return false;
   }

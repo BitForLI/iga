@@ -12,6 +12,7 @@ interface UserInfo {
 export function Checkout() {
   const { items, total, clear } = useCart();
   const { user } = useAuth();
+  const hasWeighedItems = items.some((i) => i.isWeighingRequired);
   const [userInfo, setUserInfo] = useState<UserInfo>({ name: '', email: '', phoneNumber: '' });
   const [pickupTime, setPickupTime] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,8 +95,28 @@ export function Checkout() {
         {/* 订单摘要 */}
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>Order Summary</h2>
+          {hasWeighedItems && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '10px 12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 8,
+                fontSize: '0.85rem',
+                color: '#475569',
+                lineHeight: 1.45,
+              }}
+            >
+              <strong style={{ color: '#0f172a' }}>Weighed items:</strong> total uses estimated weight × price per kg. If actual weight is less, we refund the difference after packing.
+            </div>
+          )}
           <div style={{ backgroundColor: '#f9fafb', padding: '1rem', borderRadius: '8px' }}>
-            {items.map((item) => (
+            {items.map((item) => {
+              const lineTotal = item.isWeighingRequired
+                ? item.price * Number(item.expectedWeightKg ?? 0)
+                : item.price * item.quantity;
+              return (
               <div
                 key={item.productId}
                 style={{
@@ -108,11 +129,16 @@ export function Checkout() {
               >
                 <div>
                   <p style={{ fontWeight: 'bold' }}>{item.name}</p>
-                  <p style={{ fontSize: '0.875rem', color: '#666' }}>{item.quantity}x</p>
+                  <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                    {item.isWeighingRequired
+                      ? `Est. ${Number(item.expectedWeightKg ?? 0).toFixed(2)} kg × $${item.price.toFixed(2)}/kg`
+                      : `${item.quantity}x`}
+                  </p>
                 </div>
-                <p style={{ fontWeight: 'bold' }}>${(item.price * item.quantity).toFixed(2)}</p>
+                <p style={{ fontWeight: 'bold' }}>${lineTotal.toFixed(2)}</p>
               </div>
-            ))}
+            );
+            })}
             <div
               style={{
                 paddingTop: '0.75rem',

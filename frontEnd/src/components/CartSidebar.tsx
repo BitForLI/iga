@@ -23,6 +23,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const iconPx = compact ? 24 : 32;
   const badgePx = compact ? 17 : 20;
   const { items, totalQuantity, removeItem, updateQuantity, updateExpectedWeightKg, total } = useCart();
+  const hasWeighedItems = items.some((i) => i.isWeighingRequired);
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
   const deliveryFee = orderType === 'Delivery' ? getDeliveryFee(total) : 0;
@@ -172,17 +173,10 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <p style={{ fontWeight: 'bold', marginBottom: 0, fontSize: '0.9rem' }}>{item.name}</p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                        <span style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: 'bold' }}>
-                          ${item.price.toFixed(2)}
-                          {item.isWeighingRequired ? '/kg' : ''}
-                        </span>
-                        {item.isWeighingRequired && item.expectedWeightKg != null ? (
-                          <span style={{ fontSize: '0.72rem', color: '#64748b', lineHeight: 1.25 }}>
-                            Line ~${(item.price * item.expectedWeightKg).toFixed(2)} · est. {item.expectedWeightKg.toFixed(2)} kg · Overpayment refunded after weighing
-                          </span>
-                        ) : null}
-                      </div>
+                      <span style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: 'bold' }}>
+                        ${item.price.toFixed(2)}
+                        {item.isWeighingRequired ? '/kg' : ''}
+                      </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: '4px', overflow: 'hidden' }}>
                         <button
@@ -305,6 +299,21 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                   <span style={{ color: '#dc2626', marginLeft: 4 }}>(Please select delivery suburb)</span>
                 )}
               </div>
+              {hasWeighedItems && (
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 8,
+                    fontSize: '0.78rem',
+                    color: '#475569',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong style={{ color: '#0f172a' }}>Weighed items:</strong> checkout uses your estimated weight and price per kg. If the actual weight is less, we refund the difference after packing (shown on your receipt / order confirmation).
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.9rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal:</span>

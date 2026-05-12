@@ -11,10 +11,10 @@ const MAP_LINK = 'https://www.google.com/maps/search/Beverly+Hills+IGA+Beverly+H
 // Hurstville 附近，用于 Mapbox 优先推荐悉尼区域地址
 const SYDNEY_PROXIMITY = { lng: 151.1, lat: -33.967 };
 
-const PICKUP_SLOT_HOURS = [9, 11, 13, 15, 17, 19];
+/** 自取可选：当前时间起满 1 小时后对齐到下一整点起，至次日 20:00 前；每 1 小时一档 */
+const PICKUP_SLOT_MS = 60 * 60 * 1000;
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_MS = 86400000;
-const PICKUP_DAY_COUNT = 7;
 
 function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -29,55 +29,69 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function hasAvailableSlotOnDay(day: Date, now: Date): boolean {
-  for (const hour of PICKUP_SLOT_HOURS) {
-    const slotStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0);
-    if (slotStart > now) return true;
-  }
-  return false;
+function pickupWindowEnd(now: Date): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0, 0, 0);
 }
 
-function getFirstSelectableDay(now: Date): Date {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(start.getTime() + i * DAY_MS);
-    if (hasAvailableSlotOnDay(day, now)) return day;
-  }
-  return start;
+function pickupWindowStart(now: Date): Date {
+  return new Date(now.getTime() + 60 * 60 * 1000);
 }
 
-function generateDayCards(now: Date, count: number): { key: string; dayTop: string; dayBottom: string }[] {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + DAY_MS);
-  const first = getFirstSelectableDay(now);
-  const fmt = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' });
-  const out: { key: string; dayTop: string; dayBottom: string }[] = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
-    const key = dateKey(d);
-    let dayTop: string;
-    if (sameDay(d, today)) dayTop = 'Today';
-    else if (sameDay(d, tomorrow)) dayTop = 'Tomorrow';
-    else dayTop = WEEKDAY[d.getDay()];
-    out.push({ key, dayTop, dayBottom: fmt.format(d) });
+/** 不早于 d 的下一个整点（本地时间），用于整点起算每小时一档 */
+function ceilToNextHour(d: Date): Date {
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), 0, 0, 0);
+  if (out.getTime() < d.getTime()) {
+    out.setHours(out.getHours() + 1);
   }
   return out;
 }
 
-function generateSlotsForDay(day: Date, now: Date): { label: string; value: string }[] {
-  const slots: { label: string; value: string }[] = [];
-  for (let i = 0; i < PICKUP_SLOT_HOURS.length; i++) {
-    const hour = PICKUP_SLOT_HOURS[i];
-    const slotStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0);
-    if (slotStart <= now) continue;
-    const slotEndHour = i < PICKUP_SLOT_HOURS.length - 1 ? PICKUP_SLOT_HOURS[i + 1] : 21;
-    const timeStr = `${hour}:00-${slotEndHour}:00`;
-    slots.push({
-      label: timeStr,
-      value: slotStart.toISOString(),
+function generateAllPickupSlots(now: Date): { label: string; value: string; dayKey: string }[] {
+  const wStart = pickupWindowStart(now);
+  const wEnd = pickupWindowEnd(now);
+  if (wStart >= wEnd) return [];
+  let t = ceilToNextHour(wStart);
+  const fmtStart = new Intl.DateTimeFormat('en-AU', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const fmtHm = new Intl.DateTimeFormat('en-AU', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const out: { label: string; value: string; dayKey: string }[] = [];
+  while (t < wEnd) {
+    const slotEnd = new Date(t.getTime() + PICKUP_SLOT_MS);
+    if (slotEnd > wEnd) break;
+    out.push({
+      label: `${fmtStart.format(t)} – ${fmtHm.format(slotEnd)}`,
+      value: t.toISOString(),
+      dayKey: dateKey(t),
     });
+    t = slotEnd;
   }
-  return slots;
+  return out;
+}
+
+function generateDayCardsForPickup(now: Date): { key: string; dayTop: string; dayBottom: string }[] {
+  const all = generateAllPickupSlots(now);
+  const keys = [...new Set(all.map((s) => s.dayKey))].sort();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + DAY_MS);
+  const fmt = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' });
+  return keys.map((key) => {
+    const d = parseDateKey(key);
+    let dayTop: string;
+    if (sameDay(d, today)) dayTop = 'Today';
+    else if (sameDay(d, tomorrow)) dayTop = 'Tomorrow';
+    else dayTop = WEEKDAY[d.getDay()];
+    return { key, dayTop, dayBottom: fmt.format(d) };
+  });
 }
 
 export const DELIVERY_SUBURBS = ['Hurstville', 'Allawah', 'Carlton', 'Roseland'] as const;
@@ -120,11 +134,15 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
 
   const dayCards = useMemo(() => {
     if (!panelMounted) return [];
-    return generateDayCards(slotNow, PICKUP_DAY_COUNT);
+    return generateDayCardsForPickup(slotNow);
   }, [panelMounted, slotNow]);
 
   useEffect(() => {
-    if (!panelMounted || dayCards.length === 0) return;
+    if (!panelMounted) return;
+    if (dayCards.length === 0) {
+      setSelectedDayKey('');
+      return;
+    }
     const fromSlot = pickupTimeSlot ? dateKey(new Date(pickupTimeSlot)) : '';
     if (fromSlot && dayCards.some((d) => d.key === fromSlot)) {
       setSelectedDayKey(fromSlot);
@@ -138,7 +156,9 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
 
   const slotsForDay = useMemo(() => {
     if (!panelMounted || !selectedDayKey) return [];
-    return generateSlotsForDay(parseDateKey(selectedDayKey), slotNow);
+    return generateAllPickupSlots(slotNow)
+      .filter((s) => s.dayKey === selectedDayKey)
+      .map(({ label, value }) => ({ label, value }));
   }, [panelMounted, selectedDayKey, slotNow]);
 
   const handleOrderTypeChange = (t: OrderType) => {
@@ -325,7 +345,13 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
               <>
                 <div>
                   <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#0a0a0a' }}>Select pickup time slot</p>
+                  <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
+                    From 1 hour from now (rounded up to the next hour) through tomorrow evening; last slots end by 8:00 PM. One slot per hour.
+                  </p>
                   <div style={{ marginBottom: '0.75rem' }}>
+                    {dayCards.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 14, color: '#64748b' }}>No pickup days available in this window.</p>
+                    ) : (
                     <div
                       style={{
                         display: 'flex',
@@ -372,33 +398,40 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
                         );
                       })}
                     </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {slotsForDay.map((slot) => {
-                      const selected = pickupTimeSlot === slot.value;
-                      return (
-                        <button
-                          key={slot.value}
-                          type="button"
-                          onClick={() => setPickupTimeSlot(slot.value)}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            padding: '12px 16px',
-                            border: 'none',
-                            borderBottom: selected ? '2px solid #dc2626' : '1px solid #e5e5e5',
-                            background: 'white',
-                            cursor: 'pointer',
-                            fontSize: 15,
-                            fontWeight: selected ? 600 : 400,
-                            color: selected ? '#dc2626' : '#0a0a0a',
-                            textAlign: 'left',
-                          }}
-                        >
-                          {slot.label}
-                        </button>
-                      );
-                    })}
+                    {slotsForDay.length === 0 ? (
+                      <p style={{ margin: 0, padding: '12px 0', fontSize: 14, color: '#64748b' }}>
+                        No pickup slots in the current window. Please try again later.
+                      </p>
+                    ) : (
+                      slotsForDay.map((slot) => {
+                        const selected = pickupTimeSlot === slot.value;
+                        return (
+                          <button
+                            key={slot.value}
+                            type="button"
+                            onClick={() => setPickupTimeSlot(slot.value)}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '12px 16px',
+                              border: 'none',
+                              borderBottom: selected ? '2px solid #dc2626' : '1px solid #e5e5e5',
+                              background: 'white',
+                              cursor: 'pointer',
+                              fontSize: 15,
+                              fontWeight: selected ? 600 : 400,
+                              color: selected ? '#dc2626' : '#0a0a0a',
+                              textAlign: 'left',
+                            }}
+                          >
+                            {slot.label}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                   <button
                     type="button"
