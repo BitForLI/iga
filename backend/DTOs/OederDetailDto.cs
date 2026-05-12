@@ -23,6 +23,10 @@ namespace igaServer.DTOs
 
         public string? RefundRejectionReason { get; set; }
 
+        public string? RefundRequestReason { get; set; }
+
+        public List<int>? RefundRequestedItemIds { get; set; }
+
         // 订单状态
         public string OrderStatus { get; set; } // Pending, Paid, Prepared, Completed
 
@@ -38,6 +42,8 @@ namespace igaServer.DTOs
         public DateTime? PickupTime { get; set; }
 
         public string DeliveryAddress { get; set; }
+
+        public string? DeliverySuburb { get; set; }
 
         public double? DeliveryDistanceKm { get; set; }
 
@@ -67,6 +73,8 @@ namespace igaServer.DTOs
 
         /// <summary>是否称重商品（需录入实重后退差价）</summary>
         public bool IsWeighingRequired { get; set; }
+
+        public DateTime? CustomerRefundCompletedAt { get; set; }
 
         // 计算该条目的小计
         public decimal Subtotal => PriceAtPurchase * Quantity;

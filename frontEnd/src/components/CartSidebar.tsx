@@ -7,10 +7,6 @@ import { useOrderMode } from '../context/OrderModeContext';
 import { orderAPI, paymentAPI, ApiRequestError } from '../api';
 import { useStorePublicSettings, computeDeliveryFeeAud } from '../context/StorePublicSettingsContext';
 import { DELIVERY_SUBURBS, FulfillmentOptionsForm } from './FulfillmentOptionsForm';
-
-const MAPBOX_TOKEN_RAW = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
-const MAPBOX_TOKEN =
-  typeof MAPBOX_TOKEN_RAW === 'string' && MAPBOX_TOKEN_RAW.trim() ? MAPBOX_TOKEN_RAW.trim() : undefined;
 import cartIcon from '../assets/images/cart.png';
 import deleteIcon from '../assets/images/删除.png';
 import productImage from '../assets/images/main.png';
@@ -40,7 +36,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const [fulfillmentModalOpen, setFulfillmentModalOpen] = useState(false);
 
   const fulfillmentModalScroll =
-    orderType === 'Delivery' && MAPBOX_TOKEN
+    orderType === 'Delivery'
       ? { overflowY: 'visible' as const, overflowX: 'visible' as const }
       : { overflowY: 'auto' as const, overflowX: 'hidden' as const };
 

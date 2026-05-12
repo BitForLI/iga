@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Table, Button, message, Modal, Input } from 'antd';
+import { Table, Button, message, Modal, Input, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { apiClient } from '../../api/client';
@@ -75,6 +75,18 @@ function resolveTabParams(tab: string | undefined): { status?: string; orderType
   return { status: 'Pending' };
 }
 
+function formatSuburbDisplay(s: string | undefined): string {
+  const t = (s ?? '').trim().toLowerCase();
+  if (!t) return '—';
+  const map: Record<string, string> = {
+    hurstville: 'Hurstville',
+    allawah: 'Allawah',
+    carlton: 'Carlton',
+    roseland: 'Roseland',
+  };
+  return map[t] ?? t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 type OrderTabKey = (typeof TAB_ITEMS)[number]['key'];
 
 interface OrderRow {
@@ -87,7 +99,9 @@ interface OrderRow {
   orderStatus: string;
   orderType: string;
   pickupTime?: string;
+  pickupCode?: string;
   deliveryAddress?: string;
+  deliverySuburb?: string;
   createdAt: string;
   pickedUpAt?: string | null;
 }
@@ -101,12 +115,25 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   const { adminBasePath = '/admin' } = useOutletContext<{ adminBasePath?: string }>() ?? {};
   const navigate = useNavigate();
   const { play: playAlert, stop: stopAlert, enable: enableBroadcast, isEnabled: broadcastEnabled } = useOrderAlertSound();
+
+  useEffect(() => {
+    const stopOnUserGesture = () => {
+      stopAlert();
+    };
+    window.addEventListener('click', stopOnUserGesture, true);
+    window.addEventListener('keydown', stopOnUserGesture, true);
+    return () => {
+      window.removeEventListener('click', stopOnUserGesture, true);
+      window.removeEventListener('keydown', stopOnUserGesture, true);
+    };
+  }, [stopAlert]);
   const [data, setData] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const seenOrderIdsRef = useRef<Set<number>>(new Set());
+  const paidAlertsInitRef = useRef(false);
   const visibleTabs = useMemo(() => {
     if (!visibleTabKeys?.length) return [...TAB_ITEMS];
     const filtered = TAB_ITEMS.filter((tab) => visibleTabKeys.includes(tab.key));
@@ -123,26 +150,36 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     }
     return 'Order management';
   }, [hideTabBar, visibleTabKeys]);
-  /** 首次拉取 Paid 列表完成后才允许响铃，避免把页面里已有订单当「新单」；从空队列出现首条 Paid 时也会响 */
-  const paidAlertsInitRef = useRef(false);
+  const [pickupCodeDraft, setPickupCodeDraft] = useState('');
+  const [pickupCodeFilter, setPickupCodeFilter] = useState('');
+  const [deliverySuburbFilter, setDeliverySuburbFilter] = useState('');
 
   useEffect(() => {
     setActiveTab(initialTab);
+    setPickupCodeDraft('');
+    setPickupCodeFilter('');
+    setDeliverySuburbFilter('');
   }, [initialTab]);
 
   const fetchOrders = useCallback(async (page = 1, pageSize = 10, tabKey?: string, silent = false) => {
     if (!silent) setLoading(true);
     try {
       const { status, orderType, pickedUp } = resolveTabParams(tabKey);
-      const res = (await apiClient.get('/admin/orders', {
-        params: {
-          page,
-          pageSize,
-          ...(status ? { status } : {}),
-          ...(orderType ? { orderType } : {}),
-          ...(pickedUp !== undefined ? { pickedUp } : {}),
-        },
-      })) as { items?: any[]; total?: number };
+      const params: Record<string, string | number | boolean | undefined> = {
+        page,
+        pageSize,
+        ...(status ? { status } : {}),
+        ...(orderType ? { orderType } : {}),
+        ...(pickedUp !== undefined ? { pickedUp } : {}),
+      };
+      if (tabKey === 'PreparedPickup') {
+        const digits = pickupCodeFilter.replace(/\D/g, '');
+        if (digits) params.pickupCode = digits;
+      }
+      if (tabKey === 'PreparedDelivery' && deliverySuburbFilter.trim()) {
+        params.deliverySuburb = deliverySuburbFilter.trim().toLowerCase();
+      }
+      const res = (await apiClient.get('/admin/orders', { params })) as { items?: any[]; total?: number };
       const list = res?.items ?? [];
       const rows = list.map((o: any) => ({
         id: o.id,
@@ -154,7 +191,9 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
         orderStatus: o.orderStatus ?? 'Pending',
         orderType: o.orderType ?? '',
         pickupTime: o.pickupTime,
+        pickupCode: o.pickupCode ?? o.PickupCode ?? '',
         deliveryAddress: o.deliveryAddress,
+        deliverySuburb: o.deliverySuburb ?? o.DeliverySuburb ?? '',
         createdAt: o.createdAt,
         pickedUpAt: o.pickedUpAt ?? o.PickedUpAt ?? null,
       }));
@@ -176,7 +215,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [pickupCodeFilter, deliverySuburbFilter, playAlert]);
 
   // 获取各分类订单数量（用于 tab 显示）
   const fetchCounts = useCallback(async () => {
@@ -196,11 +235,11 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     } catch (_) {}
   }, []);
 
-  // 初始加载 + 切换 tab 时（回到第 1 页）
+  // 初始加载 + 切换 tab 或筛选时（回到第 1 页）
   useEffect(() => {
     setPagination((p) => ({ ...p, current: 1 }));
     fetchOrders(1, pagination.pageSize, activeTab);
-  }, [activeTab]);
+  }, [activeTab, pickupCodeFilter, deliverySuburbFilter, fetchOrders]);
 
   // 初始加载及切换 tab / 操作后刷新数量
   useEffect(() => {
@@ -356,6 +395,13 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       render: (_: unknown, r: OrderRow) => (r.orderType === 'Pickup' ? 'Pickup' : r.orderType === 'Delivery' ? 'Delivery' : r.orderType || '-'),
     },
     {
+      title: 'Code / Area',
+      key: 'codeOrArea',
+      width: 100,
+      render: (_: unknown, r: OrderRow) =>
+        r.orderType === 'Pickup' ? (r.pickupCode || '—') : r.orderType === 'Delivery' ? formatSuburbDisplay(r.deliverySuburb) : '—',
+    },
+    {
       title: 'Pickup / Delivery',
       key: 'pickupOrDelivery',
       width: 160,
@@ -489,7 +535,12 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
               <button
                 key={key}
                 type="button"
-                onClick={() => setActiveTab(key)}
+                onClick={() => {
+                  setPickupCodeDraft('');
+                  setPickupCodeFilter('');
+                  setDeliverySuburbFilter('');
+                  setActiveTab(key);
+                }}
                 style={{
                   padding: '12px 24px',
                   border: 'none',
@@ -505,6 +556,41 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
               </button>
             );
           })}
+        </div>
+      )}
+      {activeTab === 'PreparedPickup' && (
+        <div style={{ marginBottom: 16 }}>
+          <Input.Search
+            allowClear
+            placeholder="Search by pickup code (digits, partial OK)"
+            value={pickupCodeDraft}
+            onChange={(e) => setPickupCodeDraft(e.target.value)}
+            onSearch={(v) => {
+              setPickupCodeFilter((v ?? '').replace(/\D/g, ''));
+            }}
+            style={{ maxWidth: 400 }}
+            enterButton="Search"
+          />
+        </div>
+      )}
+      {activeTab === 'PreparedDelivery' && (
+        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ color: '#64748b', fontSize: 14 }}>Filter by suburb</span>
+          <Select
+            allowClear
+            placeholder="All areas"
+            value={deliverySuburbFilter || undefined}
+            style={{ width: 220 }}
+            onChange={(v) => {
+              setDeliverySuburbFilter(typeof v === 'string' ? v : '');
+            }}
+            options={[
+              { value: 'hurstville', label: 'Hurstville' },
+              { value: 'allawah', label: 'Allawah' },
+              { value: 'carlton', label: 'Carlton' },
+              { value: 'roseland', label: 'Roseland' },
+            ]}
+          />
         </div>
       )}
       <Table<OrderRow>

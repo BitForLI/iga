@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Modal } from 'antd';
+import { Modal, Input, Checkbox, message } from 'antd';
 import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
@@ -614,6 +614,32 @@ function AuthForms({
   );
 }
 
+function orderLinePaidAmount(it: any): number {
+  const price = Number(it.priceAtPurchase ?? 0);
+  if (it.isWeighingRequired) {
+    const kg =
+      it.actualWeight != null && !Number.isNaN(Number(it.actualWeight))
+        ? Number(it.actualWeight)
+        : Number(it.expectedWeight ?? 0);
+    return kg * price;
+  }
+  return price * Number(it.quantity ?? 0);
+}
+
+function normalizeOrderItem(raw: any) {
+  return {
+    ...raw,
+    id: raw?.id ?? raw?.Id,
+    productName: raw?.productName ?? raw?.ProductName ?? '',
+    quantity: Number(raw?.quantity ?? raw?.Quantity ?? 0),
+    priceAtPurchase: Number(raw?.priceAtPurchase ?? raw?.PriceAtPurchase ?? 0),
+    expectedWeight: raw?.expectedWeight ?? raw?.ExpectedWeight,
+    actualWeight: raw?.actualWeight ?? raw?.ActualWeight,
+    isWeighingRequired: Boolean(raw?.isWeighingRequired ?? raw?.IsWeighingRequired),
+    customerRefundCompletedAt: raw?.customerRefundCompletedAt ?? raw?.CustomerRefundCompletedAt ?? null,
+  };
+}
+
 function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -622,6 +648,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refundRequesting, setRefundRequesting] = useState(false);
   const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundSelectedIds, setRefundSelectedIds] = useState<Set<number>>(new Set());
   const { setUser } = useAuth();
 
   const paidOrderStatuses = new Set(['Paid', 'Preparing', 'Prepared', 'Completed', 'RefundRequested', 'Refunded']);
@@ -633,13 +661,15 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
     refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
     refundRejectionReason: raw?.refundRejectionReason ?? raw?.RefundRejectionReason ?? '',
+    refundRequestReason: raw?.refundRequestReason ?? raw?.RefundRequestReason ?? '',
+    refundRequestedItemIds: raw?.refundRequestedItemIds ?? raw?.RefundRequestedItemIds ?? null,
     orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
     orderType: raw?.orderType ?? raw?.OrderType ?? '',
     pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
     pickupTime: raw?.pickupTime ?? raw?.PickupTime,
     deliveryAddress: raw?.deliveryAddress ?? raw?.DeliveryAddress,
     createdAt: raw?.createdAt ?? raw?.CreatedAt,
-    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items) : [],
+    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items).map(normalizeOrderItem) : [],
   });
 
   const isPaidOrder = (order: any) => paidOrderStatuses.has(String(order?.orderStatus ?? ''));
@@ -662,6 +692,15 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     void fetchOrders();
   }, [user.id]);
 
+  useEffect(() => {
+    if (!refundConfirmOpen || !selectedOrder) return;
+    const refundable = (selectedOrder.items ?? []).filter((it: any) => !it.customerRefundCompletedAt);
+    const next = new Set<number>();
+    if (refundable.length === 1) next.add(refundable[0].id);
+    setRefundSelectedIds(next);
+    setRefundReason('');
+  }, [refundConfirmOpen, selectedOrder?.id]);
+
   const handleLogout = () => {
     setUser(null);
     onClose();
@@ -681,19 +720,42 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     }
   };
 
-  const canRequestRefund = (order: any) =>
-    ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(String(order?.orderStatus ?? ''));
+  const hasRefundableLines = (order: any) =>
+    (order.items ?? []).some((it: any) => !it.customerRefundCompletedAt);
+
+  const canRequestRefund = (order: any) => {
+    const st = String(order?.orderStatus ?? '');
+    if (!['Paid', 'Preparing', 'Prepared', 'Completed'].includes(st)) return false;
+    if (['RefundRequested', 'Refunded'].includes(st)) return false;
+    return hasRefundableLines(order);
+  };
 
   const submitRefundRequest = async (): Promise<void> => {
     if (!selectedOrder || !canRequestRefund(selectedOrder)) return;
+    const items = selectedOrder.items ?? [];
+    const refundable = items.filter((it: any) => !it.customerRefundCompletedAt);
+    const isCompleted = String(selectedOrder.orderStatus) === 'Completed';
+    if (isCompleted && refundReason.trim().length < 5) {
+      message.warning('已完成订单须填写退款理由（至少 5 个字）。');
+      throw new Error('validation');
+    }
+    const itemIds = refundable.length === 1 ? [refundable[0].id] : Array.from(refundSelectedIds);
+    if (refundable.length > 1 && itemIds.length === 0) {
+      message.warning('请选择要申请退款的商品。');
+      throw new Error('validation');
+    }
     setRefundRequesting(true);
     setError('');
     try {
-      const raw = await orderAPI.requestRefund(selectedOrder.id);
+      const raw = await orderAPI.requestRefund(selectedOrder.id, {
+        reason: refundReason.trim() || undefined,
+        itemIds,
+      });
       const next = normalizeOrder(raw);
       setSelectedOrder(next);
       setOrders((list) => list.map((o) => ((o.id ?? o.Id) === next.id ? { ...o, orderStatus: next.orderStatus } : o)));
       setRefundConfirmOpen(false);
+      message.success('退款申请已提交');
     } catch (err) {
       setError((err as Error).message);
       throw err;
@@ -712,22 +774,75 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     return (
       <div>
         <Modal
-          title="Request a refund?"
+          title="申请退款"
           zIndex={1300}
           open={refundConfirmOpen}
-          okText="Confirm refund"
-          cancelText="Cancel"
+          okText="提交申请"
+          cancelText="取消"
           okButtonProps={{ danger: true }}
           confirmLoading={refundRequesting}
           cancelButtonProps={{ disabled: refundRequesting }}
           closable={!refundRequesting}
           maskClosable={!refundRequesting}
           onCancel={() => !refundRequesting && setRefundConfirmOpen(false)}
-          onOk={() => submitRefundRequest()}
+          onOk={submitRefundRequest}
         >
           <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#374151', lineHeight: 1.55 }}>
-            Please read the following before you submit a refund request for <strong>this order</strong>.
+            提交后由店员审核；并非立即自动退款。
           </p>
+          {String(selectedOrder.orderStatus) === 'Completed' ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>退款理由（必填，至少 5 字）</div>
+              <Input.TextArea
+                rows={3}
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                placeholder="请说明退款原因"
+                maxLength={500}
+                showCount
+              />
+            </div>
+          ) : (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>退款理由（选填）</div>
+              <Input.TextArea rows={2} value={refundReason} onChange={(e) => setRefundReason(e.target.value)} maxLength={500} />
+            </div>
+          )}
+          {(() => {
+            const refundable = (selectedOrder.items ?? []).filter((it: any) => !it.customerRefundCompletedAt);
+            if (refundable.length <= 1) return null;
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8 }}>选择要退款的商品（可多选）</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {refundable.map((it: any) => {
+                    const checked = refundSelectedIds.has(it.id);
+                    return (
+                      <label
+                        key={it.id}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) => {
+                            setRefundSelectedIds((prev) => {
+                              const n = new Set(prev);
+                              if (e.target.checked) n.add(it.id);
+                              else n.delete(it.id);
+                              return n;
+                            });
+                          }}
+                        />
+                        <span>
+                          {it.productName} — 约 ${orderLinePaidAmount(it).toFixed(2)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           <ul
             style={{
               margin: 0,
@@ -740,18 +855,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               gap: '0.5rem',
             }}
           >
-            <li>
-              Refunds apply only to items that are <strong>unused, undamaged</strong>, and in{' '}
-              <strong>resalable condition</strong> (including original packaging where it applies), in line with store policy.
-            </li>
-            <li>
-              Staff will review your request. <strong>Approved refunds are usually processed within one week</strong>; your bank
-              or card issuer may need extra time to show the credit on your statement.
-            </li>
-            <li>
-              This submits a <strong>refund request</strong> for staff review — it is <strong>not</strong> an instant automatic
-              refund.
-            </li>
+            <li>仅适用于未使用、未损坏且可再次销售的商品（含包装要求以门店政策为准）。</li>
+            <li>审核通过后一般约一周内处理到账，具体以银行/卡组织为准。</li>
           </ul>
         </Modal>
         <button
@@ -809,11 +914,27 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
             {items.map((item: any, index: number) => {
               const name = item.productName ?? item.ProductName ?? 'Item';
               const quantity = Number(item.quantity ?? item.Quantity ?? 0);
-              const price = Number(item.priceAtPurchase ?? item.PriceAtPurchase ?? 0);
+              const line = orderLinePaidAmount(item);
+              const done = Boolean(item.customerRefundCompletedAt);
               return (
-                <div key={item.id ?? item.Id ?? index} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.85rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.45rem' }}>
-                  <span>{name} x{quantity}</span>
-                  <strong>${(price * quantity).toFixed(2)}</strong>
+                <div
+                  key={item.id ?? item.Id ?? index}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    fontSize: '0.85rem',
+                    borderBottom: '1px solid #f3f4f6',
+                    paddingBottom: '0.45rem',
+                    opacity: done ? 0.55 : 1,
+                  }}
+                >
+                  <span>
+                    {name}
+                    {item.isWeighingRequired ? ` (${Number(item.expectedWeight ?? 0).toFixed(3)} kg est.)` : ` ×${quantity}`}
+                    {done ? <em style={{ marginLeft: 6, color: '#64748b' }}>（已退款处理）</em> : null}
+                  </span>
+                  <strong>${line.toFixed(2)}</strong>
                 </div>
               );
             })}
@@ -821,9 +942,15 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
         </div>
 
         {selectedOrder.orderStatus === 'RefundRequested' ? (
-          <p style={{ fontSize: '0.85rem', color: '#991b1b', background: '#fee2e2', padding: '0.75rem', borderRadius: 6 }}>
-            Refund request submitted. Store staff will review this order.
-          </p>
+          <div style={{ fontSize: '0.85rem', color: '#991b1b', background: '#fee2e2', padding: '0.75rem', borderRadius: 6 }}>
+            <p style={{ margin: '0 0 0.5rem 0' }}>退款申请已提交，店员将尽快审核。</p>
+            {selectedOrder.refundRequestReason ? (
+              <p style={{ margin: 0, color: '#7f1d1d' }}>
+                <strong>您的理由：</strong>
+                {selectedOrder.refundRequestReason}
+              </p>
+            ) : null}
+          </div>
         ) : selectedOrder.refundRejectionReason ? (
           <p style={{ fontSize: '0.85rem', color: '#92400e', background: '#fef3c7', padding: '0.75rem', borderRadius: 6 }}>
             Refund request rejected: {selectedOrder.refundRejectionReason}
@@ -844,7 +971,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               cursor: canRequestRefund(selectedOrder) && !refundRequesting ? 'pointer' : 'not-allowed',
             }}
           >
-            {refundRequesting ? 'Submitting...' : 'Request refund'}
+            {refundRequesting ? '提交中…' : '申请退款'}
           </button>
         )}
       </div>

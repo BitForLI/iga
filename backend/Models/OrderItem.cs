@@ -25,6 +25,9 @@ namespace igaServer.Models
         public double ExpectedWeight { get; set; } // 预估重量 (如 1.0kg)
         public double? ActualWeight { get; set; }  // 实际重量 (商家填写，如 0.85kg)
 
+        /// <summary>顾客部分退款已处理完成（该行不再可申请退款）。</summary>
+        public DateTime? CustomerRefundCompletedAt { get; set; }
+
         // 计算属性：该条目的最终金额
         // 如果是普通商品，就是 单价 * 数量
         // 如果是称重商品，后续会根据 ActualWeight 更新

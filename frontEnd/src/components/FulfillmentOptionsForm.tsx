@@ -1,26 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
-import { AddressAutofill } from '@mapbox/search-js-react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { EnvironmentOutlined, CarOutlined } from '@ant-design/icons';
 import { useOrderMode, type OrderType } from '../context/OrderModeContext';
+import { API_BASE } from '../config/apiEnv';
 
 const PICKUP_ADDRESS = 'Beverly Hills IGA';
-const PICKUP_ADDRESS_FULL = 'Beverly Hills IGA, Beverly Hills NSW';
 const MAP_LINK = 'https://www.google.com/maps/search/Beverly+Hills+IGA+Beverly+Hills+NSW';
-const SYDNEY_PROXIMITY = { lng: 151.1, lat: -33.967 };
-const SYDNEY_REGION_BBOX = '150.82,-34.18,151.42,-33.72';
-
-const MAPBOX_TOKEN_RAW = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
-const MAPBOX_TOKEN =
-  typeof MAPBOX_TOKEN_RAW === 'string' && MAPBOX_TOKEN_RAW.trim() ? MAPBOX_TOKEN_RAW.trim() : undefined;
-
-const MAPBOX_ADDRESS_AUTOFILL_OPTIONS = {
-  country: 'AU',
-  language: 'en',
-  proximity: SYDNEY_PROXIMITY,
-  bbox: SYDNEY_REGION_BBOX,
-  limit: 8,
-  streets: true,
-} as const;
 
 const PICKUP_SLOT_MS = 60 * 60 * 1000;
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -55,31 +39,23 @@ function ceilToNextHour(d: Date): Date {
   return out;
 }
 
-function generateAllPickupSlots(now: Date): { label: string; shortLabel: string; value: string; dayKey: string }[] {
+/** 仅展示时间段（不含星期、日期、月份），例如 2:00 am – 3:00 am */
+function generateAllPickupSlots(now: Date): { displayTime: string; value: string; dayKey: string }[] {
   const wStart = pickupWindowStart(now);
   const wEnd = pickupWindowEnd(now);
   if (wStart >= wEnd) return [];
   let t = ceilToNextHour(wStart);
-  const fmtStart = new Intl.DateTimeFormat('en-AU', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
   const fmtHm = new Intl.DateTimeFormat('en-AU', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
-  const out: { label: string; shortLabel: string; value: string; dayKey: string }[] = [];
+  const out: { displayTime: string; value: string; dayKey: string }[] = [];
   while (t < wEnd) {
     const slotEnd = new Date(t.getTime() + PICKUP_SLOT_MS);
     if (slotEnd > wEnd) break;
     out.push({
-      label: `${fmtStart.format(t)} – ${fmtHm.format(slotEnd)}`,
-      shortLabel: `${fmtHm.format(t)} – ${fmtHm.format(slotEnd)}`,
+      displayTime: `${fmtHm.format(t)} – ${fmtHm.format(slotEnd)}`,
       value: t.toISOString(),
       dayKey: dateKey(t),
     });
@@ -106,23 +82,25 @@ function generateDayCardsForPickup(now: Date): { key: string; dayTop: string; da
 
 export const DELIVERY_SUBURBS = ['Hurstville', 'Allawah', 'Carlton', 'Roseland'] as const;
 
-function getSuburbFromFeature(props: {
-  context?: { locality?: { name?: string }; place?: { name?: string } };
-  place_formatted?: string;
-}): string {
-  const ctx = props?.context;
-  const locality = ctx?.locality?.name?.trim();
-  const place = ctx?.place?.name?.trim();
-  if (locality) return locality;
-  if (place) return place;
-  const match = props?.place_formatted?.match(/^([^,]+)/);
-  return match ? match[1].trim().split(/\s+/)[0] || '' : '';
-}
+export type AddressSuggestion = {
+  id: string;
+  placeName: string;
+  streetAddress: string;
+  suburb: string;
+  postcode: string;
+  state: string;
+};
 
-function parseSuburbFromRetrieveProps(props: Record<string, unknown>): string {
-  const level2 = String(props.address_level2 ?? '').trim();
-  if (level2) return level2;
-  return getSuburbFromFeature(props as Parameters<typeof getSuburbFromFeature>[0]);
+async function fetchAddressSuggestApi(query?: string): Promise<{ configured: boolean; suggestions: AddressSuggestion[] }> {
+  const q = query?.trim() ?? '';
+  const qs = q.length >= 3 ? `?query=${encodeURIComponent(q)}` : '';
+  const r = await fetch(`${API_BASE}/address/suggest${qs}`);
+  if (!r.ok) throw new Error(String(r.status));
+  const j = (await r.json()) as { configured?: boolean; suggestions?: AddressSuggestion[] };
+  return {
+    configured: !!j.configured,
+    suggestions: Array.isArray(j.suggestions) ? j.suggestions : [],
+  };
 }
 
 function isInDeliveryZone(suburb: string): boolean {
@@ -145,6 +123,13 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
   const { orderType, setOrderType, pickupTimeSlot, setPickupTimeSlot, deliveryInfo, setDeliveryInfo, saveDeliveryAddress } =
     useOrderMode();
   const [slotNow, setSlotNow] = useState(() => new Date());
+  const [pickupDayKey, setPickupDayKey] = useState('');
+
+  const [addrBackendConfigured, setAddrBackendConfigured] = useState<boolean | null>(null);
+  const [addrSuggestions, setAddrSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addrSuggestOpen, setAddrSuggestOpen] = useState(false);
+  const [addrSuggestLoading, setAddrSuggestLoading] = useState(false);
+  const addrSuggestWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (active) setSlotNow(new Date());
@@ -167,11 +152,127 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
     }
   }, [active, allPickupSlots, pickupTimeSlot, setPickupTimeSlot]);
 
+  useEffect(() => {
+    if (!active || orderType !== 'Pickup' || dayCards.length === 0) return;
+    setPickupDayKey((prev) => {
+      if (prev && dayCards.some((d) => d.key === prev)) return prev;
+      return dayCards[0]!.key;
+    });
+  }, [active, orderType, dayCards]);
+
+  useEffect(() => {
+    if (!pickupTimeSlot || allPickupSlots.length === 0) return;
+    const slot = allPickupSlots.find((s) => s.value === pickupTimeSlot);
+    if (slot) setPickupDayKey(slot.dayKey);
+  }, [pickupTimeSlot, allPickupSlots]);
+
+  const handlePickupDayChange = useCallback(
+    (key: string) => {
+      setPickupDayKey(key);
+      const current = pickupTimeSlot;
+      if (current && !allPickupSlots.some((s) => s.value === current && s.dayKey === key)) {
+        setPickupTimeSlot('');
+      }
+    },
+    [allPickupSlots, pickupTimeSlot, setPickupTimeSlot]
+  );
+
+  useEffect(() => {
+    if (!active) setAddrBackendConfigured(null);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || orderType !== 'Delivery') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { configured } = await fetchAddressSuggestApi();
+        if (!cancelled) setAddrBackendConfigured(configured);
+      } catch {
+        if (!cancelled) setAddrBackendConfigured(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, orderType]);
+
+  useEffect(() => {
+    if (!active || orderType !== 'Delivery' || addrBackendConfigured !== true) return;
+    const q = (deliveryInfo.address ?? '').trim();
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      if (q.length < 3) {
+        if (!cancelled) {
+          setAddrSuggestions([]);
+          setAddrSuggestOpen(false);
+          setAddrSuggestLoading(false);
+        }
+        return;
+      }
+      setAddrSuggestLoading(true);
+      try {
+        const { suggestions } = await fetchAddressSuggestApi(q);
+        if (!cancelled) {
+          setAddrSuggestions(suggestions);
+          setAddrSuggestOpen(suggestions.length > 0);
+        }
+      } catch {
+        if (!cancelled) {
+          setAddressError('Address search failed. Try again or use manual entry below.');
+          setAddrSuggestions([]);
+          setAddrSuggestOpen(false);
+        }
+      } finally {
+        if (!cancelled) setAddrSuggestLoading(false);
+      }
+    }, 320);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [active, orderType, addrBackendConfigured, deliveryInfo.address]);
+
+  useEffect(() => {
+    if (!addrSuggestOpen) return;
+    const close = (ev: MouseEvent) => {
+      const el = addrSuggestWrapRef.current;
+      if (el && !el.contains(ev.target as Node)) setAddrSuggestOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [addrSuggestOpen]);
+
+  const applyAddressSuggestion = useCallback(
+    (s: AddressSuggestion) => {
+      const suburb = (s.suburb ?? '').trim();
+      const address = (s.streetAddress ?? '').trim();
+      const postcode = (s.postcode ?? '').trim();
+      setAddressInputDirty(false);
+      setAddrSuggestOpen(false);
+      setAddrSuggestions([]);
+      setDeliveryInfo({ ...deliveryInfo, address, suburb, postcode });
+      if (isInDeliveryZone(suburb)) setAddressError('');
+      else
+        setAddressError(
+          suburb
+            ? `This address (${suburb}) is outside our delivery zone. We only deliver to Hurstville, Allawah, Carlton, Roseland`
+            : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
+        );
+    },
+    [deliveryInfo, setDeliveryInfo]
+  );
+
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);
   };
 
   const showSidebarActions = variant === 'sidebar' && typeof onSidebarClose === 'function';
+
+  const slotsForSelectedDay = useMemo(
+    () => allPickupSlots.filter((s) => s.dayKey === pickupDayKey),
+    [allPickupSlots, pickupDayKey]
+  );
 
   return (
     <>
@@ -193,9 +294,6 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                   ? `${deliveryInfo.address}, ${deliveryInfo.suburb}`
                   : 'Please enter delivery address'}
             </p>
-            {orderType === 'Pickup' && (
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#6b7280' }}>{PICKUP_ADDRESS_FULL}</p>
-            )}
           </div>
           {orderType === 'Pickup' && (
             <a
@@ -218,7 +316,6 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
         </div>
       </div>
 
-      <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem', color: '#6b7280' }}>Or choose another option below:</p>
       <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1rem' }}>
         <button
           type="button"
@@ -267,46 +364,66 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
       {orderType === 'Pickup' ? (
         <div>
           <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#0a0a0a' }}>Select pickup time slot</p>
-          <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
-            From 1 hour from now (rounded up to the next hour) through tomorrow evening; last slots end by 8:00 PM. One slot per
-            hour.
-          </p>
           {dayCards.length === 0 || allPickupSlots.length === 0 ? (
             <p style={{ margin: 0, padding: '12px 0', fontSize: 14, color: '#64748b' }}>
               No pickup slots in the current window. Please try again later.
             </p>
           ) : (
-            <select
-              value={pickupTimeSlot}
-              onChange={(e) => setPickupTimeSlot(e.target.value)}
-              aria-label="Pickup time slot"
-              style={{
-                width: '100%',
-                marginBottom: '0.75rem',
-                padding: '12px 14px',
-                borderRadius: 10,
-                border: '1px solid #e5e7eb',
-                background: 'white',
-                fontSize: 15,
-                fontWeight: 500,
-                color: '#0a0a0a',
-                cursor: 'pointer',
-                boxSizing: 'border-box',
-              }}
-            >
-              <option value="">Choose a time…</option>
-              {dayCards.map((d) => (
-                <optgroup key={d.key} label={`${d.dayTop} · ${d.dayBottom}`}>
-                  {allPickupSlots
-                    .filter((s) => s.dayKey === d.key)
-                    .map((slot) => (
-                      <option key={slot.value} value={slot.value}>
-                        {slot.shortLabel}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                {dayCards.map((d) => {
+                  const selected = pickupDayKey === d.key;
+                  return (
+                    <button
+                      key={d.key}
+                      type="button"
+                      onClick={() => handlePickupDayChange(d.key)}
+                      style={{
+                        flex: 1,
+                        minWidth: 120,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: selected ? '2px solid #dc2626' : '1px solid #e5e7eb',
+                        background: 'white',
+                        color: selected ? '#dc2626' : '#0a0a0a',
+                        fontWeight: selected ? 600 : 500,
+                        fontSize: 14,
+                        cursor: 'pointer',
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {d.dayTop} {d.dayBottom}
+                    </button>
+                  );
+                })}
+              </div>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: 6 }}>Time</label>
+              <select
+                value={pickupTimeSlot}
+                onChange={(e) => setPickupTimeSlot(e.target.value)}
+                aria-label="Pickup time slot"
+                style={{
+                  width: '100%',
+                  marginBottom: '0.75rem',
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #e5e7eb',
+                  background: 'white',
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: '#0a0a0a',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <option value="">Choose a time…</option>
+                {slotsForSelectedDay.map((slot) => (
+                  <option key={slot.value} value={slot.value}>
+                    {slot.displayTime}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
           {showSidebarActions && (
             <button
@@ -359,17 +476,20 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
             }}
           />
           <p style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Check if we deliver to your area</p>
-          {MAPBOX_TOKEN ? (
+
+          {addrBackendConfigured === null ? (
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>Loading address search…</p>
+          ) : addrBackendConfigured ? (
             <>
               <form
                 onSubmit={(e) => e.preventDefault()}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
               >
                 <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.35 }}>
-                  Start typing your street address; suggestions appear after 3 or more characters. Pick a result to fill suburb
-                  and postcode.
+                  Type your street address; after 3 characters, choose a suggestion to fill suburb and postcode.
                 </p>
                 <div
+                  ref={addrSuggestWrapRef}
                   style={{
                     position: 'relative',
                     width: '100%',
@@ -378,89 +498,95 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                     background: 'white',
                   }}
                 >
-                  <AddressAutofill
-                    accessToken={MAPBOX_TOKEN}
-                    popoverOptions={{ placement: 'bottom-start', flip: true, offset: 6 }}
-                    options={MAPBOX_ADDRESS_AUTOFILL_OPTIONS}
-                    onRetrieve={(res) => {
-                      const feat = res?.features?.[0];
-                      if (!feat?.properties) return;
-                      const props = feat.properties as Record<string, unknown>;
-                      const suburb = parseSuburbFromRetrieveProps(props);
-                      const addr1 = String(props.address_line1 ?? '').trim();
-                      const full = String(props.full_address ?? '').trim();
-                      const placeName = String(props.place_name ?? '').trim();
-                      const address =
-                        addr1 ||
-                        (full ? full.split(',')[0]?.trim() ?? '' : '') ||
-                        (placeName ? placeName.split(',')[0]?.trim() ?? '' : '') ||
-                        String(props.address ?? '').trim();
-                      const postcode = String(props.postcode ?? '');
-                      const line2 = (props.address_line2 as string)?.trim() || '';
-                      const unitFromMapbox = line2 && /^(unit|apt|#|no\.?)\s*\d+/i.test(line2) ? line2 : '';
-                      const info = {
-                        ...deliveryInfo,
-                        address,
-                        suburb,
-                        postcode,
-                        unitNumber: unitFromMapbox || deliveryInfo.unitNumber,
-                      };
-                      setAddressInputDirty(false);
-                      if (isInDeliveryZone(suburb)) {
-                        setDeliveryInfo(info);
-                        setAddressError('');
-                      } else {
-                        setDeliveryInfo(info);
-                        setAddressError(
-                          suburb
-                            ? `This address (${suburb}) is outside our delivery zone. We only deliver to Hurstville, Allawah, Carlton, Roseland`
-                            : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
-                        );
-                      }
-                    }}
-                    onSuggestError={(err) => {
-                      console.warn('Mapbox suggest error:', err);
-                      setAddressError(
-                        'Address search failed. Confirm VITE_MAPBOX_ACCESS_TOKEN is set for this build, and in Mapbox token settings allow this website URL (and localhost for dev).'
-                      );
-                    }}
-                  >
-                    <input
-                      name="address"
-                      type="text"
-                      autoComplete="street-address"
-                      placeholder="Street address (type 3+ characters)…"
-                      data-lpignore="true"
-                      value={deliveryInfo.address ?? ''}
-                      onChange={(e) => {
-                        setAddressInputDirty(true);
-                        setAddressError('');
-                        setDeliveryInfo({ ...deliveryInfo, address: e.target.value });
-                      }}
-                      style={{
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '0.5rem 0.75rem 0.5rem 2rem',
-                        border: 'none',
-                        fontSize: '0.875rem',
-                        outline: 'none',
-                        background: 'transparent',
-                      }}
-                    />
-                  </AddressAutofill>
                   <EnvironmentOutlined
                     aria-hidden
                     style={{
                       position: 'absolute',
                       left: 10,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
+                      top: 12,
                       color: '#9ca3af',
                       fontSize: '1rem',
                       pointerEvents: 'none',
                       zIndex: 1,
                     }}
                   />
+                  <input
+                    name="address"
+                    type="text"
+                    autoComplete="street-address"
+                    placeholder="Street address (type 3+ characters)…"
+                    data-lpignore="true"
+                    value={deliveryInfo.address ?? ''}
+                    onChange={(e) => {
+                      setAddressInputDirty(true);
+                      setAddressError('');
+                      setDeliveryInfo({ ...deliveryInfo, address: e.target.value });
+                    }}
+                    onFocus={() => {
+                      if (addrSuggestions.length > 0) setAddrSuggestOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setAddrSuggestOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '0.5rem 0.75rem 0.5rem 2rem',
+                      border: 'none',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                      background: 'transparent',
+                    }}
+                  />
+                  {addrSuggestLoading ? (
+                    <p style={{ margin: 0, padding: '4px 10px 8px', fontSize: '0.72rem', color: '#9ca3af' }}>Searching…</p>
+                  ) : null}
+                  {addrSuggestOpen && addrSuggestions.length > 0 ? (
+                    <ul
+                      role="listbox"
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: '100%',
+                        margin: '4px 0 0 0',
+                        padding: 4,
+                        listStyle: 'none',
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 8,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                        maxHeight: 220,
+                        overflowY: 'auto',
+                        zIndex: 1200,
+                      }}
+                    >
+                      {addrSuggestions.map((sug) => (
+                        <li key={sug.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applyAddressSuggestion(sug)}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '8px 10px',
+                              border: 'none',
+                              borderRadius: 6,
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              lineHeight: 1.35,
+                              color: '#0a0a0a',
+                            }}
+                          >
+                            {sug.placeName || `${sug.streetAddress}, ${sug.suburb} ${sug.postcode}`.trim()}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
                 <input
                   name="suburb"
@@ -513,8 +639,9 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                   lineHeight: 1.4,
                 }}
               >
-                Mapbox address search is not configured. Enter your street and suburb manually (same delivery areas as when
-                search is enabled).
+                Address search is off until the server has a Mapbox token. Set <strong>Mapbox:AccessToken</strong> in backend
+                settings or environment variable <strong>MAPBOX_ACCESS_TOKEN</strong>, then redeploy. You can still enter your
+                street and suburb below.
               </p>
               <input
                 type="text"

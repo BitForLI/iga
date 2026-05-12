@@ -29,6 +29,12 @@ namespace igaServer.Models
 
         public string? RefundRejectionReason { get; set; } // 拒绝退款原因
 
+        /// <summary>顾客申请退款时填写的理由（已完成订单必填）。</summary>
+        public string? RefundRequestReason { get; set; }
+
+        /// <summary>JSON 数组：申请退款的 OrderItem Id 列表（部分退款）。</summary>
+        public string? RefundRequestedItemIdsJson { get; set; }
+
         // --- 履约信息 ---
         public string? OrderStatus { get; set; } = "Pending"; // Pending, Paid, Prepared, Completed
         public string? PickupCode { get; set; } // 6 位数字取货码（创建订单时生成）
@@ -36,6 +42,8 @@ namespace igaServer.Models
         
         public DateTime? PickupTime { get; set; } // 预约时间
         public string? DeliveryAddress { get; set; } // 配送地址
+        /// <summary>配送郊区（与下单时 DeliverySuburb 一致，便于员工按区筛选）。</summary>
+        public string? DeliverySuburb { get; set; }
         public double? DeliveryDistanceKm { get; set; } // 配送距离
 
         /// <summary>顾客已取货/已交接时间；仍为 Prepared，在后台「Completed *」列表中展示。</summary>

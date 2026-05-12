@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Stripe;
 using Stripe.Checkout;
 using IGA.Services;
@@ -182,7 +183,9 @@ namespace igaServer.Controllers
             [FromQuery] int pageSize = 10,
             [FromQuery] string? status = null,
             [FromQuery] string? orderType = null,
-            [FromQuery] bool? pickedUp = null)
+            [FromQuery] bool? pickedUp = null,
+            [FromQuery] string? pickupCode = null,
+            [FromQuery] string? deliverySuburb = null)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
             if (string.IsNullOrEmpty(status) || status == "Pending" || status == "Paid")
@@ -196,6 +199,31 @@ namespace igaServer.Controllers
                 query = query.Where(o => o.OrderStatus == status);
             if (!string.IsNullOrEmpty(orderType))
                 query = query.Where(o => o.OrderType == orderType);
+
+            var pickupDigits = string.IsNullOrWhiteSpace(pickupCode)
+                ? null
+                : new string(pickupCode.Where(char.IsDigit).ToArray());
+            if (!string.IsNullOrEmpty(pickupDigits))
+            {
+                query = query.Where(o => o.PickupCode != null && o.PickupCode.Contains(pickupDigits));
+            }
+
+            if (!string.IsNullOrWhiteSpace(deliverySuburb))
+            {
+                var key = deliverySuburb.Trim().ToLowerInvariant();
+                if (StoreDeliveryHelper.IsAllowedSuburb(key))
+                {
+                    query = query.Where(o =>
+                        o.OrderType == "Delivery" &&
+                        (
+                            (o.DeliverySuburb != null && o.DeliverySuburb.Trim() != "" && o.DeliverySuburb.Trim().ToLower() == key) ||
+                            ((o.DeliverySuburb == null || o.DeliverySuburb.Trim() == "") &&
+                             o.DeliveryAddress != null &&
+                             o.DeliveryAddress.ToLower().Contains(key))
+                        ));
+                }
+            }
+
             // Prepared + 指定 Pickup/Delivery：默认只列「待取/待交接」；pickedUp=true 只列已完成（有 PickedUpAt）
             if (string.Equals(status, "Prepared", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(orderType))
@@ -233,7 +261,9 @@ namespace igaServer.Controllers
                     orderStatus = o.OrderStatus,
                     orderType = o.OrderType,
                     pickupTime = o.PickupTime,
+                    pickupCode = o.PickupCode,
                     deliveryAddress = o.DeliveryAddress,
+                    deliverySuburb = o.DeliverySuburb,
                     stripeSessionId = o.StripeSessionId,
                     stripePaymentIntentId = o.StripePaymentIntentId,
                     pickedUpAt = o.PickedUpAt,
@@ -295,7 +325,11 @@ namespace igaServer.Controllers
         public async Task<IActionResult> ApproveRefundRequest(int orderId)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
-            var order = await _context.Orders.FindAsync(orderId);
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.Items!)
+                .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null) return NotFound("Order not found");
             if (order.OrderStatus != "RefundRequested")
                 return BadRequest("Can only approve RefundRequested orders");
@@ -305,6 +339,9 @@ namespace igaServer.Controllers
             {
                 order.FinalAmount = 0;
                 order.OrderStatus = "Refunded";
+                order.RefundRequestPreviousStatus = null;
+                order.RefundRequestReason = null;
+                order.RefundRequestedItemIdsJson = null;
                 await _context.SaveChangesAsync();
                 return Ok(new { id = order.Id, orderStatus = order.OrderStatus, refundAmount = order.RefundAmount, message = "Order already fully refunded" });
             }
@@ -314,13 +351,53 @@ namespace igaServer.Controllers
                 return BadRequest(new { error = "Order is missing StripePaymentIntentId; cannot refund through Stripe." });
             }
 
-            var minorUnits = (long)Math.Round(refundableRemaining * 100m, MidpointRounding.AwayFromZero);
+            List<int> requestedItemIds;
+            if (string.IsNullOrWhiteSpace(order.RefundRequestedItemIdsJson))
+            {
+                requestedItemIds = order.Items!
+                    .Where(i => i.CustomerRefundCompletedAt == null)
+                    .Select(i => i.Id)
+                    .ToList();
+            }
+            else
+            {
+                try
+                {
+                    requestedItemIds = JsonSerializer.Deserialize<List<int>>(order.RefundRequestedItemIdsJson!) ?? new List<int>();
+                }
+                catch
+                {
+                    return BadRequest(new { error = "Invalid refund request item list." });
+                }
+            }
+
+            if (requestedItemIds.Count == 0)
+            {
+                return BadRequest(new { error = "No items in this refund request." });
+            }
+
+            var lineItems = order.Items!
+                .Where(i => requestedItemIds.Contains(i.Id) && i.CustomerRefundCompletedAt == null)
+                .ToList();
+            if (lineItems.Count != requestedItemIds.Count)
+            {
+                return BadRequest(new { error = "Refund request refers to unknown or already processed items." });
+            }
+
+            var requestedSum = lineItems.Sum(LineChargeForRefund);
+            if (requestedSum <= 0)
+            {
+                return BadRequest(new { error = "Refund amount for selected items is zero." });
+            }
+
+            var refundNow = Math.Min(requestedSum, refundableRemaining);
+            var minorUnits = (long)Math.Round(refundNow * 100m, MidpointRounding.AwayFromZero);
             if (minorUnits < 1)
             {
                 return BadRequest(new { error = "Refund amount is too small for Stripe." });
             }
 
-            var idempotencyKey = $"customer-refund-order-{order.Id}-{minorUnits}-{order.RefundAmount:0.00}";
+            var idempotencyKey = $"customer-refund-order-{order.Id}-{minorUnits}-{string.Join("-", requestedItemIds.OrderBy(x => x))}";
             var (ok, errMsg, refundId) = await _stripeService.CreatePartialRefundAsync(
                 order.StripePaymentIntentId,
                 minorUnits,
@@ -332,13 +409,32 @@ namespace igaServer.Controllers
                 return StatusCode(502, new { error = "Stripe refund failed", detail = errMsg });
             }
 
-            order.RefundAmount += refundableRemaining;
-            order.FinalAmount = 0;
-            order.OrderStatus = "Refunded";
+            order.RefundAmount += refundNow;
+            order.FinalAmount = order.TotalAmount - order.RefundAmount;
+            foreach (var li in lineItems)
+            {
+                li.CustomerRefundCompletedAt = DateTime.UtcNow;
+            }
+
+            var fullyRefunded = order.RefundAmount >= order.TotalAmount - 0.01m;
+            if (fullyRefunded)
+            {
+                order.OrderStatus = "Refunded";
+                order.FinalAmount = 0;
+            }
+            else
+            {
+                order.OrderStatus = string.IsNullOrWhiteSpace(order.RefundRequestPreviousStatus)
+                    ? "Completed"
+                    : order.RefundRequestPreviousStatus!;
+            }
+
             order.RefundRequestPreviousStatus = null;
+            order.RefundRequestReason = null;
+            order.RefundRequestedItemIdsJson = null;
             await _context.SaveChangesAsync();
 
-            await TrySendRefundApprovedEmailAsync(order, refundableRemaining, HttpContext.RequestAborted);
+            await TrySendRefundApprovedEmailAsync(order, refundNow, HttpContext.RequestAborted);
 
             return Ok(new
             {
@@ -347,8 +443,21 @@ namespace igaServer.Controllers
                 refundAmount = order.RefundAmount,
                 finalAmount = order.FinalAmount,
                 stripeRefundId = refundId,
+                refundedThisApproval = refundNow,
                 message = "Refund approved and processed through Stripe"
             });
+        }
+
+        private static decimal LineChargeForRefund(OrderItem oi)
+        {
+            if (oi.Product?.IsWeighingRequired == true)
+            {
+                var kg = (decimal)(oi.ActualWeight ?? oi.ExpectedWeight);
+                if (kg < 0) kg = 0;
+                return oi.PriceAtPurchase * kg;
+            }
+
+            return oi.PriceAtPurchase * oi.Quantity;
         }
 
         [HttpPost("order-refund-reject/{orderId}")]
@@ -371,6 +480,8 @@ namespace igaServer.Controllers
                 : order.RefundRequestPreviousStatus;
             order.RefundRejectionReason = reason;
             order.RefundRequestPreviousStatus = null;
+            order.RefundRequestReason = null;
+            order.RefundRequestedItemIdsJson = null;
             await _context.SaveChangesAsync();
 
             await TrySendRefundRejectedEmailAsync(order, reason, HttpContext.RequestAborted);

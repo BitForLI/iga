@@ -92,6 +92,7 @@ namespace igaServer.Controllers
                 OrderStatus = "Pending", // 初始状态：待支付
                 PickupTime = request.PickupTime.HasValue ? DateTime.SpecifyKind(request.PickupTime.Value, DateTimeKind.Utc) : null, // 转换为 UTC
                 DeliveryAddress = request.DeliveryAddress,
+                DeliverySuburb = request.OrderType == "Delivery" ? (request.DeliverySuburb ?? "").Trim() : null,
                 Items = new List<OrderItem>()
             };
 
@@ -215,12 +216,13 @@ namespace igaServer.Controllers
         }
 
         // ==========================================
-        // 4. 顾客申请退款
+        // 4. 顾客申请退款（可选部分商品；已完成订单须填理由）
         // POST: api/order/{orderId}/refund-request
         // ==========================================
         [HttpPost("{orderId}/refund-request")]
         public async Task<ActionResult<OrderDetailDto>> RequestRefund(
             int orderId,
+            [FromBody] RefundRequestDto? body,
             [FromHeader(Name = "X-User-Id")] int userId)
         {
             if (userId <= 0)
@@ -262,8 +264,59 @@ namespace igaServer.Controllers
                 return BadRequest(new { error = $"Order status is {order.OrderStatus}; refund request is not available" });
             }
 
+            var items = order.Items?.Where(oi => oi.CustomerRefundCompletedAt == null).ToList() ?? new List<OrderItem>();
+            if (items.Count == 0)
+            {
+                return BadRequest(new { error = "No refundable items remain on this order." });
+            }
+
+            var reason = (body?.Reason ?? "").Trim();
+            var requestedIds = (body?.ItemIds ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
+
+            List<int> selectedIds;
+            if (items.Count == 1)
+            {
+                selectedIds = new List<int> { items[0].Id };
+                if (requestedIds.Count > 0 && (requestedIds.Count != 1 || requestedIds[0] != selectedIds[0]))
+                {
+                    return BadRequest(new { error = "Invalid item selection for this order." });
+                }
+            }
+            else
+            {
+                if (requestedIds.Count == 0)
+                {
+                    return BadRequest(new { error = "Please select at least one item to refund." });
+                }
+
+                var allowed = items.Select(i => i.Id).ToHashSet();
+                if (requestedIds.Any(id => !allowed.Contains(id)))
+                {
+                    return BadRequest(new { error = "One or more selected items are invalid or already refunded." });
+                }
+
+                selectedIds = requestedIds;
+            }
+
+            if (string.Equals(order.OrderStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+            {
+                if (reason.Length < 5)
+                {
+                    return BadRequest(new { error = "Please enter a refund reason (at least 5 characters)." });
+                }
+            }
+
+            var selectedLines = items.Where(i => selectedIds.Contains(i.Id)).ToList();
+            var sum = selectedLines.Sum(LineChargeForRefund);
+            if (sum <= 0)
+            {
+                return BadRequest(new { error = "Selected items have no refundable amount." });
+            }
+
             order.RefundRequestPreviousStatus = order.OrderStatus;
             order.RefundRejectionReason = null;
+            order.RefundRequestReason = string.IsNullOrEmpty(reason) ? null : reason;
+            order.RefundRequestedItemIdsJson = System.Text.Json.JsonSerializer.Serialize(selectedIds);
             order.OrderStatus = "RefundRequested";
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
@@ -421,6 +474,16 @@ namespace igaServer.Controllers
             var order = orderItem.Order;
             var previousActual = orderItem.ActualWeight;
 
+            if (!string.Equals(order.OrderStatus, "Preparing", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "Actual weight can only be entered while the order is in Preparing status." });
+            }
+
+            if (previousActual.HasValue)
+            {
+                return BadRequest(new { error = "Actual weight for this line has already been saved and cannot be changed again." });
+            }
+
             // 购物车里的 Quantity 对称重商品表示预估购买重量；不要再乘一次 Quantity，否则会把退款放大。
             decimal expectedTotalWeight = (decimal)orderItem.ExpectedWeight;
             decimal newActualTotalWeight = (decimal)request.ActualWeight;
@@ -566,6 +629,8 @@ namespace igaServer.Controllers
                 FinalAmount = order.FinalAmount,
                 RefundAmount = order.RefundAmount,
                 RefundRejectionReason = order.RefundRejectionReason,
+                RefundRequestReason = order.RefundRequestReason,
+                RefundRequestedItemIds = ParseRefundItemIdList(order.RefundRequestedItemIdsJson),
                 OrderStatus = order.OrderStatus,
                 OrderType = order.OrderType,
                 StripeSessionId = order.StripeSessionId,
@@ -573,6 +638,7 @@ namespace igaServer.Controllers
                 PickupCode = order.PickupCode,
                 PickupTime = order.PickupTime,
                 DeliveryAddress = order.DeliveryAddress,
+                DeliverySuburb = order.DeliverySuburb,
                 DeliveryDistanceKm = order.DeliveryDistanceKm,
                 PickedUpAt = order.PickedUpAt,
                 Items = order.Items?.Select(oi => MapToOrderItemDetailDto(oi)).ToList(),
@@ -613,7 +679,34 @@ namespace igaServer.Controllers
                 ExpectedWeight = item.ExpectedWeight,
                 ActualWeight = item.ActualWeight,
                 IsWeighingRequired = item.Product?.IsWeighingRequired ?? false,
+                CustomerRefundCompletedAt = item.CustomerRefundCompletedAt,
             };
+        }
+
+        private static List<int>? ParseRefundItemIdList(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<int>>(json);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>该行顾客实付金额（与下单/称重逻辑一致）。</summary>
+        private static decimal LineChargeForRefund(OrderItem oi)
+        {
+            if (oi.Product?.IsWeighingRequired == true)
+            {
+                var kg = (decimal)(oi.ActualWeight ?? oi.ExpectedWeight);
+                if (kg < 0) kg = 0;
+                return oi.PriceAtPurchase * kg;
+            }
+
+            return oi.PriceAtPurchase * oi.Quantity;
         }
     }
 

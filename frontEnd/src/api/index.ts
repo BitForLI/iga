@@ -149,7 +149,8 @@ export const orderAPI = {
   create: (data: any) => apiClient.post<{ orderId: number }>('/order/create', data),
   get: (id: number) => apiClient.get('/order/' + id),
   getUserOrders: (userId: number) => apiClient.get<any[]>('/order/user/' + userId),
-  requestRefund: (orderId: number) => apiClient.post('/order/' + orderId + '/refund-request', {}),
+  requestRefund: (orderId: number, body?: { reason?: string; itemIds?: number[] }) =>
+    apiClient.post('/order/' + orderId + '/refund-request', body ?? {}),
   verify: (id: number, data: any) => apiClient.post('/order/' + id + '/verify', data),
 };
 

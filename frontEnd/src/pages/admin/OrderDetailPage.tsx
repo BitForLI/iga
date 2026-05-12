@@ -31,7 +31,7 @@ interface OrderDetail {
   createdAt: string;
 }
 
-const WEIGHT_STATUSES = new Set(['Paid', 'Preparing', 'Prepared']);
+const isPreparingStatus = (s: string) => s === 'Preparing';
 
 export function OrderDetailPage() {
   const { adminBasePath = '/admin' } = useOutletContext<{ adminBasePath?: string }>() ?? {};
@@ -113,11 +113,12 @@ export function OrderDetailPage() {
     }
   };
 
-  const canEnterWeight =
-    user && (user.role === 'Admin' || user.role === 'Staff') && order && WEIGHT_STATUSES.has(order.orderStatus);
+  const staffOrAdmin = Boolean(user && (user.role === 'Admin' || user.role === 'Staff'));
+  const canEditActualWeights =
+    staffOrAdmin && Boolean(order && isPreparingStatus(order.orderStatus));
 
   const handleSaveActualWeight = async (itemId: number) => {
-    if (!user?.id || !canEnterWeight) return;
+    if (!user?.id || !canEditActualWeights) return;
     const v = weightDraft[itemId];
     if (v == null || Number.isNaN(v) || v < 0) {
       message.warning('Enter a valid actual weight.');
@@ -148,7 +149,7 @@ export function OrderDetailPage() {
   };
 
   const confirmSaveActualWeight = (itemId: number, row: OrderDetail['items'][number]) => {
-    if (!user?.id || !canEnterWeight) return;
+    if (!user?.id || !canEditActualWeights) return;
     const v = weightDraft[itemId];
     if (v == null || Number.isNaN(v) || v < 0) {
       message.warning('Enter a valid actual weight.');
@@ -242,13 +243,29 @@ export function OrderDetailPage() {
       width: 240,
       render: (_: unknown, r: OrderDetail['items'][number]) => {
         if (!r.isWeighingRequired) return '—';
-        if (!canEnterWeight) {
-          return (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {order?.orderStatus === 'Pending' ? 'Available after payment' : '—'}
-            </Typography.Text>
-          );
+        const saved = r.actualWeight != null && !Number.isNaN(Number(r.actualWeight));
+        const status = order?.orderStatus ?? '';
+
+        if (!staffOrAdmin) {
+          return saved ? Number(r.actualWeight).toFixed(3) : '—';
         }
+
+        if (!isPreparingStatus(status)) {
+          if (saved) return <span style={{ fontWeight: 500 }}>{Number(r.actualWeight).toFixed(3)}</span>;
+          if (status === 'Paid' || status === 'Pending') {
+            return (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Editable only while preparing
+              </Typography.Text>
+            );
+          }
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        }
+
+        if (saved) {
+          return <span style={{ fontWeight: 500 }}>{Number(r.actualWeight).toFixed(3)}</span>;
+        }
+
         const expected = Number(r.expectedWeight ?? 0);
         const actual = Number(weightDraft[r.id] ?? 0);
         const previousActual = r.actualWeight != null ? Number(r.actualWeight) : null;
@@ -257,30 +274,25 @@ export function OrderDetailPage() {
         const oldLineRefund = previousActual == null ? 0 : Math.max(0, expected - previousActual) * price;
         const deltaRefund = Math.max(0, newLineRefund - oldLineRefund);
         return (
-          <div style={{ display: 'grid', gap: 6 }}>
-            <Space size="small" wrap>
-              <InputNumber
-                min={0}
-                step={0.01}
-                precision={3}
-                style={{ width: 110 }}
-                value={weightDraft[r.id] ?? null}
-                onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
-                placeholder="Actual"
-              />
-              <Button
-                type="primary"
-                size="small"
-                loading={savingWeightId === r.id}
-                onClick={() => confirmSaveActualWeight(r.id, r)}
-              >
-                {deltaRefund > 0 ? `Save & refund $${deltaRefund.toFixed(2)}` : 'Save'}
-              </Button>
-            </Space>
-            <Typography.Text type={deltaRefund > 0 ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-              Refund: ${deltaRefund.toFixed(2)}
-            </Typography.Text>
-          </div>
+          <Space size="small" wrap>
+            <InputNumber
+              min={0}
+              step={0.01}
+              precision={3}
+              style={{ width: 110 }}
+              value={weightDraft[r.id] ?? null}
+              onChange={(n) => setWeightDraft((d) => ({ ...d, [r.id]: n }))}
+              placeholder="Actual"
+            />
+            <Button
+              type="primary"
+              size="small"
+              loading={savingWeightId === r.id}
+              onClick={() => confirmSaveActualWeight(r.id, r)}
+            >
+              {deltaRefund > 0 ? `Save & refund $${deltaRefund.toFixed(2)}` : 'Save'}
+            </Button>
+          </Space>
         );
       },
     },
@@ -301,11 +313,18 @@ export function OrderDetailPage() {
   const estimatedRefund = order.items.reduce((sum, item) => {
     if (!item.isWeighingRequired) return sum;
     const expected = Number(item.expectedWeight ?? 0);
-    const actual = weightDraft[item.id];
+    const savedActual = item.actualWeight != null ? Number(item.actualWeight) : null;
+    const draftVal = weightDraft[item.id];
+    const actual =
+      savedActual != null && !Number.isNaN(savedActual)
+        ? savedActual
+        : draftVal != null && !Number.isNaN(Number(draftVal))
+          ? Number(draftVal)
+          : null;
     if (actual == null) return sum;
-    const previousActual = item.actualWeight != null ? Number(item.actualWeight) : null;
+    const previousActual = savedActual;
     const price = Number(item.priceAtPurchase ?? 0);
-    const newLineRefund = Math.max(0, expected - Number(actual)) * price;
+    const newLineRefund = Math.max(0, expected - actual) * price;
     const oldLineRefund = previousActual == null ? 0 : Math.max(0, expected - previousActual) * price;
     return sum + Math.max(0, newLineRefund - oldLineRefund);
   }, 0);
@@ -340,7 +359,7 @@ export function OrderDetailPage() {
                   <strong>${amount.toFixed(2)}</strong>
                 </Table.Summary.Cell>
               </Table.Summary.Row>
-              {canEnterWeight ? (
+              {canEditActualWeights ? (
                 <Table.Summary.Row>
                   <Table.Summary.Cell index={0} colSpan={5}>
                     <Typography.Text type="secondary">Estimated refund after saving actual weights</Typography.Text>

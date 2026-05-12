@@ -32,6 +32,14 @@ static void MapStripeFlatEnvIfNeeded(ConfigurationManager cfg)
 }
 MapStripeFlatEnvIfNeeded(builder.Configuration);
 
+static void MapMapboxFlatEnvIfNeeded(ConfigurationManager cfg)
+{
+    if (!string.IsNullOrWhiteSpace(cfg["Mapbox:AccessToken"])) return;
+    var v = Environment.GetEnvironmentVariable("MAPBOX_ACCESS_TOKEN");
+    if (!string.IsNullOrWhiteSpace(v)) cfg["Mapbox:AccessToken"] = v.Trim();
+}
+MapMapboxFlatEnvIfNeeded(builder.Configuration);
+
 // Railway Postgres 常注入 DATABASE_URL；优先使用 ConnectionStrings__DefaultConnection，其次解析 DATABASE_URL
 static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
 {

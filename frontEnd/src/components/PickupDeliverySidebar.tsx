@@ -4,10 +4,6 @@ import pickupIcon from '../assets/images/自提点.png';
 import { useOrderMode } from '../context/OrderModeContext';
 import { FulfillmentOptionsForm } from './FulfillmentOptionsForm';
 
-const MAPBOX_TOKEN_RAW = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
-const MAPBOX_TOKEN =
-  typeof MAPBOX_TOKEN_RAW === 'string' && MAPBOX_TOKEN_RAW.trim() ? MAPBOX_TOKEN_RAW.trim() : undefined;
-
 /** Re-export for legacy imports from `PickupDeliverySidebar`. */
 export { DELIVERY_SUBURBS } from './FulfillmentOptionsForm';
 
@@ -16,8 +12,8 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
   const { panelMounted, panelEnter, closePanel, onPanelTransitionEnd, toggleFromTrigger } = useRightDrawer();
   const { orderType } = useOrderMode();
 
-  const deliveryMapboxScroll =
-    orderType === 'Delivery' && MAPBOX_TOKEN
+  const deliveryAddressScroll =
+    orderType === 'Delivery'
       ? { overflowY: 'visible' as const, overflowX: 'visible' as const }
       : { overflowY: 'auto' as const, overflowX: 'hidden' as const };
 
@@ -105,7 +101,7 @@ export function PickupDeliverySidebar({ compact = false }: { compact?: boolean }
             style={{
               flex: 1,
               minHeight: 0,
-              ...deliveryMapboxScroll,
+              ...deliveryAddressScroll,
               padding: '1rem 1.25rem',
             }}
           >

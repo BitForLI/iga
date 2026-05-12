@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { message } from 'antd';
 import { productAPI } from '../api';
 import { API_BASE } from '../config/apiEnv';
@@ -45,13 +45,15 @@ const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
 /** 列数随容器宽度变化；min 控制最小列宽，避免过挤 */
 const PRODUCT_AND_SPECIAL_GRID =
   'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
-/** 分类格子固定尺寸；窄屏通过每行列数变少适配，不缩小方框 */
-const CATEGORY_CELL_PX = 118;
-const CATEGORY_CHIP_H_PX = 56;
-const CATEGORY_ICON_PX = 22;
-const CATEGORY_LABEL_FS = 11;
-const CATEGORY_GRID_GAP = 8;
-const CATEGORY_GRID_TEMPLATE = `repeat(auto-fill, minmax(${CATEGORY_CELL_PX}px, ${CATEGORY_CELL_PX}px))`;
+/** 分类 chip 固定宽度（单行排列，勿过大） */
+const CATEGORY_CELL_PX = 92;
+const CATEGORY_CHIP_H_PX = 50;
+const CATEGORY_ICON_PX = 20;
+const CATEGORY_LABEL_FS = 10;
+const CATEGORY_GAP = 8;
+/** 右侧「More categories」按钮预留宽度（含 gap） */
+const CATEGORY_MORE_CONTROL_PX = 118;
+const CHIP_STRIDE = CATEGORY_CELL_PX + CATEGORY_GAP;
 
 const CART_BTN = 'clamp(26px, 6.5vw, 38px)';
 const CART_ICON = 'clamp(13px, 3.2vw, 20px)';
@@ -90,16 +92,6 @@ const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'Bakery', value: 'Bakery', icon: bakeryCategoryIcon },
   { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
-
-/** 窄屏首行展示的分类个数（其余进「More categories」） */
-const NARROW_VISIBLE_CATEGORY_COUNT = 6;
-
-const NARROW_PINNED_CATEGORIES = HOME_CATEGORIES.slice(0, NARROW_VISIBLE_CATEGORY_COUNT);
-const NARROW_MORE_CATEGORIES = HOME_CATEGORIES.slice(NARROW_VISIBLE_CATEGORY_COUNT);
-
-function isCategoryInMoreSection(value: string): boolean {
-  return NARROW_MORE_CATEGORIES.some((c) => c.value === value);
-}
 
 function CategoryChipButton({
   cat,
@@ -180,73 +172,74 @@ function CategoryChipButton({
 function HomeCategoryBar({
   selectedCategory,
   onSelectCategory,
-  compact,
+  compact: _compact,
 }: {
   selectedCategory: string;
   onSelectCategory: (v: string) => void;
+  /** @deprecated 布局已统一为单行 + More；保留 prop 避免调用处改动 */
   compact: boolean;
 }) {
+  const measureRef = useRef<HTMLDivElement>(null);
+  const total = HOME_CATEGORIES.length;
+  const [visibleMain, setVisibleMain] = useState(total);
   const [moreExpanded, setMoreExpanded] = useState(false);
 
-  useEffect(() => {
-    if (!compact) return;
-    if (selectedCategory && isCategoryInMoreSection(selectedCategory)) setMoreExpanded(true);
-  }, [compact, selectedCategory]);
+  useLayoutEffect(() => {
+    const el = measureRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.offsetWidth;
+      if (w <= 0) return;
+      const availForChips = w - CATEGORY_MORE_CONTROL_PX;
+      let n = Math.floor((availForChips + CATEGORY_GAP) / CHIP_STRIDE);
+      if (n >= total) {
+        setVisibleMain(total);
+        return;
+      }
+      setVisibleMain(Math.max(1, Math.min(n, total)));
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [total]);
 
-  if (!compact) {
-    return (
-      <div
-        style={{
-          width: '100%',
-          margin: '0 auto 1.5rem',
-          padding: 'clamp(0.45rem, 1.2vw, 0.65rem) 0',
-          boxSizing: 'border-box',
-        }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
-            gap: CATEGORY_GRID_GAP,
-            width: '100%',
-            justifyContent: 'start',
-          }}
-        >
-          {HOME_CATEGORIES.map((cat) => (
-            <CategoryChipButton
-              key={cat.label}
-              cat={cat}
-              selectedCategory={selectedCategory}
-              onSelectCategory={onSelectCategory}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const hidden = React.useMemo(() => HOME_CATEGORIES.slice(visibleMain), [visibleMain]);
+  const hasHidden = hidden.length > 0;
+
+  useEffect(() => {
+    if (!hasHidden) {
+      setMoreExpanded(false);
+      return;
+    }
+    if (hidden.some((c) => c.value === selectedCategory)) setMoreExpanded(true);
+  }, [selectedCategory, hasHidden, hidden]);
 
   const moreFilterActive =
-    selectedCategory !== '' && NARROW_MORE_CATEGORIES.some((c) => c.value === selectedCategory);
+    hasHidden && hidden.some((c) => c.value === selectedCategory);
 
   return (
     <div
       style={{
         width: '100%',
         margin: '0 auto 1.5rem',
-        padding: 'clamp(0.4rem, 1.2vw, 0.55rem) 0',
+        padding: 'clamp(0.4rem, 1.2vw, 0.6rem) 0',
         boxSizing: 'border-box',
       }}
     >
       <div
+        ref={measureRef}
         style={{
-          display: 'grid',
-          gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
-          gap: CATEGORY_GRID_GAP,
+          display: 'flex',
+          flexDirection: 'row',
+          flexWrap: 'nowrap',
+          alignItems: 'center',
+          gap: CATEGORY_GAP,
           width: '100%',
-          justifyContent: 'start',
+          minHeight: CATEGORY_CHIP_H_PX + 4,
         }}
       >
-        {NARROW_PINNED_CATEGORIES.map((cat) => (
+        {HOME_CATEGORIES.slice(0, visibleMain).map((cat) => (
           <CategoryChipButton
             key={cat.label}
             cat={cat}
@@ -254,58 +247,62 @@ function HomeCategoryBar({
             onSelectCategory={onSelectCategory}
           />
         ))}
+        {hasHidden && (
+          <button
+            type="button"
+            onClick={() => setMoreExpanded((e) => !e)}
+            aria-expanded={moreExpanded}
+            style={{
+              flex: '0 0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              height: CATEGORY_CHIP_H_PX,
+              padding: '0 12px',
+              borderRadius: 10,
+              border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
+              background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
+              color: '#374151',
+              fontWeight: 600,
+              fontSize: 12,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {moreExpanded ? <UpOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
+            {moreExpanded ? 'Show less' : 'More'}
+          </button>
+        )}
       </div>
 
-      {moreExpanded && (
+      {hasHidden && moreExpanded && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
-            gap: CATEGORY_GRID_GAP,
+            display: 'flex',
+            flexDirection: 'row',
+            flexWrap: 'nowrap',
+            gap: CATEGORY_GAP,
             width: '100%',
-            marginTop: 'clamp(8px, 1.8vw, 12px)',
-            justifyContent: 'start',
+            marginTop: 10,
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            paddingBottom: 4,
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'thin',
           }}
         >
-          {NARROW_MORE_CATEGORIES.map((cat) => (
-            <CategoryChipButton
-              key={cat.label}
-              cat={cat}
-              selectedCategory={selectedCategory}
-              onSelectCategory={onSelectCategory}
-            />
+          {hidden.map((cat) => (
+            <div key={cat.label} style={{ flex: '0 0 auto' }}>
+              <CategoryChipButton
+                cat={cat}
+                selectedCategory={selectedCategory}
+                onSelectCategory={onSelectCategory}
+              />
+            </div>
           ))}
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={() => setMoreExpanded((e) => !e)}
-        aria-expanded={moreExpanded}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 'clamp(6px, 1.5vw, 10px)',
-          width: '100%',
-          marginTop: 'clamp(8px, 1.8vw, 12px)',
-          padding: 'clamp(0.35rem, 1.1vw, 0.48rem) clamp(0.4rem, 1.2vw, 0.55rem)',
-          borderRadius: 'clamp(6px, 1.2vw, 10px)',
-          border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
-          background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
-          color: '#374151',
-          fontWeight: 600,
-          fontSize: 'clamp(0.62rem, 1.8vw, 0.78rem)',
-          cursor: 'pointer',
-        }}
-      >
-        {moreExpanded ? (
-          <UpOutlined style={{ fontSize: 'clamp(11px, 2.8vw, 14px)' }} />
-        ) : (
-          <DownOutlined style={{ fontSize: 'clamp(11px, 2.8vw, 14px)' }} />
-        )}
-        {moreExpanded ? 'Show less' : 'More categories'}
-      </button>
     </div>
   );
 }
