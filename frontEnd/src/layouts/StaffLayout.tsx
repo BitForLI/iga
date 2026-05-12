@@ -25,18 +25,19 @@ const STAFF_THEME = {
   token: {
     colorPrimary: '#059669',
     colorBgContainer: '#ffffff',
-    /** 主区浅灰绿，与侧栏浅灰统一，不抢绿色焦点 */
-    colorBgLayout: '#f1f5f4',
+    /** 主区灰绿加深，与白卡片对比更强，强光下仍易区分 */
+    colorBgLayout: '#c9d4cf',
     colorBgElevated: '#ffffff',
-    colorText: '#1f2937',
-    colorBorder: '#e5e7eb',
-    colorSplit: '#e5e7eb',
+    colorText: '#0f172a',
+    colorBorder: '#cbd5e1',
+    colorSplit: '#cbd5e1',
     borderRadius: 6,
   },
 };
 
-const STAFF_SIDER_BG = '#e8edeb';
-const STAFF_OVERLAY = 'rgba(100, 116, 139, 0.28)';
+/** 深绿侧栏 + 浅字，户外可读性优于浅灰底弱对比 */
+const STAFF_SIDER_BG = '#064e3b';
+const STAFF_OVERLAY = 'rgba(15, 23, 42, 0.42)';
 
 const STAFF_MENU_ITEMS: MenuProps['items'] = [
   {
@@ -88,26 +89,37 @@ export function StaffLayout() {
     <ConfigProvider theme={STAFF_THEME}>
       <style>{`
         .staff-layout .ant-layout-sider-children { display: flex; flex-direction: column; min-height: 0; }
-        .staff-layout .staff-sider-menu.ant-menu-light {
+        .staff-layout .staff-sider-menu.ant-menu-dark {
           background: transparent !important;
-          color: #334155 !important;
+          color: #e2e8f0 !important;
           border-inline-end: none !important;
         }
-        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-item-selected {
-          background: #d1fae5 !important;
-          color: #047857 !important;
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item,
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-submenu-title {
+          color: #f1f5f9 !important;
         }
-        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-item:hover,
-        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-title:hover {
-          background: #ecfdf5 !important;
-          color: #065f46 !important;
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item-selected {
+          background: #047857 !important;
+          color: #ecfdf5 !important;
         }
-        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title {
-          color: #047857 !important;
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item:hover,
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-submenu-title:hover {
+          background: rgba(16, 185, 129, 0.22) !important;
+          color: #ffffff !important;
         }
-        .staff-layout .staff-sider-menu.ant-menu-light .ant-menu-submenu-arrow { color: #94a3b8 !important; }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title {
+          color: #a7f3d0 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-submenu-arrow { color: #94a3b8 !important; }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item .anticon,
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-submenu-title .anticon {
+          color: #cbd5e1 !important;
+        }
+        .staff-layout .staff-sider-menu.ant-menu-dark .ant-menu-item-selected .anticon {
+          color: #ecfdf5 !important;
+        }
       `}</style>
-      <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#f1f5f4' }}>
+      <Layout className="staff-layout" style={{ minHeight: '100vh', background: '#c9d4cf' }}>
         {drawerOpen && (
           <div
             role="presentation"
@@ -130,7 +142,7 @@ export function StaffLayout() {
           collapsedWidth={isCompact ? 0 : 72}
           style={{
             background: STAFF_SIDER_BG,
-            borderRight: '1px solid #d1dcd8',
+            borderRight: '1px solid #042f24',
             ...(drawerOpen
               ? {
                   position: 'fixed',
@@ -140,7 +152,7 @@ export function StaffLayout() {
                   zIndex: 1001,
                   height: '100vh',
                   overflowY: 'auto',
-                  boxShadow: '4px 0 20px rgba(6, 95, 70, 0.08)',
+                  boxShadow: '4px 0 24px rgba(0, 0, 0, 0.2)',
                 }
               : {}),
           }}
@@ -152,7 +164,7 @@ export function StaffLayout() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: collapsed && !isCompact ? 'center' : 'flex-start',
-              color: '#14532d',
+              color: '#ecfdf5',
               fontSize: 18,
               fontWeight: 600,
             }}
@@ -161,7 +173,7 @@ export function StaffLayout() {
           </div>
           <Menu
             className="staff-sider-menu"
-            theme="light"
+            theme="dark"
             mode="inline"
             selectedKeys={selectedKeys}
             openKeys={openKeys}
@@ -175,7 +187,7 @@ export function StaffLayout() {
             style={{ flex: 1, background: 'transparent', border: 'none' }}
           />
         </Sider>
-        <Layout style={{ background: '#f1f5f4', minWidth: 0, flex: 1 }}>
+        <Layout style={{ background: '#c9d4cf', minWidth: 0, flex: 1 }}>
           <Header
             style={{
               padding: isCompact ? '0 10px' : '0 16px',
@@ -185,24 +197,26 @@ export function StaffLayout() {
               flexWrap: 'wrap',
               rowGap: 8,
               columnGap: 12,
-              borderBottom: '1px solid #e5e7eb',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              borderBottom: '1px solid #94a3b8',
+              boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
               minWidth: 0,
             }}
           >
             {collapsed ? (
               <MenuUnfoldOutlined
-                style={{ fontSize: 18, cursor: 'pointer', color: '#374151', flexShrink: 0 }}
+                style={{ fontSize: 18, cursor: 'pointer', color: '#0f172a', flexShrink: 0 }}
                 onClick={() => setCollapsed(false)}
               />
             ) : (
               <MenuFoldOutlined
-                style={{ fontSize: 18, cursor: 'pointer', color: '#374151', flexShrink: 0 }}
+                style={{ fontSize: 18, cursor: 'pointer', color: '#0f172a', flexShrink: 0 }}
                 onClick={() => setCollapsed(true)}
               />
             )}
-            <span style={{ color: '#6b7280', fontSize: 14, whiteSpace: 'nowrap' }}>Staff portal · Orders only</span>
-            <Link to="/" style={{ marginLeft: 'auto', color: '#059669', fontSize: 14, whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#1e293b', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
+              Staff portal · Orders only
+            </span>
+            <Link to="/" style={{ marginLeft: 'auto', color: '#047857', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' }}>
               Back to store
             </Link>
           </Header>
@@ -210,7 +224,7 @@ export function StaffLayout() {
             style={{
               margin: isCompact ? 8 : 16,
               overflow: 'auto',
-              background: '#f1f5f4',
+              background: '#c9d4cf',
               minWidth: 0,
               boxSizing: 'border-box',
             }}
@@ -225,7 +239,8 @@ export function StaffLayout() {
                 width: '100%',
                 boxSizing: 'border-box',
                 overflowX: 'auto',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                border: '1px solid #94a3b8',
+                boxShadow: '0 2px 8px rgba(15, 23, 42, 0.1)',
               }}
             >
               <Outlet context={{ adminBasePath: '/staff' }} />
