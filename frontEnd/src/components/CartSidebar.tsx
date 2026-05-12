@@ -6,7 +6,11 @@ import { useAuth } from '../context/AuthContext';
 import { useOrderMode } from '../context/OrderModeContext';
 import { orderAPI, paymentAPI, ApiRequestError } from '../api';
 import { useStorePublicSettings, computeDeliveryFeeAud } from '../context/StorePublicSettingsContext';
-import { DELIVERY_SUBURBS } from './PickupDeliverySidebar';
+import { DELIVERY_SUBURBS, FulfillmentOptionsForm } from './FulfillmentOptionsForm';
+
+const MAPBOX_TOKEN_RAW = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+const MAPBOX_TOKEN =
+  typeof MAPBOX_TOKEN_RAW === 'string' && MAPBOX_TOKEN_RAW.trim() ? MAPBOX_TOKEN_RAW.trim() : undefined;
 import cartIcon from '../assets/images/cart.png';
 import deleteIcon from '../assets/images/删除.png';
 import productImage from '../assets/images/main.png';
@@ -18,7 +22,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const { items, totalQuantity, removeItem, updateQuantity, updateExpectedWeightKg, total } = useCart();
   const hasWeighedItems = items.some((i) => i.isWeighingRequired);
   const { user } = useAuth();
-  const { orderType, pickupTimeSlot, deliveryInfo } = useOrderMode();
+  const { orderType, pickupTimeSlot, deliveryInfo, saveDeliveryAddress } = useOrderMode();
   const { settings: storeSettings } = useStorePublicSettings();
   const deliveryFee =
     orderType === 'Delivery' ? computeDeliveryFeeAud(total, deliveryInfo.suburb, storeSettings) : 0;
@@ -33,6 +37,12 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   } = useRightDrawer();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
+  const [fulfillmentModalOpen, setFulfillmentModalOpen] = useState(false);
+
+  const fulfillmentModalScroll =
+    orderType === 'Delivery' && MAPBOX_TOKEN
+      ? { overflowY: 'visible' as const, overflowX: 'visible' as const }
+      : { overflowY: 'auto' as const, overflowX: 'hidden' as const };
 
   return (
     <>
@@ -283,17 +293,19 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                 gap: '0.75rem',
               }}
             >
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                {orderType === 'Pickup' ? 'Pickup' : 'Delivery'}
-                {orderType === 'Pickup' && !pickupTimeSlot && (
-                  <span style={{ color: '#dc2626', marginLeft: 4 }}>(Please select pickup time slot first)</span>
-                )}
-                {orderType === 'Delivery' && !deliveryInfo.address?.trim() && (
-                  <span style={{ color: '#dc2626', marginLeft: 4 }}>(Please enter delivery address first)</span>
-                )}
-                {orderType === 'Delivery' && !deliveryInfo.suburb && (
-                  <span style={{ color: '#dc2626', marginLeft: 4 }}>(Please select delivery suburb)</span>
-                )}
+              <div style={{ fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.45 }}>
+                <span>
+                  {orderType === 'Pickup' ? 'Pickup' : 'Delivery'}
+                  {orderType === 'Pickup' && pickupTimeSlot && (
+                    <span style={{ color: '#64748b', marginLeft: 4 }}>— time selected</span>
+                  )}
+                  {orderType === 'Delivery' && deliveryInfo.address?.trim() && deliveryInfo.suburb && (
+                    <span style={{ color: '#64748b', marginLeft: 4 }}>— address entered</span>
+                  )}
+                </span>
+                <div style={{ marginTop: 4, fontSize: '0.75rem', color: '#94a3b8' }}>
+                  After Checkout, confirm pickup time or delivery on the next step before payment.
+                </div>
               </div>
               {hasWeighedItems && (
                 <div
@@ -337,25 +349,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
               )}
               <button
                 type="button"
-                onClick={async () => {
-                  if (orderType === 'Pickup' && !pickupTimeSlot) {
-                    const msg = 'Please select a pickup time slot in the Pickup/Delivery panel';
-                    setCheckoutError(msg);
-                    message.warning(msg);
-                    return;
-                  }
-                  if (orderType === 'Delivery' && !deliveryInfo.address?.trim()) {
-                    const msg = 'Please enter delivery address in the Pickup/Delivery panel';
-                    setCheckoutError(msg);
-                    message.warning(msg);
-                    return;
-                  }
-                  if (orderType === 'Delivery' && !DELIVERY_SUBURBS.includes(deliveryInfo.suburb as typeof DELIVERY_SUBURBS[number])) {
-                    const msg = 'Please select delivery suburb (Hurstville, Allawah, Carlton, Roseland only)';
-                    setCheckoutError(msg);
-                    message.warning(msg);
-                    return;
-                  }
+                onClick={() => {
                   if (!user) {
                     const msg = 'Please sign in before checkout';
                     setCheckoutError(msg);
@@ -363,47 +357,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                     return;
                   }
                   setCheckoutError('');
-                  setCheckoutLoading(true);
-                  try {
-                    const deliveryAddress = orderType === 'Delivery'
-                      ? [deliveryInfo.address, deliveryInfo.suburb, deliveryInfo.postcode].filter(Boolean).join(', ')
-                      : undefined;
-                    const orderRes = (await orderAPI.create({
-                      userId: user.id,
-                      orderType: orderType,
-                      pickupTime: orderType === 'Pickup' ? pickupTimeSlot : undefined,
-                      deliveryAddress: deliveryAddress,
-                      deliverySuburb: orderType === 'Delivery' ? deliveryInfo.suburb : undefined,
-                      items: items.map((i) => ({
-                        productId: i.productId,
-                        quantity: i.isWeighingRequired ? 1 : i.quantity,
-                        expectedWeight: i.isWeighingRequired ? Number(i.expectedWeightKg ?? 0) : 0,
-                      })),
-                    })) as { orderId?: number };
-                    const orderId = orderRes?.orderId;
-                    if (!orderId) throw new Error('Order creation failed');
-                    const checkoutRes = (await paymentAPI.createCheckout(orderId)) as { url?: string };
-                    const stripeUrl = checkoutRes?.url;
-                    if (stripeUrl) {
-                      window.location.href = stripeUrl;
-                    } else {
-                      throw new Error('Could not get payment link');
-                    }
-                  } catch (err) {
-                    const m = err instanceof Error ? err.message : String(err);
-                    if (err instanceof ApiRequestError) {
-                      console.error(
-                        '[checkout] 服务器返回:',
-                        err.status,
-                        err.apiData,
-                        '（控制台里这一行才是原因；上面一长串 axios 堆栈没有说明文字）'
-                      );
-                    }
-                    setCheckoutError(m);
-                    message.error(m);
-                  } finally {
-                    setCheckoutLoading(false);
-                  }
+                  setFulfillmentModalOpen(true);
                 }}
                 disabled={checkoutLoading}
                 style={{
@@ -441,6 +395,201 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
             transition: `opacity ${DRAWER_MS}ms ease-out`,
           }}
         />
+      )}
+
+      {fulfillmentModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkout-fulfillment-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 12,
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          }}
+          onClick={() => {
+            if (!checkoutLoading) setFulfillmentModalOpen(false);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(420px, 100%)',
+              maxHeight: 'min(90dvh, 640px)',
+              backgroundColor: 'white',
+              borderRadius: 12,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '14px 16px',
+                borderBottom: '1px solid #e5e7eb',
+                flexShrink: 0,
+              }}
+            >
+              <h2 id="checkout-fulfillment-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#0f172a' }}>
+                Pickup or delivery
+              </h2>
+              <button
+                type="button"
+                disabled={checkoutLoading}
+                aria-label="Close"
+                onClick={() => setFulfillmentModalOpen(false)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  fontSize: '1.25rem',
+                  cursor: checkoutLoading ? 'not-allowed' : 'pointer',
+                  color: '#64748b',
+                  lineHeight: 1,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                padding: '1rem 1.25rem',
+                ...fulfillmentModalScroll,
+              }}
+            >
+              <FulfillmentOptionsForm variant="checkoutModal" active={fulfillmentModalOpen} />
+            </div>
+            {checkoutError && (
+              <p style={{ margin: 0, padding: '0 16px 8px', fontSize: '0.8rem', color: '#dc2626' }}>{checkoutError}</p>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                padding: '12px 16px',
+                borderTop: '1px solid #e5e7eb',
+                flexShrink: 0,
+              }}
+            >
+              <button
+                type="button"
+                disabled={checkoutLoading}
+                onClick={() => setFulfillmentModalOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb',
+                  background: 'white',
+                  fontWeight: 600,
+                  cursor: checkoutLoading ? 'not-allowed' : 'pointer',
+                  color: '#334155',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={checkoutLoading}
+                onClick={async () => {
+                  if (orderType === 'Pickup' && !pickupTimeSlot) {
+                    const msg = 'Please select a pickup time slot.';
+                    setCheckoutError(msg);
+                    message.warning(msg);
+                    return;
+                  }
+                  if (orderType === 'Delivery' && !deliveryInfo.address?.trim()) {
+                    const msg = 'Please enter your delivery address.';
+                    setCheckoutError(msg);
+                    message.warning(msg);
+                    return;
+                  }
+                  if (
+                    orderType === 'Delivery' &&
+                    !DELIVERY_SUBURBS.includes(deliveryInfo.suburb as (typeof DELIVERY_SUBURBS)[number])
+                  ) {
+                    const msg = 'Delivery is only available to Hurstville, Allawah, Carlton, or Roseland.';
+                    setCheckoutError(msg);
+                    message.warning(msg);
+                    return;
+                  }
+                  if (!user) {
+                    message.warning('Please sign in before checkout');
+                    setFulfillmentModalOpen(false);
+                    return;
+                  }
+                  setCheckoutError('');
+                  setCheckoutLoading(true);
+                  try {
+                    if (orderType === 'Delivery') saveDeliveryAddress();
+                    const deliveryAddress =
+                      orderType === 'Delivery'
+                        ? [deliveryInfo.address, deliveryInfo.suburb, deliveryInfo.postcode].filter(Boolean).join(', ')
+                        : undefined;
+                    const orderRes = (await orderAPI.create({
+                      userId: user.id,
+                      orderType: orderType,
+                      pickupTime: orderType === 'Pickup' ? pickupTimeSlot : undefined,
+                      deliveryAddress: deliveryAddress,
+                      deliverySuburb: orderType === 'Delivery' ? deliveryInfo.suburb : undefined,
+                      items: items.map((i) => ({
+                        productId: i.productId,
+                        quantity: i.isWeighingRequired ? 1 : i.quantity,
+                        expectedWeight: i.isWeighingRequired ? Number(i.expectedWeightKg ?? 0) : 0,
+                      })),
+                    })) as { orderId?: number };
+                    const orderId = orderRes?.orderId;
+                    if (!orderId) throw new Error('Order creation failed');
+                    const checkoutRes = (await paymentAPI.createCheckout(orderId)) as { url?: string };
+                    const stripeUrl = checkoutRes?.url;
+                    if (stripeUrl) {
+                      window.location.href = stripeUrl;
+                    } else {
+                      throw new Error('Could not get payment link');
+                    }
+                  } catch (err) {
+                    const m = err instanceof Error ? err.message : String(err);
+                    if (err instanceof ApiRequestError) {
+                      console.error(
+                        '[checkout] 服务器返回:',
+                        err.status,
+                        err.apiData,
+                        '（控制台里这一行才是原因；上面一长串 axios 堆栈没有说明文字）'
+                      );
+                    }
+                    setCheckoutError(m);
+                    message.error(m);
+                  } finally {
+                    setCheckoutLoading(false);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: checkoutLoading ? '#fca5a5' : '#dc2626',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: checkoutLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {checkoutLoading ? 'Redirecting…' : 'Continue to payment'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

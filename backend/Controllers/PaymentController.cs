@@ -319,7 +319,7 @@ namespace igaServer.Controllers
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[Payment] Telegram 已支付通知失败 order {OrderId}", orderId);
+                    _logger.LogWarning(ex, "[Payment] Telegram paid-order notification failed order {OrderId}", orderId);
                 }
 
                 return Ok(new { orderStatus = order.OrderStatus, synced = true });
@@ -415,7 +415,7 @@ namespace igaServer.Controllers
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "[Webhook] Telegram 已支付通知失败 order {OrderId}", orderId);
+                            _logger.LogWarning(ex, "[Webhook] Telegram paid-order notification failed order {OrderId}", orderId);
                         }
                     }
 
@@ -480,7 +480,7 @@ namespace igaServer.Controllers
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "[Webhook] async Telegram 已支付通知失败 order {OrderId}", orderId);
+                            _logger.LogWarning(ex, "[Webhook] async Telegram paid-order notification failed order {OrderId}", orderId);
                         }
                     }
 

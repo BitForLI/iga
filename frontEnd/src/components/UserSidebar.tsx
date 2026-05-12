@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
+import { Modal } from 'antd';
 import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useRightDrawer, DRAWER_MS } from '../hooks/useRightDrawer';
@@ -620,6 +621,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refundRequesting, setRefundRequesting] = useState(false);
+  const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
   const { setUser } = useAuth();
 
   const paidOrderStatuses = new Set(['Paid', 'Preparing', 'Prepared', 'Completed', 'RefundRequested', 'Refunded']);
@@ -666,6 +668,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   };
 
   const openOrderDetail = async (orderId: number) => {
+    setRefundConfirmOpen(false);
     setDetailLoading(true);
     setError('');
     try {
@@ -681,10 +684,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const canRequestRefund = (order: any) =>
     ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(String(order?.orderStatus ?? ''));
 
-  const handleRequestRefund = async () => {
+  const submitRefundRequest = async (): Promise<void> => {
     if (!selectedOrder || !canRequestRefund(selectedOrder)) return;
-    const ok = window.confirm('Submit a refund request for this order? Store staff will review it.');
-    if (!ok) return;
     setRefundRequesting(true);
     setError('');
     try {
@@ -692,8 +693,10 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
       const next = normalizeOrder(raw);
       setSelectedOrder(next);
       setOrders((list) => list.map((o) => ((o.id ?? o.Id) === next.id ? { ...o, orderStatus: next.orderStatus } : o)));
+      setRefundConfirmOpen(false);
     } catch (err) {
       setError((err as Error).message);
+      throw err;
     } finally {
       setRefundRequesting(false);
     }
@@ -708,9 +711,55 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     const items = selectedOrder.items ?? [];
     return (
       <div>
+        <Modal
+          title="Request a refund?"
+          zIndex={1300}
+          open={refundConfirmOpen}
+          okText="Confirm refund"
+          cancelText="Cancel"
+          okButtonProps={{ danger: true }}
+          confirmLoading={refundRequesting}
+          cancelButtonProps={{ disabled: refundRequesting }}
+          closable={!refundRequesting}
+          maskClosable={!refundRequesting}
+          onCancel={() => !refundRequesting && setRefundConfirmOpen(false)}
+          onOk={() => submitRefundRequest()}
+        >
+          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#374151', lineHeight: 1.55 }}>
+            Please read the following before you submit a refund request for <strong>this order</strong>.
+          </p>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: '1.15rem',
+              fontSize: '0.875rem',
+              color: '#4b5563',
+              lineHeight: 1.6,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <li>
+              Refunds apply only to items that are <strong>unused, undamaged</strong>, and in{' '}
+              <strong>resalable condition</strong> (including original packaging where it applies), in line with store policy.
+            </li>
+            <li>
+              Staff will review your request. <strong>Approved refunds are usually processed within one week</strong>; your bank
+              or card issuer may need extra time to show the credit on your statement.
+            </li>
+            <li>
+              This submits a <strong>refund request</strong> for staff review — it is <strong>not</strong> an instant automatic
+              refund.
+            </li>
+          </ul>
+        </Modal>
         <button
           type="button"
-          onClick={() => setSelectedOrder(null)}
+          onClick={() => {
+            setRefundConfirmOpen(false);
+            setSelectedOrder(null);
+          }}
           style={{
             marginBottom: '1rem',
             border: 'none',
@@ -723,7 +772,9 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
           ← Back to order history
         </button>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>Order #{selectedOrder.id}</h3>
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', flex: 1, minWidth: 0 }}>
+            {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : '-'}
+          </span>
           <span
             style={{
               fontSize: '0.75rem',
@@ -732,6 +783,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               backgroundColor: selectedOrder.orderStatus === 'RefundRequested' ? '#fee2e2' : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(selectedOrder.orderStatus) ? '#dcfce7' : '#fef3c7',
               color: selectedOrder.orderStatus === 'RefundRequested' ? '#991b1b' : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(selectedOrder.orderStatus) ? '#166534' : '#92400e',
               whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             {selectedOrder.orderStatus}
@@ -741,9 +793,6 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
         {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
 
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '0.9rem', marginBottom: '1rem' }}>
-          <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.35rem' }}>
-            {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : '-'}
-          </div>
           <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem' }}>
             <div><strong>Total:</strong> ${amount.toFixed(2)}</div>
             <div><strong>Refunded:</strong> ${(selectedOrder.refundAmount ?? 0).toFixed(2)}</div>
@@ -783,7 +832,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
           <button
             type="button"
             disabled={!canRequestRefund(selectedOrder) || refundRequesting}
-            onClick={handleRequestRefund}
+            onClick={() => setRefundConfirmOpen(true)}
             style={{
               width: '100%',
               padding: '0.75rem',
@@ -901,22 +950,36 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                 cursor: detailLoading ? 'wait' : 'pointer',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Order #{order.id}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', flex: 1, minWidth: 0 }}>
+                  {order.createdAt ? new Date(order.createdAt).toLocaleString() : ''}
+                </span>
                 <span
                   style={{
                     fontSize: '0.75rem',
                     padding: '0.2rem 0.5rem',
                     borderRadius: '4px',
-                    backgroundColor: ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(order.orderStatus) ? '#dcfce7' : '#fef3c7',
-                    color: ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(order.orderStatus) ? '#166534' : '#92400e',
+                    flexShrink: 0,
+                    backgroundColor:
+                      order.orderStatus === 'RefundRequested'
+                        ? '#fee2e2'
+                        : order.orderStatus === 'Refunded'
+                          ? '#e0e7ff'
+                          : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(order.orderStatus)
+                            ? '#dcfce7'
+                            : '#fef3c7',
+                    color:
+                      order.orderStatus === 'RefundRequested'
+                        ? '#991b1b'
+                        : order.orderStatus === 'Refunded'
+                          ? '#3730a3'
+                          : ['Paid', 'Preparing', 'Prepared', 'Completed'].includes(order.orderStatus)
+                            ? '#166534'
+                            : '#92400e',
                   }}
                 >
                   {order.orderStatus}
                 </span>
-              </div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                {order.createdAt ? new Date(order.createdAt).toLocaleString() : ''}
               </div>
               <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#dc2626' }}>
                 ${order.totalAmount ? Number(order.totalAmount).toFixed(2) : '0.00'}

@@ -3,13 +3,10 @@ using igaServer.Models;
 namespace IGA.Services;
 
 /// <summary>
-/// 通过 Telegram Bot 向商家发送通知（新订单等）。需在配置中设置 Bot Token，并配置 ChatId（环境变量或 StoreConfigs.TelegramChatId）。
+/// Sends merchant notifications via Telegram Bot. Configure Bot Token and ChatId (env or StoreConfigs.TelegramChatId).
 /// </summary>
 public interface ITelegramNotificationService
 {
-    /// <summary>顾客提交新订单（待支付）时调用；未配置 Token/Chat 时静默跳过。</summary>
-    Task NotifyNewOrderCreatedAsync(Order order, User user, CancellationToken cancellationToken = default);
-
-    /// <summary>订单标记为已支付后调用（Webhook / 同步支付）；含备货指引；未配置时静默跳过。</summary>
+    /// <summary>Called after the order is marked paid (webhook / sync). Includes packing hints; no-op if not configured.</summary>
     Task NotifyOrderPaidAsync(int orderId, CancellationToken cancellationToken = default);
 }

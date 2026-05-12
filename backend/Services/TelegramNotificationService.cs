@@ -34,12 +34,6 @@ public class TelegramNotificationService : ITelegramNotificationService
         _logger = logger;
     }
 
-    public Task NotifyNewOrderCreatedAsync(Order order, User user, CancellationToken cancellationToken = default)
-    {
-        var text = BuildNewOrderPendingMessage(order, user);
-        return SendMessageAsync(text, "新订单(待支付)", order.Id, cancellationToken);
-    }
-
     public async Task NotifyOrderPaidAsync(int orderId, CancellationToken cancellationToken = default)
     {
         var order = await _db.Orders
@@ -50,12 +44,12 @@ public class TelegramNotificationService : ITelegramNotificationService
 
         if (order?.User == null)
         {
-            _logger.LogWarning("[Telegram] 已支付通知跳过：订单或用户不存在 orderId={OrderId}", orderId);
+            _logger.LogWarning("[Telegram] Paid-order notification skipped: order or user missing orderId={OrderId}", orderId);
             return;
         }
 
         var text = BuildOrderPaidMessage(order, order.User);
-        await SendMessageAsync(text, "订单已支付", orderId, cancellationToken);
+        await SendMessageAsync(text, "order paid", orderId, cancellationToken);
     }
 
     private async Task SendMessageAsync(string text, string logLabel, int orderId, CancellationToken cancellationToken)
@@ -64,7 +58,7 @@ public class TelegramNotificationService : ITelegramNotificationService
         if (string.IsNullOrEmpty(token))
         {
             _logger.LogInformation(
-                "[Telegram] 未发送{Label}：Telegram:BotToken 为空（环境变量 Telegram__BotToken 或配置节 Telegram:BotToken）",
+                "[Telegram] Skipped {Label}: Telegram:BotToken is empty (env Telegram__BotToken or config Telegram:BotToken)",
                 logLabel);
             return;
         }
@@ -73,7 +67,7 @@ public class TelegramNotificationService : ITelegramNotificationService
         if (string.IsNullOrEmpty(chatId))
         {
             _logger.LogInformation(
-                "[Telegram] 未发送{Label}：ChatId 为空（Telegram:ChatId 或数据库 StoreConfigs.TelegramChatId）",
+                "[Telegram] Skipped {Label}: ChatId is empty (Telegram:ChatId or StoreConfigs.TelegramChatId)",
                 logLabel);
             return;
         }
@@ -103,15 +97,15 @@ public class TelegramNotificationService : ITelegramNotificationService
             var body = await resp.Content.ReadAsStringAsync(cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
-                _logger.LogWarning("[Telegram] sendMessage 失败 HTTP {Status}: {Body}", (int)resp.StatusCode, body);
+                _logger.LogWarning("[Telegram] sendMessage failed HTTP {Status}: {Body}", (int)resp.StatusCode, body);
                 return;
             }
 
-            _logger.LogInformation("[Telegram] {Label} 已发送 orderId={OrderId}", logLabel, orderId);
+            _logger.LogInformation("[Telegram] {Label} sent orderId={OrderId}", logLabel, orderId);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Telegram] {Label} 异常 orderId={OrderId}", logLabel, orderId);
+            _logger.LogWarning(ex, "[Telegram] {Label} error orderId={OrderId}", logLabel, orderId);
         }
     }
 
@@ -131,7 +125,7 @@ public class TelegramNotificationService : ITelegramNotificationService
         var baseUrl = (_configuration["Telegram:StaffPortalBaseUrl"] ?? "").Trim().TrimEnd('/');
         if (string.IsNullOrEmpty(baseUrl))
             return null;
-        return $"员工后台（接单/备货）: {baseUrl}";
+        return $"Staff portal (accept / pack): {baseUrl}";
     }
 
     private static string FormatPickupTimeLocal(DateTime? utc)
@@ -169,35 +163,9 @@ public class TelegramNotificationService : ITelegramNotificationService
         return null;
     }
 
-    private static string BuildNewOrderPendingMessage(Order order, User user)
-    {
-        var typeLabel = order.OrderType == "Delivery" ? "配送" : order.OrderType == "Pickup" ? "自提" : order.OrderType ?? "-";
-        var name = user.Name ?? "";
-        var email = user.Email ?? "";
-        var lines = order.Items?.Select(i =>
-            $"• {i.ProductName} × {i.Quantity} @ ${i.PriceAtPurchase:F2}") ?? Enumerable.Empty<string>();
-        var itemsBlock = string.Join("\n", lines);
-        if (string.IsNullOrEmpty(itemsBlock))
-            itemsBlock = "（无明细）";
-
-        return $"""
-            🛒 新订单 #{order.Id}（待支付）
-            顾客: {name}
-            邮箱: {email}
-            类型: {typeLabel}
-            金额: ${order.TotalAmount:F2}
-
-            📋 商品:
-            {itemsBlock}
-
-            ⏳ 请等待顾客完成 Stripe 支付。
-            支付成功后会再推送一条「已支付」通知，届时请备货。
-            """;
-    }
-
     private string BuildOrderPaidMessage(Order order, User user)
     {
-        var typeLabel = order.OrderType == "Delivery" ? "配送" : order.OrderType == "Pickup" ? "自提" : order.OrderType ?? "-";
+        var typeLabel = order.OrderType == "Delivery" ? "Delivery" : order.OrderType == "Pickup" ? "Pickup" : order.OrderType ?? "-";
         var name = user.Name ?? "";
         var email = user.Email ?? "";
         var pickupTime = FormatPickupTimeLocal(order.PickupTime);
@@ -208,27 +176,27 @@ public class TelegramNotificationService : ITelegramNotificationService
             $"• {i.ProductName} × {i.Quantity} @ ${i.PriceAtPurchase:F2}") ?? Enumerable.Empty<string>();
         var itemsBlock = string.Join("\n", lines);
         if (string.IsNullOrEmpty(itemsBlock))
-            itemsBlock = "（无明细）";
+            itemsBlock = "(No line items)";
 
         var staffLine = StaffPortalLine();
         var staffBlock = string.IsNullOrEmpty(staffLine)
-            ? "员工后台: 打开站点 /staff → Orders → To accept"
+            ? "Staff portal: open your site /staff → Orders → To accept"
             : staffLine;
 
         return $"""
-            ✅ 订单已支付 #{order.Id} — 请备货/拣货
-            顾客: {name}
-            邮箱: {email}
-            类型: {typeLabel}
-            实付金额: ${order.TotalAmount:F2}
-            取件码: {code}
-            预约时间: {pickupTime}
-            配送地址: {addr}
+            ✅ Order paid #{order.Id} — please pick / pack
+            Customer: {name}
+            Email: {email}
+            Type: {typeLabel}
+            Amount paid: ${order.TotalAmount:F2}
+            Pickup code: {code}
+            Scheduled time: {pickupTime}
+            Delivery address: {addr}
 
-            📋 商品:
+            📋 Items:
             {itemsBlock}
 
-            👉 操作建议: 登录员工后台，在 Orders → To accept 接单，然后按流程拣货/备餐。
+            👉 Next: sign in to the staff portal, go to Orders → To accept, then follow your packing flow.
             {staffBlock}
             """;
     }

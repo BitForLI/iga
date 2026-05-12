@@ -14,18 +14,15 @@ namespace igaServer.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IStripeService _stripeService;
-        private readonly ITelegramNotificationService _telegram;
         private readonly ILogger<OrderController> _logger;
 
         public OrderController(
             ApplicationDbContext context,
             IStripeService stripeService,
-            ITelegramNotificationService telegram,
             ILogger<OrderController> logger)
         {
             _context = context;
             _stripeService = stripeService;
-            _telegram = telegram;
             _logger = logger;
         }
 
@@ -165,16 +162,6 @@ namespace igaServer.Controllers
             // === 步骤 7: 保存到数据库 ===
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
-
-            // === 步骤 7.5: Telegram 新订单通知（失败不影响下单） ===
-            try
-            {
-                await _telegram.NotifyNewOrderCreatedAsync(order, user, HttpContext.RequestAborted);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Order] Telegram 新订单通知失败 orderId={OrderId}", order.Id);
-            }
 
             // === 步骤 8: 返回订单详情（后续会添加 Stripe PaymentIntent） ===
             return Ok(new { message = "Order created", orderId = order.Id, totalAmount = order.TotalAmount });

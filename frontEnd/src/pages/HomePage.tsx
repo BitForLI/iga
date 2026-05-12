@@ -45,18 +45,13 @@ const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
 /** 列数随容器宽度变化；min 控制最小列宽，避免过挤 */
 const PRODUCT_AND_SPECIAL_GRID =
   'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
-/** 宽屏分类：格子数随宽度变化 */
-const CATEGORY_GRID_FLUID =
-  'repeat(auto-fit, minmax(min(100%, clamp(3.65rem, 9vw, 8.25rem)), 1fr))';
-/** 窄屏「更多」内分类 */
-const CATEGORY_GRID_NARROW_MORE =
-  'repeat(auto-fit, minmax(min(100%, clamp(3.25rem, 16vw, 6.5rem)), 1fr))';
-
-const CHIP_FS = 'clamp(0.55rem, 1.4vw, 0.92rem)';
-const CHIP_PAD_Y = 'clamp(0.22rem, 0.8vw, 0.52rem)';
-const CHIP_PAD_X = 'clamp(0.24rem, 0.95vw, 0.58rem)';
-const CHIP_ICON = 'clamp(11px, 2.7vw, 22px)';
-const CHIP_GRID_GAP = 'clamp(4px, 1.1vw, 12px)';
+/** 分类格子固定尺寸；窄屏通过每行列数变少适配，不缩小方框 */
+const CATEGORY_CELL_PX = 118;
+const CATEGORY_CHIP_H_PX = 56;
+const CATEGORY_ICON_PX = 22;
+const CATEGORY_LABEL_FS = 11;
+const CATEGORY_GRID_GAP = 8;
+const CATEGORY_GRID_TEMPLATE = `repeat(auto-fill, minmax(${CATEGORY_CELL_PX}px, ${CATEGORY_CELL_PX}px))`;
 
 const CART_BTN = 'clamp(26px, 6.5vw, 38px)';
 const CART_ICON = 'clamp(13px, 3.2vw, 20px)';
@@ -110,19 +105,10 @@ function CategoryChipButton({
   cat,
   selectedCategory,
   onSelectCategory,
-  padY = CHIP_PAD_Y,
-  padX = CHIP_PAD_X,
-  fontSize = CHIP_FS,
-  /** 窄屏：图标在上、文案可换行，便于一行 6 格完整显示名称 */
-  narrowChips = false,
 }: {
   cat: (typeof HOME_CATEGORIES)[number];
   selectedCategory: string;
   onSelectCategory: (v: string) => void;
-  padY?: string;
-  padX?: string;
-  fontSize?: string;
-  narrowChips?: boolean;
 }) {
   const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
   return (
@@ -134,26 +120,24 @@ function CategoryChipButton({
       }}
       style={{
         display: 'flex',
-        flexDirection: narrowChips ? 'column' : 'row',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: narrowChips ? 'clamp(2px, 0.5vw, 4px)' : 'clamp(2px, 0.6vw, 6px)',
-        minWidth: 0,
-        width: '100%',
-        minHeight: narrowChips ? 'clamp(2.75rem, 14vw, 3.6rem)' : undefined,
-        padding: `${padY} ${padX}`,
-        borderRadius: 'clamp(6px, 1.2vw, 10px)',
+        justifyContent: 'flex-start',
+        gap: 6,
+        boxSizing: 'border-box',
+        width: CATEGORY_CELL_PX,
+        height: CATEGORY_CHIP_H_PX,
+        padding: '6px 8px',
+        borderRadius: 10,
         border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
         backgroundColor: isSelected ? '#fef2f2' : 'white',
         color: isSelected ? '#dc2626' : '#374151',
         fontWeight: 600,
-        fontSize,
+        fontSize: CATEGORY_LABEL_FS,
         cursor: 'pointer',
-        lineHeight: 1.2,
-        textAlign: 'center',
-        whiteSpace: 'normal',
-        wordBreak: 'break-word',
-        overflow: 'visible',
+        lineHeight: 1.15,
+        textAlign: 'left',
+        overflow: 'hidden',
       }}
     >
       {cat.icon ? (
@@ -161,18 +145,34 @@ function CategoryChipButton({
           src={cat.icon}
           alt=""
           style={{
-            width: CHIP_ICON,
-            height: CHIP_ICON,
+            width: CATEGORY_ICON_PX,
+            height: CATEGORY_ICON_PX,
             objectFit: 'contain',
             flexShrink: 0,
           }}
         />
       ) : (
         <AppstoreOutlined
-          style={{ fontSize: CHIP_ICON, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
+          style={{
+            fontSize: CATEGORY_ICON_PX,
+            color: isSelected ? '#dc2626' : '#6b7280',
+            flexShrink: 0,
+          }}
         />
       )}
-      <span style={{ minWidth: 0, maxWidth: '100%', whiteSpace: 'normal', wordBreak: 'break-word' }}>{cat.label}</span>
+      <span
+        style={{
+          minWidth: 0,
+          flex: 1,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          wordBreak: 'break-word',
+        }}
+      >
+        {cat.label}
+      </span>
     </button>
   );
 }
@@ -206,9 +206,10 @@ function HomeCategoryBar({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: CATEGORY_GRID_FLUID,
-            gap: CHIP_GRID_GAP,
+            gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
+            gap: CATEGORY_GRID_GAP,
             width: '100%',
+            justifyContent: 'start',
           }}
         >
           {HOME_CATEGORIES.map((cat) => (
@@ -239,9 +240,10 @@ function HomeCategoryBar({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-          gap: CHIP_GRID_GAP,
+          gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
+          gap: CATEGORY_GRID_GAP,
           width: '100%',
+          justifyContent: 'start',
         }}
       >
         {NARROW_PINNED_CATEGORIES.map((cat) => (
@@ -250,7 +252,6 @@ function HomeCategoryBar({
             cat={cat}
             selectedCategory={selectedCategory}
             onSelectCategory={onSelectCategory}
-            narrowChips
           />
         ))}
       </div>
@@ -259,10 +260,11 @@ function HomeCategoryBar({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: CATEGORY_GRID_NARROW_MORE,
-            gap: CHIP_GRID_GAP,
+            gridTemplateColumns: CATEGORY_GRID_TEMPLATE,
+            gap: CATEGORY_GRID_GAP,
             width: '100%',
             marginTop: 'clamp(8px, 1.8vw, 12px)',
+            justifyContent: 'start',
           }}
         >
           {NARROW_MORE_CATEGORIES.map((cat) => (
@@ -271,7 +273,6 @@ function HomeCategoryBar({
               cat={cat}
               selectedCategory={selectedCategory}
               onSelectCategory={onSelectCategory}
-              narrowChips
             />
           ))}
         </div>

@@ -55,3 +55,9 @@ mapbox-search-box [role="listbox"],
 mapbox-search-box .mapbox-search-listbox {
   z-index: 1100 !important;
 }
+
+/* Address Autofill：联想列表在右侧抽屉/导航之上（默认 z-index 过低会被裁切或挡住） */
+mapbox-address-autofill mapbox-search-listbox,
+mapbox-search-listbox {
+  z-index: 10050 !important;
+}
