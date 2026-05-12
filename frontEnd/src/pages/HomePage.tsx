@@ -9,7 +9,7 @@ import { useMaxWidth } from '../hooks/useMediaQuery';
 import { useStorePublicSettings } from '../context/StorePublicSettingsContext';
 import plusIcon from '../assets/images/加.png';
 import minusIcon from '../assets/images/减.png';
-import { AppstoreOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import vegetableIcon from '../assets/images/vegetable.png';
 import fruitIcon from '../assets/images/fruit.png';
 import specialCategoryIcon from '../assets/images/Discount-打折-1.png';
@@ -73,6 +73,93 @@ const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
 
+/** 窄屏首行固定展示的 4 个分类（其余收入「更多」） */
+const NARROW_PINNED_CATEGORY_VALUES = ['Special', 'Recommended', 'Vegetables', 'Fruit'] as const;
+
+function partitionHomeCategories() {
+  const pinned = NARROW_PINNED_CATEGORY_VALUES.map((value) =>
+    HOME_CATEGORIES.find((c) => c.value === value)
+  ).filter((c): c is (typeof HOME_CATEGORIES)[number] => c != null);
+  const rest = HOME_CATEGORIES.filter(
+    (c) => !(NARROW_PINNED_CATEGORY_VALUES as readonly string[]).includes(c.value)
+  );
+  return { pinned, rest };
+}
+
+const { pinned: NARROW_PINNED_CATEGORIES, rest: NARROW_MORE_CATEGORIES } = partitionHomeCategories();
+
+function isCategoryInMoreSection(value: string): boolean {
+  return NARROW_MORE_CATEGORIES.some((c) => c.value === value);
+}
+
+function CategoryChipButton({
+  cat,
+  compact,
+  selectedCategory,
+  onSelectCategory,
+  padY,
+  padX,
+  fontSize,
+}: {
+  cat: (typeof HOME_CATEGORIES)[number];
+  compact: boolean;
+  selectedCategory: string;
+  onSelectCategory: (v: string) => void;
+  padY: string;
+  padX: string;
+  fontSize: string;
+}) {
+  const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (cat.value === '') onSelectCategory('');
+        else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        minWidth: 0,
+        width: '100%',
+        padding: `${padY} ${padX}`,
+        borderRadius: 8,
+        border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
+        backgroundColor: isSelected ? '#fef2f2' : 'white',
+        color: isSelected ? '#dc2626' : '#374151',
+        fontWeight: 600,
+        fontSize,
+        cursor: 'pointer',
+        lineHeight: 1.2,
+        textAlign: 'center',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {cat.icon ? (
+        <img
+          src={cat.icon}
+          alt=""
+          style={{
+            width: compact ? 14 : 16,
+            height: compact ? 14 : 16,
+            objectFit: 'contain',
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <AppstoreOutlined
+          style={{ fontSize: compact ? 14 : 16, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
+        />
+      )}
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+    </button>
+  );
+}
+
 function HomeCategoryBar({
   selectedCategory,
   onSelectCategory,
@@ -82,84 +169,139 @@ function HomeCategoryBar({
   onSelectCategory: (v: string) => void;
   compact: boolean;
 }) {
+  const [moreExpanded, setMoreExpanded] = useState(false);
   const gap = compact ? 6 : 8;
   const padY = compact ? '0.35rem' : '0.45rem';
   const padX = compact ? '0.4rem' : '0.5rem';
   const fontSize = compact ? '0.68rem' : '0.78rem';
-  /** 6 列：第一行 6 个、第二行 5 个自动落位，列宽一致，末格留空 */
-  const cols = 6;
+  /** 宽屏：6 列网格 */
+  const colsWide = 6;
+
+  useEffect(() => {
+    if (!compact) return;
+    if (selectedCategory && isCategoryInMoreSection(selectedCategory)) setMoreExpanded(true);
+  }, [compact, selectedCategory]);
+
+  if (!compact) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 960,
+          margin: '0 auto 1.5rem',
+          padding: '0.65rem 0',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${colsWide}, minmax(0, 1fr))`,
+            gap,
+            width: '100%',
+          }}
+        >
+          {HOME_CATEGORIES.map((cat) => (
+            <CategoryChipButton
+              key={cat.label}
+              cat={cat}
+              compact={false}
+              selectedCategory={selectedCategory}
+              onSelectCategory={onSelectCategory}
+              padY={padY}
+              padX={padX}
+              fontSize={fontSize}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const moreFilterActive =
+    selectedCategory !== '' && NARROW_MORE_CATEGORIES.some((c) => c.value === selectedCategory);
 
   return (
     <div
       style={{
         width: '100%',
-        maxWidth: compact ? '100%' : 960,
+        maxWidth: '100%',
         margin: '0 auto 1.5rem',
-        padding: compact ? '0.5rem 0' : '0.65rem 0',
+        padding: '0.5rem 0',
         boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap,
           width: '100%',
         }}
       >
-        {HOME_CATEGORIES.map((cat) => {
-          const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
-          return (
-            <button
-              key={cat.label}
-              type="button"
-              onClick={() => {
-                if (cat.value === '') onSelectCategory('');
-                else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                minWidth: 0,
-                width: '100%',
-                padding: `${padY} ${padX}`,
-                borderRadius: 8,
-                border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
-                backgroundColor: isSelected ? '#fef2f2' : 'white',
-                color: isSelected ? '#dc2626' : '#374151',
-                fontWeight: 600,
-                fontSize,
-                cursor: 'pointer',
-                lineHeight: 1.2,
-                textAlign: 'center',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {cat.icon ? (
-                <img
-                  src={cat.icon}
-                  alt=""
-                  style={{
-                    width: compact ? 14 : 16,
-                    height: compact ? 14 : 16,
-                    objectFit: 'contain',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <AppstoreOutlined
-                  style={{ fontSize: compact ? 14 : 16, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
-                />
-              )}
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
-            </button>
-          );
-        })}
+        {NARROW_PINNED_CATEGORIES.map((cat) => (
+          <CategoryChipButton
+            key={cat.label}
+            cat={cat}
+            compact
+            selectedCategory={selectedCategory}
+            onSelectCategory={onSelectCategory}
+            padY={padY}
+            padX={padX}
+            fontSize={fontSize}
+          />
+        ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setMoreExpanded((e) => !e)}
+        aria-expanded={moreExpanded}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          width: '100%',
+          marginTop: 10,
+          padding: '0.42rem 0.5rem',
+          borderRadius: 8,
+          border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
+          background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
+          color: '#374151',
+          fontWeight: 600,
+          fontSize: '0.72rem',
+          cursor: 'pointer',
+        }}
+      >
+        {moreExpanded ? <UpOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
+        {moreExpanded ? 'Show less' : 'More categories'}
+      </button>
+
+      {moreExpanded && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gap,
+            width: '100%',
+            marginTop: 10,
+          }}
+        >
+          {NARROW_MORE_CATEGORIES.map((cat) => (
+            <CategoryChipButton
+              key={cat.label}
+              cat={cat}
+              compact
+              selectedCategory={selectedCategory}
+              onSelectCategory={onSelectCategory}
+              padY={padY}
+              padX={padX}
+              fontSize={fontSize}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -271,7 +413,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
         <HomeCarousel images={heroSlideUrls} isNarrow={isNarrow} />
       )}
 
-      {/* 分类：主图下方、商品区上方，固定两行 */}
+      {/* 分类：窄屏首行 4 个 + 展开更多；宽屏 6 列全部分类 */}
       <HomeCategoryBar selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} compact={isNarrow} />
 
       {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
