@@ -39,6 +39,29 @@ interface Product {
 const WEIGHT_STEP_KG = 0.25;
 const WEIGHT_MIN_KG = 0.05;
 
+/** 首页商品 / Special 共用：水平居中内容区 */
+const HOME_CONTENT_MAX = 'min(1400px, 100%)';
+const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
+/** 列数随容器宽度变化；min 控制最小列宽，避免过挤 */
+const PRODUCT_AND_SPECIAL_GRID =
+  'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
+/** 宽屏分类：格子数随宽度变化 */
+const CATEGORY_GRID_FLUID =
+  'repeat(auto-fit, minmax(min(100%, clamp(3.65rem, 9vw, 8.25rem)), 1fr))';
+/** 窄屏「更多」内分类 */
+const CATEGORY_GRID_NARROW_MORE =
+  'repeat(auto-fit, minmax(min(100%, clamp(3.25rem, 16vw, 6.5rem)), 1fr))';
+
+const CHIP_FS = 'clamp(0.55rem, 1.4vw, 0.92rem)';
+const CHIP_PAD_Y = 'clamp(0.22rem, 0.8vw, 0.52rem)';
+const CHIP_PAD_X = 'clamp(0.24rem, 0.95vw, 0.58rem)';
+const CHIP_ICON = 'clamp(11px, 2.7vw, 22px)';
+const CHIP_GRID_GAP = 'clamp(4px, 1.1vw, 12px)';
+
+const CART_BTN = 'clamp(26px, 6.5vw, 38px)';
+const CART_ICON = 'clamp(13px, 3.2vw, 20px)';
+const CART_FS = 'clamp(0.66rem, 1.9vw, 0.88rem)';
+
 function defaultEstKgForProduct(p: Pick<Product, 'defaultExpectedWeightKg'>): number {
   const d = Number(p.defaultExpectedWeightKg ?? 0);
   return Number.isFinite(d) && d > 0 ? Math.round(d * 1000) / 1000 : 1;
@@ -94,20 +117,18 @@ function isCategoryInMoreSection(value: string): boolean {
 
 function CategoryChipButton({
   cat,
-  compact,
   selectedCategory,
   onSelectCategory,
-  padY,
-  padX,
-  fontSize,
+  padY = CHIP_PAD_Y,
+  padX = CHIP_PAD_X,
+  fontSize = CHIP_FS,
 }: {
   cat: (typeof HOME_CATEGORIES)[number];
-  compact: boolean;
   selectedCategory: string;
   onSelectCategory: (v: string) => void;
-  padY: string;
-  padX: string;
-  fontSize: string;
+  padY?: string;
+  padX?: string;
+  fontSize?: string;
 }) {
   const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
   return (
@@ -121,11 +142,11 @@ function CategoryChipButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
+        gap: 'clamp(2px, 0.6vw, 6px)',
         minWidth: 0,
         width: '100%',
         padding: `${padY} ${padX}`,
-        borderRadius: 8,
+        borderRadius: 'clamp(6px, 1.2vw, 10px)',
         border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
         backgroundColor: isSelected ? '#fef2f2' : 'white',
         color: isSelected ? '#dc2626' : '#374151',
@@ -144,15 +165,15 @@ function CategoryChipButton({
           src={cat.icon}
           alt=""
           style={{
-            width: compact ? 14 : 16,
-            height: compact ? 14 : 16,
+            width: CHIP_ICON,
+            height: CHIP_ICON,
             objectFit: 'contain',
             flexShrink: 0,
           }}
         />
       ) : (
         <AppstoreOutlined
-          style={{ fontSize: compact ? 14 : 16, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
+          style={{ fontSize: CHIP_ICON, color: isSelected ? '#dc2626' : '#6b7280', flexShrink: 0 }}
         />
       )}
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
@@ -170,12 +191,6 @@ function HomeCategoryBar({
   compact: boolean;
 }) {
   const [moreExpanded, setMoreExpanded] = useState(false);
-  const gap = compact ? 6 : 8;
-  const padY = compact ? '0.35rem' : '0.45rem';
-  const padX = compact ? '0.4rem' : '0.5rem';
-  const fontSize = compact ? '0.68rem' : '0.78rem';
-  /** 宽屏：6 列网格 */
-  const colsWide = 6;
 
   useEffect(() => {
     if (!compact) return;
@@ -187,17 +202,16 @@ function HomeCategoryBar({
       <div
         style={{
           width: '100%',
-          maxWidth: 960,
           margin: '0 auto 1.5rem',
-          padding: '0.65rem 0',
+          padding: 'clamp(0.45rem, 1.2vw, 0.65rem) 0',
           boxSizing: 'border-box',
         }}
       >
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(${colsWide}, minmax(0, 1fr))`,
-            gap,
+            gridTemplateColumns: CATEGORY_GRID_FLUID,
+            gap: CHIP_GRID_GAP,
             width: '100%',
           }}
         >
@@ -205,12 +219,8 @@ function HomeCategoryBar({
             <CategoryChipButton
               key={cat.label}
               cat={cat}
-              compact={false}
               selectedCategory={selectedCategory}
               onSelectCategory={onSelectCategory}
-              padY={padY}
-              padX={padX}
-              fontSize={fontSize}
             />
           ))}
         </div>
@@ -225,9 +235,8 @@ function HomeCategoryBar({
     <div
       style={{
         width: '100%',
-        maxWidth: '100%',
         margin: '0 auto 1.5rem',
-        padding: '0.5rem 0',
+        padding: 'clamp(0.4rem, 1.2vw, 0.55rem) 0',
         boxSizing: 'border-box',
       }}
     >
@@ -235,21 +244,12 @@ function HomeCategoryBar({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap,
+          gap: CHIP_GRID_GAP,
           width: '100%',
         }}
       >
         {NARROW_PINNED_CATEGORIES.map((cat) => (
-          <CategoryChipButton
-            key={cat.label}
-            cat={cat}
-            compact
-            selectedCategory={selectedCategory}
-            onSelectCategory={onSelectCategory}
-            padY={padY}
-            padX={padX}
-            fontSize={fontSize}
-          />
+          <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
         ))}
       </div>
 
@@ -261,20 +261,24 @@ function HomeCategoryBar({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 8,
+          gap: 'clamp(6px, 1.5vw, 10px)',
           width: '100%',
-          marginTop: 10,
-          padding: '0.42rem 0.5rem',
-          borderRadius: 8,
+          marginTop: 'clamp(8px, 1.8vw, 12px)',
+          padding: 'clamp(0.35rem, 1.1vw, 0.48rem) clamp(0.4rem, 1.2vw, 0.55rem)',
+          borderRadius: 'clamp(6px, 1.2vw, 10px)',
           border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
           background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
           color: '#374151',
           fontWeight: 600,
-          fontSize: '0.72rem',
+          fontSize: 'clamp(0.62rem, 1.8vw, 0.78rem)',
           cursor: 'pointer',
         }}
       >
-        {moreExpanded ? <UpOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
+        {moreExpanded ? (
+          <UpOutlined style={{ fontSize: 'clamp(11px, 2.8vw, 14px)' }} />
+        ) : (
+          <DownOutlined style={{ fontSize: 'clamp(11px, 2.8vw, 14px)' }} />
+        )}
         {moreExpanded ? 'Show less' : 'More categories'}
       </button>
 
@@ -282,23 +286,14 @@ function HomeCategoryBar({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-            gap,
+            gridTemplateColumns: CATEGORY_GRID_NARROW_MORE,
+            gap: CHIP_GRID_GAP,
             width: '100%',
-            marginTop: 10,
+            marginTop: 'clamp(8px, 1.8vw, 12px)',
           }}
         >
           {NARROW_MORE_CATEGORIES.map((cat) => (
-            <CategoryChipButton
-              key={cat.label}
-              cat={cat}
-              compact
-              selectedCategory={selectedCategory}
-              onSelectCategory={onSelectCategory}
-              padY={padY}
-              padX={padX}
-              fontSize={fontSize}
-            />
+            <CategoryChipButton key={cat.label} cat={cat} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
           ))}
         </div>
       )}
@@ -391,7 +386,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
   }
 
   return (
-    <div style={{ padding: isNarrow ? '0.75rem' : '1.5rem', maxWidth: '100%', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
       {fetchError && (
         <div
           style={{
@@ -413,36 +408,46 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
         <HomeCarousel images={heroSlideUrls} isNarrow={isNarrow} />
       )}
 
-      {/* 分类：窄屏首行 4 个 + 展开更多；宽屏 6 列全部分类 */}
-      <HomeCategoryBar selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} compact={isNarrow} />
+      <div
+        style={{
+          width: '100%',
+          maxWidth: HOME_CONTENT_MAX,
+          marginLeft: 'auto',
+          marginRight: 'auto',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* 分类：窄屏首行 4 个 + 展开更多；宽屏流体列数 */}
+        <HomeCategoryBar selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} compact={isNarrow} />
 
-      {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
-      {!selectedCategory && !searchKeyword.trim() && specialProducts.length > 0 && (
-        <div style={{ marginBottom: '2.5rem' }}>
-          <SpecialProductList products={specialProducts} productImage={productImage} isNarrow={isNarrow} />
-        </div>
-      )}
-
-      {/* 商品网格：选分类或有关键词时展示，仅列出 filtered */}
-      {(selectedCategory || searchKeyword.trim()) && (
-        <div id="search-results" style={{ scrollMarginTop: '1rem' }}>
-          <div
-            style={{
-              display: 'grid',
-              /** 顶对齐：避免同行某一格变高时整行卡片被拉高 */
-              alignItems: 'start',
-              gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: isNarrow ? '10px' : '1.5rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            {filtered.map((product) => (
-              <ProductCard key={product.id} product={product} productImage={productImage} compact={isNarrow} />
-            ))}
+        {/* Special 横条：未在搜索时显示；搜索时只展示下方匹配结果 */}
+        {!selectedCategory && !searchKeyword.trim() && specialProducts.length > 0 && (
+          <div style={{ marginBottom: 'clamp(1.25rem, 4vw, 2.5rem)' }}>
+            <SpecialProductList products={specialProducts} productImage={productImage} />
           </div>
-          {filtered.length === 0 && <div style={{ textAlign: 'center', color: '#999' }}>No products</div>}
-        </div>
-      )}
+        )}
+
+        {/* 商品网格：选分类或有关键词时展示，仅列出 filtered */}
+        {(selectedCategory || searchKeyword.trim()) && (
+          <div id="search-results" style={{ scrollMarginTop: '1rem' }}>
+            <div
+              style={{
+                display: 'grid',
+                alignItems: 'start',
+                gridTemplateColumns: PRODUCT_AND_SPECIAL_GRID,
+                gap: GRID_GAP,
+                marginTop: '0.5rem',
+                width: '100%',
+              }}
+            >
+              {filtered.map((product) => (
+                <ProductCard key={product.id} product={product} productImage={productImage} />
+              ))}
+            </div>
+            {filtered.length === 0 && <div style={{ textAlign: 'center', color: '#999' }}>No products</div>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -523,31 +528,22 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
   );
 }
 
-function SpecialProductList({
-  products,
-  productImage,
-  isNarrow,
-}: {
-  products: Product[];
-  productImage: string;
-  isNarrow: boolean;
-}) {
+function SpecialProductList({ products, productImage }: { products: Product[]; productImage: string }) {
   return (
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'flex-start',
-        flexWrap: 'wrap',
+        display: 'grid',
+        gridTemplateColumns: PRODUCT_AND_SPECIAL_GRID,
         alignItems: 'start',
-        gap: isNarrow ? '10px' : '1.25rem',
+        gap: GRID_GAP,
         width: '100%',
-        maxWidth: isNarrow ? '100%' : 'min(1200px, 100%)',
+        maxWidth: '100%',
         margin: '0 auto',
         boxSizing: 'border-box',
       }}
     >
       {products.map((p) => (
-        <SpecialCard key={p.id} product={p} productImage={productImage} compact={isNarrow} />
+        <SpecialCard key={p.id} product={p} productImage={productImage} />
       ))}
     </div>
   );
@@ -562,15 +558,7 @@ const titleClampStyle: React.CSSProperties = {
 };
 
 /** 白底红边「Add to cart」；有货后变为药丸步进器；减到 0 恢复 */
-function HomeCartToggle({
-  product,
-  productImage,
-  compact,
-}: {
-  product: Product;
-  productImage: string;
-  compact: boolean;
-}) {
+function HomeCartToggle({ product, productImage }: { product: Product; productImage: string }) {
   const { items, addItem, updateQuantity, removeItem, updateExpectedWeightKg } = useCart();
   const line = items.find((i) => i.productId === product.id);
   const cartQty = line?.quantity ?? 0;
@@ -578,9 +566,6 @@ function HomeCartToggle({
     product.isWeighingRequired && line?.isWeighingRequired
       ? Number(line.expectedWeightKg ?? defaultEstKgForProduct(product))
       : 0;
-  const stepIconPx = compact ? 14 : 18;
-  /** 与加减行同高；红框「Add to cart」与步进器共用此高度 */
-  const btnSize = compact ? 28 : 32;
 
   const base = () => ({
     productId: product.id,
@@ -634,8 +619,7 @@ function HomeCartToggle({
   };
 
   const pillBorder = '1px solid #dc2626';
-  /** 与加减按钮同高（border-box），避免 Add↔步进切换时商品卡高度变化 */
-  const rowMinH = btnSize;
+  const rowMinH = CART_BTN;
 
   const inCartWeighing = Boolean(product.isWeighingRequired && line?.isWeighingRequired && estKg > 0);
   const inCartCount = product.isWeighingRequired ? (inCartWeighing ? 1 : 0) : cartQty;
@@ -664,11 +648,11 @@ function HomeCartToggle({
             backgroundColor: '#fff',
             border: pillBorder,
             borderRadius: 9999,
-            padding: compact ? '0.04rem 0.45rem' : '0.05rem 0.55rem',
+            padding: 'clamp(0.04rem, 0.5vw, 0.08rem) clamp(0.38rem, 1.5vw, 0.6rem)',
             cursor: 'pointer',
             fontWeight: 700,
             color: '#dc2626',
-            fontSize: compact ? '0.7rem' : '0.82rem',
+            fontSize: CART_FS,
             lineHeight: 1.15,
             opacity: 1,
             whiteSpace: 'nowrap',
@@ -689,7 +673,7 @@ function HomeCartToggle({
         display: 'grid',
         gridTemplateColumns: '1fr auto 1fr',
         alignItems: 'center',
-        columnGap: compact ? '0.28rem' : '0.36rem',
+        columnGap: 'clamp(0.22rem, 1vw, 0.4rem)',
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -706,8 +690,8 @@ function HomeCartToggle({
             alignItems: 'center',
             justifyContent: 'center',
             lineHeight: 0,
-            width: btnSize,
-            height: btnSize,
+            width: CART_BTN,
+            height: CART_BTN,
             boxSizing: 'border-box',
             flexShrink: 0,
           }}
@@ -715,18 +699,16 @@ function HomeCartToggle({
           <img
             src={minusIcon}
             alt=""
-            width={stepIconPx}
-            height={stepIconPx}
-            style={{ width: stepIconPx, height: stepIconPx, objectFit: 'contain', display: 'block' }}
+            style={{ width: CART_ICON, height: CART_ICON, objectFit: 'contain', display: 'block' }}
           />
         </button>
       </div>
       <span
         style={{
-          minWidth: compact ? 20 : 24,
+          minWidth: 'clamp(18px, 5vw, 28px)',
           textAlign: 'center',
           fontWeight: 700,
-          fontSize: compact ? '0.72rem' : '0.8rem',
+          fontSize: CART_FS,
           color: '#111827',
           fontVariantNumeric: 'tabular-nums',
         }}
@@ -747,8 +729,8 @@ function HomeCartToggle({
             justifyContent: 'center',
             lineHeight: 0,
             opacity: 1,
-            width: btnSize,
-            height: btnSize,
+            width: CART_BTN,
+            height: CART_BTN,
             boxSizing: 'border-box',
             flexShrink: 0,
           }}
@@ -756,9 +738,7 @@ function HomeCartToggle({
           <img
             src={plusIcon}
             alt=""
-            width={stepIconPx}
-            height={stepIconPx}
-            style={{ width: stepIconPx, height: stepIconPx, objectFit: 'contain', display: 'block' }}
+            style={{ width: CART_ICON, height: CART_ICON, objectFit: 'contain', display: 'block' }}
           />
         </button>
       </div>
@@ -766,25 +746,16 @@ function HomeCartToggle({
   );
 }
 
-function SpecialCard({
-  product,
-  productImage,
-  compact = false,
-}: {
-  product: Product;
-  productImage: string;
-  compact?: boolean;
-}) {
+function SpecialCard({ product, productImage }: { product: Product; productImage: string }) {
   return (
     <div
       style={{
-        width: compact ? 'calc((100% - 10px) / 2)' : 'clamp(196px, 20vw, 240px)',
-        flex: compact ? '0 1 calc((100% - 10px) / 2)' : '0 1 auto',
-        maxWidth: compact ? undefined : 240,
-        minWidth: compact ? 0 : 196,
+        width: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
         alignSelf: 'start',
         backgroundColor: 'white',
-        borderRadius: compact ? 6 : 8,
+        borderRadius: 'clamp(6px, 1.2vw, 10px)',
         overflow: 'hidden',
         border: '1px solid #e5e7eb',
         display: 'flex',
@@ -806,8 +777,8 @@ function SpecialCard({
             flexShrink: 0,
             backgroundColor: '#dc2626',
             color: 'white',
-            padding: compact ? '0.22rem 0.35rem' : '0.36rem 0.5rem',
-            fontSize: compact ? '0.68rem' : '0.82rem',
+            padding: 'clamp(0.2rem, 0.9vw, 0.38rem) clamp(0.28rem, 1vw, 0.5rem)',
+            fontSize: 'clamp(0.62rem, 1.7vw, 0.84rem)',
             fontWeight: 'bold',
             textAlign: 'center',
             lineHeight: 1.2,
@@ -817,7 +788,6 @@ function SpecialCard({
           {product.discountLabel}
         </div>
       )}
-      {/* 仅商品图为正方形 */}
       <div
         style={{
           width: '100%',
@@ -836,11 +806,18 @@ function SpecialCard({
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
       </div>
-      <div style={{ padding: compact ? '0.35rem' : '0.5rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.25rem' : '0.35rem' }}>
+      <div
+        style={{
+          padding: 'clamp(0.3rem, 1.3vw, 0.55rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'clamp(0.18rem, 1vw, 0.35rem)',
+        }}
+      >
         <h3
           style={{
             ...titleClampStyle,
-            fontSize: compact ? '0.68rem' : '0.8rem',
+            fontSize: 'clamp(0.64rem, 2vw, 0.88rem)',
             fontWeight: 'bold',
             margin: 0,
             lineHeight: 1.2,
@@ -850,10 +827,28 @@ function SpecialCard({
         </h3>
         {product.wasPrice != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
-            <span style={{ backgroundColor: '#fef08a', padding: '0.08rem 0.2rem', borderRadius: '4px', fontSize: '0.6rem', textDecoration: 'line-through' }}>was ${product.wasPrice.toFixed(2)}</span>
-            {!compact && (
-              <span style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: '0.75rem', cursor: 'pointer' }} title="Add to favourites">♡</span>
-            )}
+            <span
+              style={{
+                backgroundColor: '#fef08a',
+                padding: '0.08rem 0.2rem',
+                borderRadius: '4px',
+                fontSize: 'clamp(0.52rem, 1.4vw, 0.65rem)',
+                textDecoration: 'line-through',
+              }}
+            >
+              was ${product.wasPrice.toFixed(2)}
+            </span>
+            <span
+              style={{
+                marginLeft: 'auto',
+                color: '#9ca3af',
+                fontSize: 'clamp(0.62rem, 1.6vw, 0.78rem)',
+                cursor: 'pointer',
+              }}
+              title="Add to favourites"
+            >
+              ♡
+            </span>
           </div>
         )}
         <div
@@ -862,38 +857,30 @@ function SpecialCard({
             minWidth: 0,
             display: 'flex',
             flexDirection: 'column',
-            gap: compact ? '0.1rem' : '0.14rem',
-            marginTop: compact ? '0.12rem' : '0.18rem',
+            gap: 'clamp(0.08rem, 0.8vw, 0.16rem)',
+            marginTop: 'clamp(0.08rem, 0.8vw, 0.16rem)',
           }}
         >
           {product.isWeighingRequired ? (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexWrap: 'wrap', lineHeight: 1.2 }}>
-              <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626' }}>
+              <span style={{ fontSize: 'clamp(0.82rem, 2.5vw, 1.08rem)', fontWeight: 'bold', color: '#dc2626' }}>
                 ${product.price.toFixed(2)}
               </span>
-              <span style={{ fontSize: compact ? '0.62rem' : '0.72rem', color: '#999' }}>/kg</span>
+              <span style={{ fontSize: 'clamp(0.58rem, 1.6vw, 0.74rem)', color: '#999' }}>/kg</span>
             </div>
           ) : (
-            <span style={{ fontSize: compact ? '0.9rem' : '1.05rem', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>
+            <span style={{ fontSize: 'clamp(0.82rem, 2.5vw, 1.08rem)', fontWeight: 'bold', color: '#dc2626', lineHeight: 1.2 }}>
               ${product.price.toFixed(2)}
             </span>
           )}
-          <HomeCartToggle product={product} productImage={productImage} compact={compact} />
+          <HomeCartToggle product={product} productImage={productImage} />
         </div>
       </div>
     </div>
   );
 }
 
-function ProductCard({
-  product,
-  productImage,
-  compact = false,
-}: {
-  product: Product;
-  productImage: string;
-  compact?: boolean;
-}) {
+function ProductCard({ product, productImage }: { product: Product; productImage: string }) {
   return (
     <div
       style={{
@@ -901,8 +888,8 @@ function ProductCard({
         minWidth: 0,
         alignSelf: 'start',
         border: '1px solid #e5e7eb',
-        borderRadius: compact ? '6px' : '8px',
-        padding: compact ? '0.4rem' : '0.65rem',
+        borderRadius: 'clamp(6px, 1.2vw, 10px)',
+        padding: 'clamp(0.32rem, 1.4vw, 0.65rem)',
         backgroundColor: 'white',
         transition: 'all 0.2s',
         display: 'flex',
@@ -919,12 +906,11 @@ function ProductCard({
         (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
       }}
     >
-      {/* 仅商品图为正方形 */}
       <div
         style={{
           width: '100%',
           aspectRatio: '1',
-          borderRadius: '6px',
+          borderRadius: 'clamp(5px, 1vw, 8px)',
           overflow: 'hidden',
           backgroundColor: '#f3f4f6',
         }}
@@ -940,11 +926,18 @@ function ProductCard({
         />
       </div>
 
-      <div style={{ marginTop: compact ? '0.28rem' : '0.4rem', display: 'flex', flexDirection: 'column', gap: compact ? '0.18rem' : '0.24rem' }}>
+      <div
+        style={{
+          marginTop: 'clamp(0.22rem, 1.1vw, 0.42rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'clamp(0.12rem, 1vw, 0.26rem)',
+        }}
+      >
         <h3
           style={{
             ...titleClampStyle,
-            fontSize: compact ? '0.75rem' : '0.95rem',
+            fontSize: 'clamp(0.68rem, 2.1vw, 0.98rem)',
             fontWeight: 'bold',
             margin: 0,
             lineHeight: 1.25,
@@ -953,21 +946,21 @@ function ProductCard({
           {product.name}
         </h3>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '0.1rem' : '0.14rem', width: '100%', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.08rem, 0.8vw, 0.16rem)', width: '100%', minWidth: 0 }}>
           {product.isWeighingRequired ? (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
-              <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>
+              <span style={{ fontSize: 'clamp(0.86rem, 2.6vw, 1.15rem)', fontWeight: 'bold', color: '#dc2626' }}>
                 ${product.price.toFixed(2)}
               </span>
-              <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/kg</span>
+              <span style={{ fontSize: 'clamp(0.58rem, 1.6vw, 0.78rem)', color: '#999' }}>/kg</span>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.15rem', flexShrink: 0, minWidth: 0, lineHeight: 1.2 }}>
-              <span style={{ fontSize: compact ? '0.95rem' : '1.15rem', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
-              <span style={{ fontSize: compact ? '0.62rem' : '0.75rem', color: '#999' }}>/{product.unit}</span>
+              <span style={{ fontSize: 'clamp(0.86rem, 2.6vw, 1.15rem)', fontWeight: 'bold', color: '#dc2626' }}>${product.price}</span>
+              <span style={{ fontSize: 'clamp(0.58rem, 1.6vw, 0.78rem)', color: '#999' }}>/{product.unit}</span>
             </div>
           )}
-          <HomeCartToggle product={product} productImage={productImage} compact={compact} />
+          <HomeCartToggle product={product} productImage={productImage} />
         </div>
       </div>
     </div>
