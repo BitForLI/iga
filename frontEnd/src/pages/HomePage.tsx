@@ -45,15 +45,34 @@ const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
 /** 列数随容器宽度变化；min 控制最小列宽，避免过挤 */
 const PRODUCT_AND_SPECIAL_GRID =
   'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
-/** 分类 chip 固定宽度（单行排列，勿过大） */
-const CATEGORY_CELL_PX = 76;
+/** 主行 chip 高度与图标；宽度由 flex 均分，最小占位用测量值 */
 const CATEGORY_CHIP_H_PX = 44;
 const CATEGORY_ICON_PX = 17;
 const CATEGORY_LABEL_FS = 9;
 const CATEGORY_GAP = 6;
-/** 右侧「More categories」按钮预留宽度（含 gap） */
+/** 「More」按钮估算宽度（含与前一 chip 的 gap） */
 const CATEGORY_MORE_CONTROL_PX = 102;
-const CHIP_STRIDE = CATEGORY_CELL_PX + CATEGORY_GAP;
+const CATEGORY_CHIP_H_PAD_X = 12;
+const CATEGORY_CHIP_ICON_TEXT_GAP = 6;
+
+/** 单行展示所需最小宽度（图标 + 间距 + 标签全宽 + 内边距），用于决定主行放几个、其余进 More */
+function measureCategoryChipMinWidthPx(label: string): number {
+  if (typeof document === 'undefined') {
+    return 44 + label.length * 6;
+  }
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return 44 + label.length * 6;
+  ctx.font = `600 ${CATEGORY_LABEL_FS}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const textW = ctx.measureText(label).width;
+  return (
+    Math.ceil(
+      CATEGORY_ICON_PX +
+        CATEGORY_CHIP_ICON_TEXT_GAP +
+        textW +
+        CATEGORY_CHIP_H_PAD_X
+    ) + 4
+  );
+}
 
 const CART_BTN = 'clamp(26px, 6.5vw, 38px)';
 const CART_ICON = 'clamp(13px, 3.2vw, 20px)';
@@ -93,14 +112,38 @@ const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
 
+const HOME_CATEGORY_CHIP_MIN_WIDTHS = HOME_CATEGORIES.map((c) => measureCategoryChipMinWidthPx(c.label));
+
+/** 主行在「均分宽度」下最多能直接展示几个；其余进 More（保证单行、不按字母断行） */
+function computeVisibleMainCount(containerWidth: number, total: number, chipMinWidths: number[]): number {
+  const g = CATEGORY_GAP;
+  const M = CATEGORY_MORE_CONTROL_PX;
+  if (containerWidth <= 0 || total <= 0) return 1;
+
+  const maxMinAll = Math.max(...chipMinWidths);
+  const wcIfAll = (containerWidth - (total - 1) * g) / total;
+  if (wcIfAll >= maxMinAll) return total;
+
+  for (let n = total - 1; n >= 1; n--) {
+    const need = Math.max(...chipMinWidths.slice(0, n));
+    const wc = (containerWidth - n * g - M) / n;
+    if (wc >= need) return n;
+  }
+  return 1;
+}
+
 function CategoryChipButton({
   cat,
   selectedCategory,
   onSelectCategory,
+  chipMinWidthPx,
+  rowLayout,
 }: {
   cat: (typeof HOME_CATEGORIES)[number];
   selectedCategory: string;
   onSelectCategory: (v: string) => void;
+  chipMinWidthPx: number;
+  rowLayout: 'equal' | 'intrinsic';
 }) {
   const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
   return (
@@ -115,9 +158,10 @@ function CategoryChipButton({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
-        gap: 6,
+        gap: CATEGORY_CHIP_ICON_TEXT_GAP,
         boxSizing: 'border-box',
-        width: CATEGORY_CELL_PX,
+        width: rowLayout === 'equal' ? '100%' : chipMinWidthPx,
+        minWidth: rowLayout === 'equal' ? 0 : chipMinWidthPx,
         height: CATEGORY_CHIP_H_PX,
         padding: '5px 6px',
         borderRadius: 10,
@@ -130,6 +174,9 @@ function CategoryChipButton({
         lineHeight: 1.15,
         textAlign: 'left',
         overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        wordBreak: 'normal',
+        overflowWrap: 'normal',
       }}
     >
       {cat.icon ? (
@@ -155,10 +202,12 @@ function CategoryChipButton({
       <span
         style={{
           minWidth: 0,
-          flex: 1,
+          flex: rowLayout === 'equal' ? 1 : '0 1 auto',
           overflow: 'hidden',
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
+          wordBreak: 'normal',
+          overflowWrap: 'normal',
         }}
       >
         {cat.label}
@@ -188,12 +237,7 @@ function HomeCategoryBar({
     const update = () => {
       const w = el.offsetWidth;
       if (w <= 0) return;
-      const availForChips = w - CATEGORY_MORE_CONTROL_PX;
-      let n = Math.floor((availForChips + CATEGORY_GAP) / CHIP_STRIDE);
-      if (n >= total) {
-        setVisibleMain(total);
-        return;
-      }
+      const n = computeVisibleMainCount(w, total, HOME_CATEGORY_CHIP_MIN_WIDTHS);
       setVisibleMain(Math.max(1, Math.min(n, total)));
     };
     update();
@@ -232,20 +276,30 @@ function HomeCategoryBar({
           display: 'flex',
           flexDirection: 'row',
           flexWrap: 'nowrap',
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: 'stretch',
           gap: CATEGORY_GAP,
           width: '100%',
           minHeight: CATEGORY_CHIP_H_PX + 4,
         }}
       >
-        {HOME_CATEGORIES.slice(0, visibleMain).map((cat) => (
-          <CategoryChipButton
+        {HOME_CATEGORIES.slice(0, visibleMain).map((cat, idx) => (
+          <div
             key={cat.label}
-            cat={cat}
-            selectedCategory={selectedCategory}
-            onSelectCategory={onSelectCategory}
-          />
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'stretch',
+            }}
+          >
+            <CategoryChipButton
+              cat={cat}
+              selectedCategory={selectedCategory}
+              onSelectCategory={onSelectCategory}
+              chipMinWidthPx={HOME_CATEGORY_CHIP_MIN_WIDTHS[idx]!}
+              rowLayout="equal"
+            />
+          </div>
         ))}
         {hasHidden && (
           <button
@@ -299,15 +353,20 @@ function HomeCategoryBar({
               scrollbarWidth: 'thin',
             }}
           >
-            {hidden.map((cat) => (
-              <div key={cat.label} style={{ flex: '0 0 auto' }}>
-                <CategoryChipButton
-                  cat={cat}
-                  selectedCategory={selectedCategory}
-                  onSelectCategory={onSelectCategory}
-                />
-              </div>
-            ))}
+            {hidden.map((cat, idx) => {
+              const ord = visibleMain + idx;
+              return (
+                <div key={cat.label} style={{ flex: '0 0 auto' }}>
+                  <CategoryChipButton
+                    cat={cat}
+                    selectedCategory={selectedCategory}
+                    onSelectCategory={onSelectCategory}
+                    chipMinWidthPx={HOME_CATEGORY_CHIP_MIN_WIDTHS[ord]!}
+                    rowLayout="intrinsic"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
