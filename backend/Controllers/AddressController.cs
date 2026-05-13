@@ -3,43 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace igaServer.Controllers;
 
-// #region agent log
-internal static class AddressSuggestDebugLog
-{
-    internal static void Write(string hypothesisId, string message, object data)
-    {
-        try
-        {
-            var payload = new
-            {
-                sessionId = "936b1a",
-                hypothesisId,
-                location = "AddressController.cs",
-                message,
-                data,
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            };
-            var line = JsonSerializer.Serialize(payload);
-            Console.WriteLine("[DEBUG_ADDRESS_SUGGEST] " + line);
-            try
-            {
-                System.IO.File.AppendAllText(
-                    "/Users/sinno/Documents/Projects/iga/.cursor/debug-936b1a.log",
-                    line + "\n");
-            }
-            catch
-            {
-                /* local path only */
-            }
-        }
-        catch
-        {
-            /* ignore */
-        }
-    }
-}
-// #endregion
-
 /// <summary>
 /// 顾客端地址联想：由后端携带 Mapbox token 调用 Geocoding API，避免前端构建变量与 Mapbox URL 白名单问题。
 /// </summary>
@@ -103,26 +66,12 @@ public class AddressController : ControllerBase
         }
         catch (Exception ex)
         {
-            AddressSuggestDebugLog.Write(
-                "H-mapbox-http-exception",
-                "Mapbox HTTP client threw",
-                new { queryLen = q.Length, hadSlashInQuery = q.Contains('/'), exType = ex.GetType().Name });
             return StatusCode(502, new { error = "Address lookup failed.", detail = ex.Message });
         }
 
         if (!resp.IsSuccessStatusCode)
         {
             var errBody = await resp.Content.ReadAsStringAsync(cancellationToken);
-            AddressSuggestDebugLog.Write(
-                "H-mapbox-non-success",
-                "Mapbox returned non-success status",
-                new
-                {
-                    status = (int)resp.StatusCode,
-                    queryLen = q.Length,
-                    hadSlashInQuery = q.Contains('/'),
-                    detailLen = errBody.Length,
-                });
             return StatusCode(
                 StatusCodes.Status502BadGateway,
                 new { error = "Geocoding provider returned an error.", status = (int)resp.StatusCode, detail = errBody });

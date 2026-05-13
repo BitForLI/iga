@@ -17,10 +17,21 @@ function originFromApiBase(base: string): string {
  * 生产环境在构建平台（如 Railway / Vercel）设置：
  * `VITE_API_BASE=https://你的后端.up.railway.app/api`
  * 须与 ASP.NET 控制器路由前缀 `api/` 一致。
+ *
+ * 若生产构建未注入 `VITE_API_BASE`，打包结果会误用 localhost，线上用户会出现 **Failed to fetch**。
+ * 此时回退为「当前站点 origin + /api」（适用于前端与 API 同域反代；否则务必在构建环境变量中设置 VITE_API_BASE）。
  */
 export function getApiBase(): string {
   const raw = import.meta.env.VITE_API_BASE;
   if (raw != null && String(raw).trim() !== '') return trimTrailingSlashes(String(raw));
+
+  if (import.meta.env.PROD && typeof window !== 'undefined') {
+    const o = window.location.origin;
+    if (o && !o.includes('localhost') && !o.includes('127.0.0.1')) {
+      return `${trimTrailingSlashes(o)}/api`;
+    }
+  }
+
   return DEFAULT_API_BASE;
 }
 
@@ -35,6 +46,13 @@ export function getApiOrigin(): string {
 
   const rawBase = import.meta.env.VITE_API_BASE;
   if (rawBase != null && String(rawBase).trim() !== '') return originFromApiBase(String(rawBase));
+
+  if (import.meta.env.PROD && typeof window !== 'undefined') {
+    const o = window.location.origin;
+    if (o && !o.includes('localhost') && !o.includes('127.0.0.1')) {
+      return trimTrailingSlashes(o);
+    }
+  }
 
   return DEFAULT_API_ORIGIN;
 }

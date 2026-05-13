@@ -40,49 +40,6 @@ static void MapMapboxFlatEnvIfNeeded(ConfigurationManager cfg)
 }
 MapMapboxFlatEnvIfNeeded(builder.Configuration);
 
-// #region agent log
-try
-{
-    var flat = Environment.GetEnvironmentVariable("MAPBOX_ACCESS_TOKEN");
-    var nested = Environment.GetEnvironmentVariable("Mapbox__AccessToken");
-    var cfgVal = builder.Configuration["Mapbox:AccessToken"];
-    var payload = new
-    {
-        sessionId = "936b1a",
-        hypothesisId = "H-mapbox-startup",
-        location = "Program.cs:after-MapMapboxFlatEnvIfNeeded",
-        message = "Mapbox token visibility (lengths only, no secrets)",
-        data = new
-        {
-            cfgLen = (cfgVal ?? "").Length,
-            cfgWhitespaceOnly = string.IsNullOrWhiteSpace(cfgVal),
-            flatEnvPresent = flat is { Length: > 0 },
-            flatEnvLen = (flat ?? "").Length,
-            nestedEnvPresent = nested is { Length: > 0 },
-            nestedEnvLen = (nested ?? "").Length,
-            aspnetEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "",
-        },
-        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-    };
-    var line = System.Text.Json.JsonSerializer.Serialize(payload);
-    Console.WriteLine("[DEBUG_MAPBOX] " + line);
-    try
-    {
-        System.IO.File.AppendAllText(
-            "/Users/sinno/Documents/Projects/iga/.cursor/debug-936b1a.log",
-            line + "\n");
-    }
-    catch
-    {
-        /* local debug path only */
-    }
-}
-catch
-{
-    /* ignore probe failures */
-}
-// #endregion
-
 // Railway Postgres 常注入 DATABASE_URL；优先使用 ConnectionStrings__DefaultConnection，其次解析 DATABASE_URL
 static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
 {
@@ -159,13 +116,25 @@ builder.Services.AddCors(options =>
                     "生产环境必须配置 Cors:AllowedOrigins（JSON 数组或分号分隔），例如 [\"https://你的前端域名\"]，或环境变量 Cors__AllowedOrigins__0。");
             }
 
-            // 生产 API 仍允许本地 Vite 调试（与常见 Spring 示例一致；线上前端域名须仍在 Cors 中配置）
+            // 生产 API 仍允许本地 Vite 调试；并允许 igabeverlyhills.com 任意子域（避免漏配 www/子域 → CORS → Failed to fetch）
             var localDev = new[]
             {
                 "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
                 "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
             };
-            policy.WithOrigins(origins.Concat(localDev).Distinct().ToArray());
+            var explicitOrigins = new HashSet<string>(
+                origins.Concat(localDev),
+                StringComparer.OrdinalIgnoreCase);
+
+            policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrEmpty(origin)) return false;
+                if (explicitOrigins.Contains(origin)) return true;
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var u)) return false;
+                var h = u.Host;
+                return string.Equals(h, "igabeverlyhills.com", StringComparison.OrdinalIgnoreCase)
+                    || h.EndsWith(".igabeverlyhills.com", StringComparison.OrdinalIgnoreCase);
+            });
         }
 
         policy.AllowAnyHeader().AllowAnyMethod();
