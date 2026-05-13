@@ -13,7 +13,7 @@ namespace igaServer.Models
         public decimal DeliveryBaseFee { get; set; } = 5.0m; // 基础运费（历史字段；配送费以分区为准）
         public decimal FreeDeliveryThreshold { get; set; } = 69.0m; // 满多少免配送费（AUD）
 
-        /// <summary>JSON array of relative or absolute image URLs for the storefront hero carousel, e.g. ["/uploads/store/a.png"].</summary>
+        /// <summary>JSON array of image URLs for the hero carousel: /uploads/..., https://..., or /api/store/carousel-image/{guid} (bytes in StoreCarouselImages).</summary>
         public string HomeCarouselImagesJson { get; set; } = "[]";
 
         /// <summary>JSON array: [{"suburb":"hurstville","fee":10},...] suburb keys lowercase; empty = default $10 per zone.</summary>

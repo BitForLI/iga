@@ -1,8 +1,6 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
-using igaServer.Models;
 using igaServer.Utils;
 
 namespace igaServer.Controllers;
@@ -39,5 +37,16 @@ public class StorePublicController : ControllerBase
             deliveryZones = zones,
             homeCarouselImageUrls = carousel,
         });
+    }
+
+    /// <summary>Public binary for a DB-stored carousel image (referenced by <c>homeCarouselImageUrls</c>).</summary>
+    [HttpGet("carousel-image/{id:guid}")]
+    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
+    public async Task<IActionResult> GetCarouselImage(Guid id, CancellationToken cancellationToken)
+    {
+        var row = await _context.StoreCarouselImages.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (row == null) return NotFound();
+        return File(row.ImageBytes, row.ContentType);
     }
 }

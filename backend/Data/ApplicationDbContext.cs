@@ -15,6 +15,7 @@ namespace igaServer.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
         public DbSet<StoreConfig> StoreConfigs { get; set; } // 注册配置表
+        public DbSet<StoreCarouselImage> StoreCarouselImages { get; set; }
         public DbSet<StripeProcessedEvent> StripeProcessedEvents { get; set; }
 
         public DbSet<PendingRegistration> PendingRegistrations { get; set; }
@@ -32,6 +33,12 @@ namespace igaServer.Data
             modelBuilder.Entity<Product>()
                 .HasIndex(p => p.StripeProductId)
                 .IsUnique();
+
+            modelBuilder.Entity<StoreCarouselImage>(e =>
+            {
+                e.Property(x => x.ContentType).HasMaxLength(128);
+                e.Property(x => x.ImageBytes);
+            });
         }
     }
 }

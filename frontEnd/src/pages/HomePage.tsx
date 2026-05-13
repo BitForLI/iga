@@ -46,8 +46,8 @@ const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
 const PRODUCT_AND_SPECIAL_GRID =
   'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
 /** 主行 chip 高度与图标；宽度由 flex 均分，最小占位用测量值 */
-const CATEGORY_CHIP_H_PX = 44;
-const CATEGORY_ICON_PX = 17;
+const CATEGORY_CHIP_H_PX = 36;
+const CATEGORY_ICON_PX = 15;
 const CATEGORY_LABEL_FS = 9;
 const CATEGORY_GAP = 6;
 /** 「More」按钮估算宽度（含与前一 chip 的 gap） */
@@ -157,60 +157,71 @@ function CategoryChipButton({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-start',
-        gap: CATEGORY_CHIP_ICON_TEXT_GAP,
+        justifyContent: 'center',
+        gap: 0,
         boxSizing: 'border-box',
         width: rowLayout === 'equal' ? '100%' : chipMinWidthPx,
         minWidth: rowLayout === 'equal' ? 0 : chipMinWidthPx,
         height: CATEGORY_CHIP_H_PX,
-        padding: '5px 6px',
-        borderRadius: 10,
+        padding: '3px 5px',
+        borderRadius: 8,
         border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
         backgroundColor: isSelected ? '#fef2f2' : 'white',
         color: isSelected ? '#dc2626' : '#374151',
         fontWeight: 600,
         fontSize: CATEGORY_LABEL_FS,
         cursor: 'pointer',
-        lineHeight: 1.15,
-        textAlign: 'left',
+        lineHeight: 1.1,
+        textAlign: 'center',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         wordBreak: 'normal',
         overflowWrap: 'normal',
       }}
     >
-      {cat.icon ? (
-        <img
-          src={cat.icon}
-          alt=""
-          style={{
-            width: CATEGORY_ICON_PX,
-            height: CATEGORY_ICON_PX,
-            objectFit: 'contain',
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <AppstoreOutlined
-          style={{
-            fontSize: CATEGORY_ICON_PX,
-            color: isSelected ? '#dc2626' : '#6b7280',
-            flexShrink: 0,
-          }}
-        />
-      )}
       <span
         style={{
+          display: 'inline-flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: CATEGORY_CHIP_ICON_TEXT_GAP,
           minWidth: 0,
-          flex: rowLayout === 'equal' ? 1 : '0 1 auto',
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          wordBreak: 'normal',
-          overflowWrap: 'normal',
+          maxWidth: '100%',
         }}
       >
-        {cat.label}
+        {cat.icon ? (
+          <img
+            src={cat.icon}
+            alt=""
+            style={{
+              width: CATEGORY_ICON_PX,
+              height: CATEGORY_ICON_PX,
+              objectFit: 'contain',
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <AppstoreOutlined
+            style={{
+              fontSize: CATEGORY_ICON_PX,
+              color: isSelected ? '#dc2626' : '#6b7280',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <span
+          style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            wordBreak: 'normal',
+            overflowWrap: 'normal',
+          }}
+        >
+          {cat.label}
+        </span>
       </span>
     </button>
   );
@@ -314,7 +325,7 @@ function HomeCategoryBar({
               gap: 6,
               height: CATEGORY_CHIP_H_PX,
               padding: '0 10px',
-              borderRadius: 10,
+              borderRadius: 8,
               border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
               background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
               color: '#374151',
@@ -476,8 +487,8 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
           Could not load products from the server: {fetchError}
         </div>
       )}
-      {/* Hero carousel：仅展示后台配置的图，无配置则不显示 */}
-      {!selectedCategory && !searchKeyword.trim() && heroSlideUrls.length > 0 && (
+      {/* Hero carousel：仅展示后台配置的图；选分类仍保留顶部主图，搜索时隐藏以突出结果 */}
+      {!searchKeyword.trim() && heroSlideUrls.length > 0 && (
         <HomeCarousel images={heroSlideUrls} isNarrow={isNarrow} />
       )}
 

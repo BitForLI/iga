@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
@@ -13,13 +12,11 @@ namespace igaServer.Controllers;
 public class AdminStoreController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private readonly IWebHostEnvironment _env;
     private readonly ILogger<AdminStoreController> _logger;
 
-    public AdminStoreController(ApplicationDbContext context, IWebHostEnvironment env, ILogger<AdminStoreController> logger)
+    public AdminStoreController(ApplicationDbContext context, ILogger<AdminStoreController> logger)
     {
         _context = context;
-        _env = env;
         _logger = logger;
     }
 
@@ -127,11 +124,18 @@ public class AdminStoreController : ControllerBase
             {
                 if (u.Length > 2048)
                     return BadRequest(new { error = "Carousel URL too long" });
-                if (!u.StartsWith("/uploads/", StringComparison.Ordinal) && !u.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    return BadRequest(new { error = "Carousel images must be /uploads/... paths or https URLs" });
+                if (!CarouselImageStorageHelper.IsAllowedCarouselUrl(u))
+                    return BadRequest(new { error = "Carousel images must be /uploads/..., https URLs, or /api/store/carousel-image/{id} (stored in database)" });
+                if (CarouselImageStorageHelper.TryParseEmbeddedCarouselId(u, out var cid))
+                {
+                    var exists = await _context.StoreCarouselImages.AnyAsync(x => x.Id == cid, cancellationToken);
+                    if (!exists)
+                        return BadRequest(new { error = $"Unknown carousel image id: {cid}" });
+                }
             }
 
             store.HomeCarouselImagesJson = JsonSerializer.Serialize(urls);
+            await DeleteOrphanCarouselImagesAsync(urls, cancellationToken);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -139,10 +143,10 @@ public class AdminStoreController : ControllerBase
         return Ok(new { message = "Saved" });
     }
 
-    /// <summary>Upload a hero carousel image to wwwroot/uploads/store.</summary>
+    /// <summary>Upload a hero carousel image into the database (survives redeploy without uploads volume).</summary>
     [HttpPost("upload-carousel-image")]
     [RequestSizeLimit(8 * 1024 * 1024)]
-    public async Task<IActionResult> UploadCarouselImage(IFormFile? file)
+    public async Task<IActionResult> UploadCarouselImage(IFormFile? file, CancellationToken cancellationToken)
     {
         if (await RequireAdminAsync() is { } denied) return denied;
         if (file == null || file.Length == 0)
@@ -156,22 +160,54 @@ public class AdminStoreController : ControllerBase
         if (file.Length > 8 * 1024 * 1024)
             return BadRequest(new { error = "File size must not exceed 8MB" });
 
-        var webRoot = _env.WebRootPath;
-        if (string.IsNullOrEmpty(webRoot))
-            return StatusCode(500, new { error = "Web root path is not configured" });
+        await using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, cancellationToken);
+        var bytes = ms.ToArray();
+        if (bytes.Length == 0)
+            return BadRequest(new { error = "No file uploaded" });
+        if (bytes.Length > 8 * 1024 * 1024)
+            return BadRequest(new { error = "File size must not exceed 8MB" });
 
-        var uploadDir = Path.Combine(webRoot, "uploads", "store");
-        Directory.CreateDirectory(uploadDir);
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? ContentTypeFromImageExtension(ext) : file.ContentType.Trim();
+        var id = Guid.NewGuid();
+        _context.StoreCarouselImages.Add(
+            new StoreCarouselImage
+            {
+                Id = id,
+                ImageBytes = bytes,
+                ContentType = contentType,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+        await _context.SaveChangesAsync(cancellationToken);
 
-        var fileName = $"{Guid.NewGuid():N}{ext}";
-        var savePath = Path.Combine(uploadDir, fileName);
-        await using (var stream = System.IO.File.Create(savePath))
+        var url = $"{CarouselImageStorageHelper.PublicPathPrefix}{id:D}";
+        return Ok(new { url });
+    }
+
+    private static string ContentTypeFromImageExtension(string ext) =>
+        ext switch
         {
-            await file.CopyToAsync(stream);
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream",
+        };
+
+    /// <summary>Remove DB carousel blobs that are no longer listed in settings (frees space after edits).</summary>
+    private async Task DeleteOrphanCarouselImagesAsync(List<string> urls, CancellationToken cancellationToken)
+    {
+        var keep = new HashSet<Guid>();
+        foreach (var u in urls)
+        {
+            if (CarouselImageStorageHelper.TryParseEmbeddedCarouselId(u, out var id))
+                keep.Add(id);
         }
 
-        var url = $"/uploads/store/{fileName}";
-        return Ok(new { url });
+        var orphans = await _context.StoreCarouselImages.Where(x => !keep.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (orphans.Count == 0) return;
+        _context.StoreCarouselImages.RemoveRange(orphans);
+        _logger.LogInformation("[AdminStore] Removed {Count} orphan carousel image(s) from database", orphans.Count);
     }
 
     public class StoreAdminSettingsDto
