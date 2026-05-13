@@ -46,13 +46,13 @@ const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
 const PRODUCT_AND_SPECIAL_GRID =
   'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
 /** 分类 chip 固定宽度（单行排列，勿过大） */
-const CATEGORY_CELL_PX = 92;
-const CATEGORY_CHIP_H_PX = 50;
-const CATEGORY_ICON_PX = 20;
-const CATEGORY_LABEL_FS = 10;
-const CATEGORY_GAP = 8;
+const CATEGORY_CELL_PX = 76;
+const CATEGORY_CHIP_H_PX = 44;
+const CATEGORY_ICON_PX = 17;
+const CATEGORY_LABEL_FS = 9;
+const CATEGORY_GAP = 6;
 /** 右侧「More categories」按钮预留宽度（含 gap） */
-const CATEGORY_MORE_CONTROL_PX = 118;
+const CATEGORY_MORE_CONTROL_PX = 102;
 const CHIP_STRIDE = CATEGORY_CELL_PX + CATEGORY_GAP;
 
 const CART_BTN = 'clamp(26px, 6.5vw, 38px)';
@@ -119,7 +119,7 @@ function CategoryChipButton({
         boxSizing: 'border-box',
         width: CATEGORY_CELL_PX,
         height: CATEGORY_CHIP_H_PX,
-        padding: '6px 8px',
+        padding: '5px 6px',
         borderRadius: 10,
         border: isSelected ? '2px solid #dc2626' : '1px solid #e5e7eb',
         backgroundColor: isSelected ? '#fef2f2' : 'white',
@@ -156,11 +156,9 @@ function CategoryChipButton({
         style={{
           minWidth: 0,
           flex: 1,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-          wordBreak: 'break-word',
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
         }}
       >
         {cat.label}
@@ -222,6 +220,7 @@ function HomeCategoryBar({
     <div
       style={{
         width: '100%',
+        maxWidth: HOME_CONTENT_MAX,
         margin: '0 auto 1.5rem',
         padding: 'clamp(0.4rem, 1.2vw, 0.6rem) 0',
         boxSizing: 'border-box',
@@ -234,6 +233,7 @@ function HomeCategoryBar({
           flexDirection: 'row',
           flexWrap: 'nowrap',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: CATEGORY_GAP,
           width: '100%',
           minHeight: CATEGORY_CHIP_H_PX + 4,
@@ -259,7 +259,7 @@ function HomeCategoryBar({
               justifyContent: 'center',
               gap: 6,
               height: CATEGORY_CHIP_H_PX,
-              padding: '0 12px',
+              padding: '0 10px',
               borderRadius: 10,
               border: moreFilterActive && !moreExpanded ? '2px solid #fca5a5' : '1px solid #e5e7eb',
               background: moreFilterActive && !moreExpanded ? '#fff7ed' : '#fafafa',
@@ -279,28 +279,36 @@ function HomeCategoryBar({
       {hasHidden && moreExpanded && (
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'row',
-            flexWrap: 'nowrap',
-            gap: CATEGORY_GAP,
             width: '100%',
             marginTop: 10,
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            paddingBottom: 4,
-            WebkitOverflowScrolling: 'touch',
-            scrollbarWidth: 'thin',
+            display: 'flex',
+            justifyContent: 'center',
           }}
         >
-          {hidden.map((cat) => (
-            <div key={cat.label} style={{ flex: '0 0 auto' }}>
-              <CategoryChipButton
-                cat={cat}
-                selectedCategory={selectedCategory}
-                onSelectCategory={onSelectCategory}
-              />
-            </div>
-          ))}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'nowrap',
+              gap: CATEGORY_GAP,
+              maxWidth: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              paddingBottom: 4,
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'thin',
+            }}
+          >
+            {hidden.map((cat) => (
+              <div key={cat.label} style={{ flex: '0 0 auto' }}>
+                <CategoryChipButton
+                  cat={cat}
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={onSelectCategory}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -154,11 +154,12 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
 
   useEffect(() => {
     if (!active || orderType !== 'Pickup' || dayCards.length === 0) return;
-    setPickupDayKey((prev) => {
-      if (prev && dayCards.some((d) => d.key === prev)) return prev;
-      return dayCards[0]!.key;
-    });
-  }, [active, orderType, dayCards]);
+    if (!pickupDayKey) return;
+    if (!dayCards.some((d) => d.key === pickupDayKey)) {
+      setPickupDayKey('');
+      setPickupTimeSlot('');
+    }
+  }, [active, orderType, dayCards, pickupDayKey, setPickupTimeSlot]);
 
   useEffect(() => {
     if (!pickupTimeSlot || allPickupSlots.length === 0) return;
@@ -370,7 +371,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
             </p>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: pickupDayKey ? 12 : 0, flexWrap: 'wrap' }}>
                 {dayCards.map((d) => {
                   const selected = pickupDayKey === d.key;
                   return (
@@ -397,32 +398,36 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                   );
                 })}
               </div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: 6 }}>Time</label>
-              <select
-                value={pickupTimeSlot}
-                onChange={(e) => setPickupTimeSlot(e.target.value)}
-                aria-label="Pickup time slot"
-                style={{
-                  width: '100%',
-                  marginBottom: '0.75rem',
-                  padding: '12px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #e5e7eb',
-                  background: 'white',
-                  fontSize: 15,
-                  fontWeight: 500,
-                  color: '#0a0a0a',
-                  cursor: 'pointer',
-                  boxSizing: 'border-box',
-                }}
-              >
-                <option value="">Choose a time…</option>
-                {slotsForSelectedDay.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.displayTime}
-                  </option>
-                ))}
-              </select>
+              {pickupDayKey ? (
+                <>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: 6 }}>Time</label>
+                  <select
+                    value={pickupTimeSlot}
+                    onChange={(e) => setPickupTimeSlot(e.target.value)}
+                    aria-label="Pickup time slot"
+                    style={{
+                      width: '100%',
+                      marginBottom: '0.75rem',
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      border: '1px solid #e5e7eb',
+                      background: 'white',
+                      fontSize: 15,
+                      fontWeight: 500,
+                      color: '#0a0a0a',
+                      cursor: 'pointer',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">Choose a time…</option>
+                    {slotsForSelectedDay.map((slot) => (
+                      <option key={slot.value} value={slot.value}>
+                        {slot.displayTime}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </>
           )}
           {showSidebarActions && (
