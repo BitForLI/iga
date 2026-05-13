@@ -95,7 +95,16 @@ async function fetchAddressSuggestApi(query?: string): Promise<{ configured: boo
   const q = query?.trim() ?? '';
   const qs = q.length >= 3 ? `?query=${encodeURIComponent(q)}` : '';
   const r = await fetch(`${API_BASE}/address/suggest${qs}`);
-  if (!r.ok) throw new Error(String(r.status));
+  if (!r.ok) {
+    let extra = '';
+    try {
+      const j = (await r.json()) as { error?: string };
+      if (j?.error) extra = `: ${j.error}`;
+    } catch {
+      /* ignore non-JSON error bodies */
+    }
+    throw new Error(String(r.status) + extra);
+  }
   const j = (await r.json()) as { configured?: boolean; suggestions?: AddressSuggestion[] };
   return {
     configured: !!j.configured,
@@ -218,9 +227,12 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
           setAddrSuggestions(suggestions);
           setAddrSuggestOpen(suggestions.length > 0);
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          setAddressError('Address search failed. Try again or use manual entry below.');
+          const hint = e instanceof Error && e.message ? ` (${e.message})` : '';
+          setAddressError(
+            `Address search failed${hint}. Try again or use manual entry below.`
+          );
           setAddrSuggestions([]);
           setAddrSuggestOpen(false);
         }
