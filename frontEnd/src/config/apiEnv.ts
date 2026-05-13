@@ -13,19 +13,36 @@ function originFromApiBase(base: string): string {
   return withoutApi || b;
 }
 
+/** 顾客站 apex 与 API 分域（api.）时的内置回退，避免未设 VITE_API_BASE 时请求打到静态站 /api 而 Failed to fetch */
+function productionSplitHostApiBase(hostname: string): string | null {
+  const h = hostname.toLowerCase();
+  if (h === 'igabeverlyhills.com' || h === 'www.igabeverlyhills.com')
+    return 'https://api.igabeverlyhills.com/api';
+  return null;
+}
+
+function productionSplitHostApiOrigin(hostname: string): string | null {
+  const h = hostname.toLowerCase();
+  if (h === 'igabeverlyhills.com' || h === 'www.igabeverlyhills.com')
+    return 'https://api.igabeverlyhills.com';
+  return null;
+}
+
 /**
  * 生产环境在构建平台（如 Railway / Vercel）设置：
  * `VITE_API_BASE=https://你的后端.up.railway.app/api`
  * 须与 ASP.NET 控制器路由前缀 `api/` 一致。
  *
- * 若生产构建未注入 `VITE_API_BASE`，打包结果会误用 localhost，线上用户会出现 **Failed to fetch**。
- * 此时回退为「当前站点 origin + /api」（适用于前端与 API 同域反代；否则务必在构建环境变量中设置 VITE_API_BASE）。
+ * 若生产构建未注入 `VITE_API_BASE`，则按 hostname 尽量推断；顾客域与 API 分域时已内置 api 子域。
+ * 其它域名仍回退为「当前站点 origin + /api」（适用于前端与 API 同域反代）。
  */
 export function getApiBase(): string {
   const raw = import.meta.env.VITE_API_BASE;
   if (raw != null && String(raw).trim() !== '') return trimTrailingSlashes(String(raw));
 
   if (import.meta.env.PROD && typeof window !== 'undefined') {
+    const split = productionSplitHostApiBase(window.location.hostname);
+    if (split) return split;
     const o = window.location.origin;
     if (o && !o.includes('localhost') && !o.includes('127.0.0.1')) {
       return `${trimTrailingSlashes(o)}/api`;
@@ -48,6 +65,8 @@ export function getApiOrigin(): string {
   if (rawBase != null && String(rawBase).trim() !== '') return originFromApiBase(String(rawBase));
 
   if (import.meta.env.PROD && typeof window !== 'undefined') {
+    const split = productionSplitHostApiOrigin(window.location.hostname);
+    if (split) return split;
     const o = window.location.origin;
     if (o && !o.includes('localhost') && !o.includes('127.0.0.1')) {
       return trimTrailingSlashes(o);

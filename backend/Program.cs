@@ -34,9 +34,17 @@ MapStripeFlatEnvIfNeeded(builder.Configuration);
 
 static void MapMapboxFlatEnvIfNeeded(ConfigurationManager cfg)
 {
-    if (!string.IsNullOrWhiteSpace(cfg["Mapbox:AccessToken"])) return;
-    var v = Environment.GetEnvironmentVariable("MAPBOX_ACCESS_TOKEN");
-    if (!string.IsNullOrWhiteSpace(v)) cfg["Mapbox:AccessToken"] = v.Trim();
+    if (string.IsNullOrWhiteSpace(cfg["Mapbox:AccessToken"]))
+    {
+        var v = Environment.GetEnvironmentVariable("MAPBOX_ACCESS_TOKEN");
+        if (!string.IsNullOrWhiteSpace(v)) cfg["Mapbox:AccessToken"] = v.Trim();
+    }
+
+    if (string.IsNullOrWhiteSpace(cfg["Mapbox:RefererUrl"]))
+    {
+        var r = Environment.GetEnvironmentVariable("MAPBOX_REFERER_URL");
+        if (!string.IsNullOrWhiteSpace(r)) cfg["Mapbox:RefererUrl"] = r.Trim();
+    }
 }
 MapMapboxFlatEnvIfNeeded(builder.Configuration);
 

@@ -46,6 +46,11 @@ public class AddressController : ControllerBase
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(10);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("iga-beverly-hills/1.0 (+address-suggest)");
+        var refererRaw = _config["Mapbox:RefererUrl"]?.Trim();
+        if (!string.IsNullOrEmpty(refererRaw)
+            && Uri.TryCreate(refererRaw, UriKind.Absolute, out var refererUri)
+            && (refererUri.Scheme == Uri.UriSchemeHttp || refererUri.Scheme == Uri.UriSchemeHttps))
+            client.DefaultRequestHeaders.Referrer = refererUri;
 
         // Geocoding URL is .../mapbox.places/{search}.json — "/" becomes "%2F" in the path; some proxies mishandle it.
         // Normalize slashes to spaces for the Mapbox segment only (e.g. "2/10 Woniora Rd" → "2 10 Woniora Rd").

@@ -221,6 +221,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
         return;
       }
       setAddrSuggestLoading(true);
+      setAddressError('');
       try {
         const { suggestions } = await fetchAddressSuggestApi(q);
         if (!cancelled) {
