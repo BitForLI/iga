@@ -91,51 +91,37 @@ if (string.IsNullOrWhiteSpace(connectionString) && !builder.Environment.IsDevelo
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// 2b. CORS：Development 固定含 localhost；Production 必须在 Cors:AllowedOrigins 配置前端 HTTPS 源（或环境变量 Cors__AllowedOrigins__0）
+// 2b. CORS：UseRouting 之后 UseCors 才会给 MapControllers 的响应加上跨域头。
+// 统一策略：本地 Vite + appsettings 中的源 + igabeverlyhills.com 全站（避免 Railway 误设为 Development 时只放行 localhost 导致线上 CORS 全挂）。
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        if (builder.Environment.IsDevelopment())
+        var fromConfig = GetCorsAllowedOrigins(builder.Configuration);
+        if (!builder.Environment.IsDevelopment() && fromConfig.Length == 0)
         {
-            // localhost 与 127.0.0.1 在浏览器里属于不同 Origin，需同时允许（否则 Vite 用 127.0.0.1 打开时 API 会 CORS 失败 → axios 报 Network Error）
-            var dev = new[]
-            {
-                "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
-                "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
-            };
-            var extra = GetCorsAllowedOrigins(builder.Configuration);
-            policy.WithOrigins(extra.Length > 0 ? dev.Concat(extra).Distinct().ToArray() : dev);
+            throw new InvalidOperationException(
+                "生产环境必须配置 Cors:AllowedOrigins（JSON 数组或分号分隔），例如 [\"https://你的前端域名\"]，或环境变量 Cors__AllowedOrigins__0。");
         }
-        else
+
+        var localDev = new[]
         {
-            var origins = GetCorsAllowedOrigins(builder.Configuration);
-            if (origins.Length == 0)
-            {
-                throw new InvalidOperationException(
-                    "生产环境必须配置 Cors:AllowedOrigins（JSON 数组或分号分隔），例如 [\"https://你的前端域名\"]，或环境变量 Cors__AllowedOrigins__0。");
-            }
+            "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
+            "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
+        };
+        var explicitOrigins = new HashSet<string>(
+            fromConfig.Concat(localDev),
+            StringComparer.OrdinalIgnoreCase);
 
-            // 生产 API 仍允许本地 Vite 调试；并允许 igabeverlyhills.com 任意子域（避免漏配 www/子域 → CORS → Failed to fetch）
-            var localDev = new[]
-            {
-                "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
-                "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
-            };
-            var explicitOrigins = new HashSet<string>(
-                origins.Concat(localDev),
-                StringComparer.OrdinalIgnoreCase);
-
-            policy.SetIsOriginAllowed(origin =>
-            {
-                if (string.IsNullOrEmpty(origin)) return false;
-                if (explicitOrigins.Contains(origin)) return true;
-                if (!Uri.TryCreate(origin, UriKind.Absolute, out var u)) return false;
-                var h = u.Host;
-                return string.Equals(h, "igabeverlyhills.com", StringComparison.OrdinalIgnoreCase)
-                    || h.EndsWith(".igabeverlyhills.com", StringComparison.OrdinalIgnoreCase);
-            });
-        }
+        policy.SetIsOriginAllowed(origin =>
+        {
+            if (string.IsNullOrEmpty(origin)) return false;
+            if (explicitOrigins.Contains(origin)) return true;
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var u)) return false;
+            var h = u.Host;
+            return string.Equals(h, "igabeverlyhills.com", StringComparison.OrdinalIgnoreCase)
+                || h.EndsWith(".igabeverlyhills.com", StringComparison.OrdinalIgnoreCase);
+        });
 
         policy.AllowAnyHeader().AllowAnyMethod();
     });
@@ -261,14 +247,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(); // 这就是您浏览器能看到的调试界面
 }
 
-app.UseCors();
-// 开发环境禁用 HTTPS 重定向，避免 http://localhost:5212 被重定向导致 API 请求失败
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
 app.UseStaticFiles(); // 托管 wwwroot 下的静态页面（success.html）
-app.UseAuthorization();    // 身份验证中间件
+
+// 终结点路由下：必须先 UseRouting，再 UseCors，否则跨域响应可能不带 Access-Control-Allow-Origin（浏览器报 CORS 且提示无该头）
+app.UseRouting();
+app.UseCors();
+
+app.UseAuthorization(); // 身份验证中间件
 
 // 6. 核心：映射所有的 Controller 接口
 app.MapControllers();
