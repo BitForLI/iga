@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { useOrderMode } from '../context/OrderModeContext';
 import { orderAPI, paymentAPI, ApiRequestError } from '../api';
 import { useStorePublicSettings, computeDeliveryFeeAud } from '../context/StorePublicSettingsContext';
-import { DELIVERY_SUBURBS, FulfillmentOptionsForm } from './FulfillmentOptionsForm';
+import { FulfillmentOptionsForm } from './FulfillmentOptionsForm';
+import { DELIVERY_SUBURBS, isDeliverableSuburb } from '../constants/deliveryZones';
 import cartIcon from '../assets/images/cart.png';
 import deleteIcon from '../assets/images/删除.png';
 import productImage from '../assets/images/main.png';
@@ -511,11 +512,8 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                     message.warning(msg);
                     return;
                   }
-                  if (
-                    orderType === 'Delivery' &&
-                    !DELIVERY_SUBURBS.includes(deliveryInfo.suburb as (typeof DELIVERY_SUBURBS)[number])
-                  ) {
-                    const msg = 'Delivery is only available to Hurstville, Allawah, Carlton, or Roseland.';
+                  if (orderType === 'Delivery' && !isDeliverableSuburb(deliveryInfo.suburb)) {
+                    const msg = `Delivery is only available to these suburbs: ${DELIVERY_SUBURBS.join(', ')}.`;
                     setCheckoutError(msg);
                     message.warning(msg);
                     return;

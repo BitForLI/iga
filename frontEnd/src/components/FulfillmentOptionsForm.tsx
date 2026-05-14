@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { EnvironmentOutlined, CarOutlined } from '@ant-design/icons';
 import { useOrderMode, type OrderType } from '../context/OrderModeContext';
 import { API_BASE } from '../config/apiEnv';
+import { DELIVERY_SUBURBS, isDeliverableSuburb } from '../constants/deliveryZones';
+
+export { DELIVERY_SUBURBS } from '../constants/deliveryZones';
 
 const PICKUP_ADDRESS = 'Beverly Hills IGA';
 const MAP_LINK = 'https://www.google.com/maps/search/Beverly+Hills+IGA+Beverly+Hills+NSW';
@@ -80,7 +83,9 @@ function generateDayCardsForPickup(now: Date): { key: string; dayTop: string; da
   });
 }
 
-export const DELIVERY_SUBURBS = ['Hurstville', 'Allawah', 'Carlton', 'Roseland'] as const;
+function isInDeliveryZone(suburb: string): boolean {
+  return isDeliverableSuburb(suburb);
+}
 
 export type AddressSuggestion = {
   id: string;
@@ -112,11 +117,6 @@ async function fetchAddressSuggestApi(query?: string): Promise<{ configured: boo
   };
 }
 
-function isInDeliveryZone(suburb: string): boolean {
-  if (!suburb) return false;
-  return DELIVERY_SUBURBS.some((s) => s.toLowerCase() === suburb.toLowerCase());
-}
-
 export type FulfillmentOptionsVariant = 'sidebar' | 'checkoutModal';
 
 export interface FulfillmentOptionsFormProps {
@@ -137,6 +137,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
   const [addrBackendConfigured, setAddrBackendConfigured] = useState<boolean | null>(null);
   const [addrSuggestions, setAddrSuggestions] = useState<AddressSuggestion[]>([]);
   const [addrSuggestOpen, setAddrSuggestOpen] = useState(false);
+  const [addrSuggestHighlight, setAddrSuggestHighlight] = useState(-1);
   const [addrSuggestLoading, setAddrSuggestLoading] = useState(false);
   const addrSuggestWrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -216,6 +217,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
         if (!cancelled) {
           setAddrSuggestions([]);
           setAddrSuggestOpen(false);
+          setAddrSuggestHighlight(-1);
           setAddrSuggestLoading(false);
         }
         return;
@@ -226,6 +228,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
         const { suggestions } = await fetchAddressSuggestApi(q);
         if (!cancelled) {
           setAddrSuggestions(suggestions);
+          setAddrSuggestHighlight(-1);
           setAddrSuggestOpen(suggestions.length > 0);
         }
       } catch (e) {
@@ -236,6 +239,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
           );
           setAddrSuggestions([]);
           setAddrSuggestOpen(false);
+          setAddrSuggestHighlight(-1);
         }
       } finally {
         if (!cancelled) setAddrSuggestLoading(false);
@@ -251,31 +255,32 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
     if (!addrSuggestOpen) return;
     const close = (ev: MouseEvent) => {
       const el = addrSuggestWrapRef.current;
-      if (el && !el.contains(ev.target as Node)) setAddrSuggestOpen(false);
+      if (el && !el.contains(ev.target as Node)) {
+        setAddrSuggestOpen(false);
+        setAddrSuggestHighlight(-1);
+      }
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [addrSuggestOpen]);
 
-  const applyAddressSuggestion = useCallback(
-    (s: AddressSuggestion) => {
-      const suburb = (s.suburb ?? '').trim();
-      const address = (s.streetAddress ?? '').trim();
-      const postcode = (s.postcode ?? '').trim();
-      setAddressInputDirty(false);
-      setAddrSuggestOpen(false);
-      setAddrSuggestions([]);
-      setDeliveryInfo({ ...deliveryInfo, address, suburb, postcode });
-      if (isInDeliveryZone(suburb)) setAddressError('');
-      else
-        setAddressError(
-          suburb
-            ? `This address (${suburb}) is outside our delivery zone. We only deliver to Hurstville, Allawah, Carlton, Roseland`
-            : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
-        );
-    },
-    [deliveryInfo, setDeliveryInfo]
-  );
+  const applyAddressSuggestion = useCallback((s: AddressSuggestion) => {
+    const suburb = (s.suburb ?? '').trim();
+    const address = (s.streetAddress ?? '').trim();
+    const postcode = (s.postcode ?? '').trim();
+    setAddressInputDirty(false);
+    setAddrSuggestOpen(false);
+    setAddrSuggestHighlight(-1);
+    setAddrSuggestions([]);
+    setDeliveryInfo((prev) => ({ ...prev, address, suburb, postcode }));
+    if (isInDeliveryZone(suburb)) setAddressError('');
+    else
+      setAddressError(
+        suburb
+          ? `This address (${suburb}) is outside our delivery zone. We only deliver to: ${DELIVERY_SUBURBS.join(', ')}.`
+          : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
+      );
+  }, [setDeliveryInfo]);
 
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);
@@ -493,7 +498,6 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
               outline: 'none',
             }}
           />
-          <p style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Check if we deliver to your area</p>
 
           {addrBackendConfigured === null ? (
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>Loading address search…</p>
@@ -503,9 +507,6 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                 onSubmit={(e) => e.preventDefault()}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
               >
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.35 }}>
-                  Type your street address; after 3 characters, choose a suggestion to fill suburb and postcode.
-                </p>
                 <div
                   ref={addrSuggestWrapRef}
                   style={{
@@ -531,20 +532,48 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                   <input
                     name="address"
                     type="text"
-                    autoComplete="street-address"
+                    autoComplete="off"
                     placeholder="Street address (type 3+ characters)…"
                     data-lpignore="true"
                     value={deliveryInfo.address ?? ''}
                     onChange={(e) => {
                       setAddressInputDirty(true);
                       setAddressError('');
+                      setAddrSuggestHighlight(-1);
                       setDeliveryInfo({ ...deliveryInfo, address: e.target.value });
                     }}
                     onFocus={() => {
                       if (addrSuggestions.length > 0) setAddrSuggestOpen(true);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Escape') setAddrSuggestOpen(false);
+                      if (e.key === 'Escape') {
+                        setAddrSuggestOpen(false);
+                        setAddrSuggestHighlight(-1);
+                        return;
+                      }
+                      const list = addrSuggestions;
+                      if (list.length === 0) return;
+
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setAddrSuggestOpen(true);
+                        setAddrSuggestHighlight((i) => (i + 1) % list.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setAddrSuggestOpen(true);
+                        setAddrSuggestHighlight((i) => (i <= 0 ? list.length - 1 : i - 1));
+                        return;
+                      }
+                      if (e.key === 'Enter' && addrSuggestOpen) {
+                        const idx = addrSuggestHighlight >= 0 ? addrSuggestHighlight : 0;
+                        const sug = list[idx];
+                        if (sug) {
+                          e.preventDefault();
+                          applyAddressSuggestion(sug);
+                        }
+                      }
                     }}
                     style={{
                       width: '100%',
@@ -579,20 +608,23 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                         zIndex: 1200,
                       }}
                     >
-                      {addrSuggestions.map((sug) => (
+                      {addrSuggestions.map((sug, idx) => (
                         <li key={sug.id}>
                           <button
                             type="button"
                             role="option"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applyAddressSuggestion(sug)}
+                            aria-selected={addrSuggestHighlight === idx}
+                            onPointerDown={(ev) => {
+                              ev.preventDefault();
+                              applyAddressSuggestion(sug);
+                            }}
                             style={{
                               width: '100%',
                               textAlign: 'left',
                               padding: '8px 10px',
                               border: 'none',
                               borderRadius: 6,
-                              background: 'transparent',
+                              background: addrSuggestHighlight === idx ? '#f3f4f6' : 'transparent',
                               cursor: 'pointer',
                               fontSize: '0.8rem',
                               lineHeight: 1.35,
@@ -695,7 +727,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                       setAddressError('');
                     } else {
                       setDeliveryInfo({ ...deliveryInfo, suburb });
-                      setAddressError('Please choose Hurstville, Allawah, Carlton, or Roseland.');
+                      setAddressError(`Please choose one of: ${DELIVERY_SUBURBS.join(', ')}.`);
                     }
                   }}
                   style={{

@@ -332,7 +332,7 @@ namespace igaServer.Controllers
 
         // ==========================================
         // 2. Webhook 处理支付回调
-        // POST: api/payment/webhook
+        // POST: api/payment/webhook（Stripe Dashboard 若填 …/api/stripe/webhook，Program.cs 会在路由前重写为同一路径）
         // ==========================================
         /// <summary>
         /// 处理 Stripe webhook 事件

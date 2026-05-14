@@ -262,6 +262,18 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles(); // 托管 wwwroot 下的静态页面（success.html）
 
+// Stripe Dashboard 常填 …/api/stripe/webhook，而本应用 webhook 在 PaymentController：…/api/payment/webhook。在路由前统一，避免 404。
+app.Use(async (ctx, next) =>
+{
+    if (HttpMethods.IsPost(ctx.Request.Method)
+        && string.Equals(ctx.Request.Path.Value, "/api/stripe/webhook", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Request.Path = "/api/payment/webhook";
+    }
+
+    await next();
+});
+
 // 终结点路由下：必须先 UseRouting，再 UseCors，否则跨域响应可能不带 Access-Control-Allow-Origin（浏览器报 CORS 且提示无该头）
 app.UseRouting();
 app.UseCors();

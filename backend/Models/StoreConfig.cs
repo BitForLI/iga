@@ -16,7 +16,7 @@ namespace igaServer.Models
         /// <summary>JSON array of image URLs for the hero carousel: /uploads/..., https://..., or /api/store/carousel-image/{guid} (bytes in StoreCarouselImages).</summary>
         public string HomeCarouselImagesJson { get; set; } = "[]";
 
-        /// <summary>JSON array: [{"suburb":"hurstville","fee":10},...] suburb keys lowercase; empty = default $10 per zone.</summary>
+        /// <summary>JSON array: [{"suburb":"hurstville","fee":10},...] keys lowercase (spaces OK, e.g. beverly hills); must match StoreDeliveryHelper zones; empty = default fee per zone.</summary>
         public string DeliveryZoneFeesJson { get; set; } = "[]";
 
         // --- 运营设置 ---

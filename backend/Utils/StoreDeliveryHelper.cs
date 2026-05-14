@@ -4,27 +4,60 @@ namespace igaServer.Utils;
 
 public static class StoreDeliveryHelper
 {
+    /// <summary>Canonical lowercase keys; multi-word suburbs use spaces (e.g. "bexley north").</summary>
     public static readonly string[] AllowedDeliverySuburbKeys =
-        ["hurstville", "allawah", "carlton", "roseland"];
+    [
+        "riverwood",
+        "roselands",
+        "kingsgrove",
+        "bexley north",
+        "bexley",
+        "rockdale",
+        "kogarah",
+        "carlton",
+        "allawah",
+        "hurstville",
+        "penshurst",
+        "beverly hills",
+        "wolli creek",
+        "arncliffe",
+    ];
 
     public const decimal DefaultZoneFeeAud = 10m;
     public const decimal DefaultFreeShippingMinAud = 69m;
 
+    /// <summary>Maps API/order strings to canonical keys (e.g. legacy roseland → roselands).</summary>
+    public static string NormalizeSuburbKey(string? suburb)
+    {
+        var k = (suburb ?? "").Trim().ToLowerInvariant();
+        return k == "roseland" ? "roselands" : k;
+    }
+
     public static string DisplaySuburb(string key)
     {
-        var k = (key ?? "").Trim().ToLowerInvariant();
+        var k = NormalizeSuburbKey(key ?? "");
         return k switch
         {
-            "hurstville" => "Hurstville",
-            "allawah" => "Allawah",
+            "riverwood" => "Riverwood",
+            "roselands" => "Roselands",
+            "kingsgrove" => "Kingsgrove",
+            "bexley north" => "Bexley North",
+            "bexley" => "Bexley",
+            "rockdale" => "Rockdale",
+            "kogarah" => "Kogarah",
             "carlton" => "Carlton",
-            "roseland" => "Roseland",
+            "allawah" => "Allawah",
+            "hurstville" => "Hurstville",
+            "penshurst" => "Penshurst",
+            "beverly hills" => "Beverly Hills",
+            "wolli creek" => "Wolli Creek",
+            "arncliffe" => "Arncliffe",
             _ => string.IsNullOrEmpty(k) ? "" : char.ToUpperInvariant(k[0]) + k[1..],
         };
     }
 
     public static bool IsAllowedSuburb(string? suburb) =>
-        AllowedDeliverySuburbKeys.Contains((suburb ?? "").Trim().ToLowerInvariant());
+        AllowedDeliverySuburbKeys.Contains(NormalizeSuburbKey(suburb));
 
     /// <summary>Items subtotal only (before delivery fee). Returns 0 when free shipping applies.</summary>
     public static decimal ComputeDeliveryFeeAud(
@@ -36,7 +69,7 @@ public static class StoreDeliveryHelper
         if (itemsSubtotal >= freeShippingThresholdAud)
             return 0;
 
-        var key = (deliverySuburb ?? "").Trim().ToLowerInvariant();
+        var key = NormalizeSuburbKey(deliverySuburb);
         if (string.IsNullOrEmpty(key) || !AllowedDeliverySuburbKeys.Contains(key))
             return 0;
 
@@ -60,7 +93,8 @@ public static class StoreDeliveryHelper
                 return dict;
             foreach (var el in doc.RootElement.EnumerateArray())
             {
-                var suburb = el.TryGetProperty("suburb", out var s) ? s.GetString()?.Trim().ToLowerInvariant() : null;
+                var raw = el.TryGetProperty("suburb", out var s) ? s.GetString()?.Trim().ToLowerInvariant() : null;
+                var suburb = NormalizeSuburbKey(raw);
                 if (string.IsNullOrEmpty(suburb) || !AllowedDeliverySuburbKeys.Contains(suburb))
                     continue;
                 if (!el.TryGetProperty("fee", out var f))

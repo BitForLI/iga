@@ -99,7 +99,7 @@ public class AdminStoreController : ControllerBase
             var list = new List<object>();
             foreach (var row in body.DeliveryZoneFees)
             {
-                var key = (row.Suburb ?? "").Trim().ToLowerInvariant();
+                var key = StoreDeliveryHelper.NormalizeSuburbKey(row.Suburb);
                 if (!StoreDeliveryHelper.AllowedDeliverySuburbKeys.Contains(key))
                     return BadRequest(new { error = $"Unknown suburb: {row.Suburb}" });
                 if (row.FeeAud < 0 || row.FeeAud > 500)

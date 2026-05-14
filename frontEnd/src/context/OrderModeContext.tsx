@@ -83,7 +83,7 @@ interface OrderModeContextType {
   pickupTimeSlot: string;
   setPickupTimeSlot: (v: string) => void;
   deliveryInfo: DeliveryInfo;
-  setDeliveryInfo: (v: DeliveryInfo) => void;
+  setDeliveryInfo: (v: DeliveryInfo | ((prev: DeliveryInfo) => DeliveryInfo)) => void;
   saveDeliveryAddress: () => void;
 }
 
@@ -95,8 +95,8 @@ export function OrderModeProvider({ children }: { children: ReactNode }) {
   const [pickupTimeSlot, setPickupTimeSlot] = useState<string>(loaded.pickupTimeSlot);
   const [deliveryInfo, setDeliveryInfoState] = useState<DeliveryInfo>(loadDeliveryInfo);
 
-  const setDeliveryInfo = (v: DeliveryInfo) => {
-    setDeliveryInfoState(v);
+  const setDeliveryInfo = (v: DeliveryInfo | ((prev: DeliveryInfo) => DeliveryInfo)) => {
+    setDeliveryInfoState((prev) => (typeof v === 'function' ? v(prev) : v));
   };
 
   useEffect(() => {

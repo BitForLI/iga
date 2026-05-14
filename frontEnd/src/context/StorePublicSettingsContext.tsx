@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { storePublicAPI } from '../api';
+import { DELIVERY_SUBURBS, normalizeSuburbKey, suburbToKey } from '../constants/deliveryZones';
 
 export type DeliveryZonePublic = { suburbKey: string; displayName: string; feeAud: number };
 
@@ -18,18 +19,11 @@ type Ctx = {
 
 const StorePublicSettingsContext = createContext<Ctx | undefined>(undefined);
 
-const zoneDisplay: Record<string, string> = {
-  hurstville: 'Hurstville',
-  allawah: 'Allawah',
-  carlton: 'Carlton',
-  roseland: 'Roseland',
-};
-
 const defaultSettings = (): StorePublicSettings => ({
   freeShippingMinAud: 69,
-  deliveryZones: ['hurstville', 'allawah', 'carlton', 'roseland'].map((suburbKey) => ({
-    suburbKey,
-    displayName: zoneDisplay[suburbKey] ?? suburbKey,
+  deliveryZones: DELIVERY_SUBURBS.map((displayName) => ({
+    suburbKey: suburbToKey(displayName),
+    displayName,
     feeAud: 10,
   })),
   homeCarouselImageUrls: [],
@@ -85,9 +79,9 @@ export function computeDeliveryFeeAud(
 ): number {
   const cfg = s ?? defaultSettings();
   if (subtotal >= cfg.freeShippingMinAud) return 0;
-  const key = (suburb ?? '').trim().toLowerCase();
+  const key = normalizeSuburbKey(suburb);
   if (!key) return 0;
-  const row = cfg.deliveryZones.find((z) => z.suburbKey.toLowerCase() === key);
+  const row = cfg.deliveryZones.find((z) => normalizeSuburbKey(z.suburbKey) === key);
   if (!row) return 0;
   return Math.max(0, Number(row.feeAud) || 0);
 }

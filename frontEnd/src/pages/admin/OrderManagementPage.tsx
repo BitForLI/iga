@@ -3,6 +3,7 @@ import { Table, Button, message, Modal, Input, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { apiClient } from '../../api/client';
+import { DELIVERY_SUBURBS, formatDeliverySuburbDisplay, suburbToKey } from '../../constants/deliveryZones';
 
 const BROADCAST_KEY = 'iga_order_broadcast_enabled';
 
@@ -73,18 +74,6 @@ function resolveTabParams(tab: string | undefined): { status?: string; orderType
   if (tab === 'CompletedDelivery') return { status: 'Prepared', orderType: 'Delivery', pickedUp: true };
   if (tab === 'Pending' || tab === 'Paid' || tab === 'Preparing' || tab === 'RefundRequested') return { status: tab };
   return { status: 'Pending' };
-}
-
-function formatSuburbDisplay(s: string | undefined): string {
-  const t = (s ?? '').trim().toLowerCase();
-  if (!t) return '—';
-  const map: Record<string, string> = {
-    hurstville: 'Hurstville',
-    allawah: 'Allawah',
-    carlton: 'Carlton',
-    roseland: 'Roseland',
-  };
-  return map[t] ?? t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 type OrderTabKey = (typeof TAB_ITEMS)[number]['key'];
@@ -399,7 +388,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       key: 'codeOrArea',
       width: 100,
       render: (_: unknown, r: OrderRow) =>
-        r.orderType === 'Pickup' ? (r.pickupCode || '—') : r.orderType === 'Delivery' ? formatSuburbDisplay(r.deliverySuburb) : '—',
+        r.orderType === 'Pickup' ? (r.pickupCode || '—') : r.orderType === 'Delivery' ? formatDeliverySuburbDisplay(r.deliverySuburb) : '—',
     },
     {
       title: 'Pickup / Delivery',
@@ -584,12 +573,10 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
             onChange={(v) => {
               setDeliverySuburbFilter(typeof v === 'string' ? v : '');
             }}
-            options={[
-              { value: 'hurstville', label: 'Hurstville' },
-              { value: 'allawah', label: 'Allawah' },
-              { value: 'carlton', label: 'Carlton' },
-              { value: 'roseland', label: 'Roseland' },
-            ]}
+            options={DELIVERY_SUBURBS.map((label) => ({
+              value: suburbToKey(label),
+              label,
+            }))}
           />
         </div>
       )}
