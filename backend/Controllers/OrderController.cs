@@ -72,12 +72,15 @@ namespace igaServer.Controllers
             }
 
             // === 步骤 3.5: 配送订单需校验区域（运费在商品小计后按分区 + 满额包邮计算） ===
+            StoreConfig? store = null;
             if (request.OrderType == "Delivery")
             {
+                store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+
                 var suburb = (request.DeliverySuburb ?? "").Trim();
                 if (string.IsNullOrEmpty(suburb))
                     return BadRequest(new { error = "Please select delivery suburb" });
-                if (!StoreDeliveryHelper.IsAllowedSuburb(suburb))
+                if (!StoreDeliveryHelper.IsAllowedSuburb(suburb, store?.DeliveryZoneFeesJson))
                 {
                     var names = string.Join(", ", StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(StoreDeliveryHelper.DisplaySuburb));
                     return BadRequest(new { error = $"We only deliver to {names}" });
@@ -142,7 +145,7 @@ namespace igaServer.Controllers
             // 配送订单：分区运费（StoreConfigs.DeliveryZoneFeesJson，空则每区默认 $10），满 FreeDeliveryThreshold 包邮
             if (request.OrderType == "Delivery")
             {
-                var store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+                store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
                 var freeMin = store != null && store.FreeDeliveryThreshold > 0
                     ? store.FreeDeliveryThreshold
                     : StoreDeliveryHelper.DefaultFreeShippingMinAud;

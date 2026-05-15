@@ -4,6 +4,12 @@ namespace igaServer.Utils;
 
 public static class StoreDeliveryHelper
 {
+    public sealed class DeliveryZoneInfo
+    {
+        public decimal Fee { get; set; } = DefaultZoneFeeAud;
+        public bool Enabled { get; set; } = true;
+    }
+
     /// <summary>Canonical lowercase keys; multi-word suburbs use spaces (e.g. "bexley north").</summary>
     public static readonly string[] AllowedDeliverySuburbKeys =
     [
@@ -56,8 +62,18 @@ public static class StoreDeliveryHelper
         };
     }
 
-    public static bool IsAllowedSuburb(string? suburb) =>
-        AllowedDeliverySuburbKeys.Contains(NormalizeSuburbKey(suburb));
+    public static bool IsAllowedSuburb(string? suburb, string? deliveryZoneFeesJson = null)
+    {
+        var key = NormalizeSuburbKey(suburb);
+        if (string.IsNullOrEmpty(key) || !AllowedDeliverySuburbKeys.Contains(key))
+            return false;
+
+        if (string.IsNullOrEmpty(deliveryZoneFeesJson))
+            return true;
+
+        var infos = ParseZoneInfos(deliveryZoneFeesJson);
+        return !infos.TryGetValue(key, out var info) || info.Enabled;
+    }
 
     /// <summary>Items subtotal only (before delivery fee). Returns 0 when free shipping applies.</summary>
     public static decimal ComputeDeliveryFeeAud(
@@ -73,16 +89,23 @@ public static class StoreDeliveryHelper
         if (string.IsNullOrEmpty(key) || !AllowedDeliverySuburbKeys.Contains(key))
             return 0;
 
-        var map = ParseZoneFees(deliveryZoneFeesJson);
-        if (map.TryGetValue(key, out var fee))
-            return fee < 0 ? 0 : Math.Round(fee, 2, MidpointRounding.AwayFromZero);
+        var infos = ParseZoneInfos(deliveryZoneFeesJson);
+        if (infos.TryGetValue(key, out var info))
+            return info.Enabled ? Math.Round(info.Fee < 0 ? 0 : info.Fee, 2, MidpointRounding.AwayFromZero) : 0;
 
         return DefaultZoneFeeAud;
     }
 
     public static Dictionary<string, decimal> ParseZoneFees(string? json)
     {
-        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        return ParseZoneInfos(json)
+            .Where(kv => kv.Value.Enabled)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.Fee, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static Dictionary<string, DeliveryZoneInfo> ParseZoneInfos(string? json)
+    {
+        var dict = new Dictionary<string, DeliveryZoneInfo>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(json) || json.Trim() == "[]")
             return dict;
 
@@ -91,22 +114,39 @@ public static class StoreDeliveryHelper
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
                 return dict;
+
             foreach (var el in doc.RootElement.EnumerateArray())
             {
                 var raw = el.TryGetProperty("suburb", out var s) ? s.GetString()?.Trim().ToLowerInvariant() : null;
                 var suburb = NormalizeSuburbKey(raw);
                 if (string.IsNullOrEmpty(suburb) || !AllowedDeliverySuburbKeys.Contains(suburb))
                     continue;
-                if (!el.TryGetProperty("fee", out var f))
-                    continue;
-                decimal fee;
-                if (f.ValueKind == JsonValueKind.Number)
-                    fee = f.GetDecimal();
-                else if (f.ValueKind == JsonValueKind.String && decimal.TryParse(f.GetString(), out var parsed))
-                    fee = parsed;
-                else
-                    continue;
-                dict[suburb] = fee;
+
+                var info = new DeliveryZoneInfo();
+
+                if (el.TryGetProperty("fee", out var f))
+                {
+                    decimal fee;
+                    if (f.ValueKind == JsonValueKind.Number)
+                        fee = f.GetDecimal();
+                    else if (f.ValueKind == JsonValueKind.String && decimal.TryParse(f.GetString(), out var parsed))
+                        fee = parsed;
+                    else
+                        fee = DefaultZoneFeeAud;
+                    info.Fee = fee;
+                }
+
+                if (el.TryGetProperty("enabled", out var e))
+                {
+                    if (e.ValueKind == JsonValueKind.True)
+                        info.Enabled = true;
+                    else if (e.ValueKind == JsonValueKind.False)
+                        info.Enabled = false;
+                    else if (e.ValueKind == JsonValueKind.String && bool.TryParse(e.GetString(), out var parsed))
+                        info.Enabled = parsed;
+                }
+
+                dict[suburb] = info;
             }
         }
         catch

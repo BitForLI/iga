@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { storePublicAPI } from '../api';
 import { DELIVERY_SUBURBS, normalizeSuburbKey, suburbToKey } from '../constants/deliveryZones';
 
-export type DeliveryZonePublic = { suburbKey: string; displayName: string; feeAud: number };
+export type DeliveryZonePublic = { suburbKey: string; displayName: string; feeAud: number; enabled: boolean };
 
 export type StorePublicSettings = {
   freeShippingMinAud: number;
@@ -25,6 +25,7 @@ const defaultSettings = (): StorePublicSettings => ({
     suburbKey: suburbToKey(displayName),
     displayName,
     feeAud: 10,
+    enabled: true,
   })),
   homeCarouselImageUrls: [],
 });
@@ -42,7 +43,14 @@ export function StorePublicSettingsProvider({ children }: { children: ReactNode 
       const parsed = (await storePublicAPI.getPublicSettings()) as unknown as StorePublicSettings;
       setSettings({
         freeShippingMinAud: Number(parsed.freeShippingMinAud) || 69,
-        deliveryZones: Array.isArray(parsed.deliveryZones) ? parsed.deliveryZones : defaultSettings().deliveryZones,
+        deliveryZones: Array.isArray(parsed.deliveryZones)
+          ? parsed.deliveryZones.map((z) => ({
+              suburbKey: String(z.suburbKey ?? ''),
+              displayName: String(z.displayName ?? z.suburbKey ?? ''),
+              feeAud: Number(z.feeAud) || 0,
+              enabled: z.enabled !== false,
+            }))
+          : defaultSettings().deliveryZones,
         homeCarouselImageUrls: Array.isArray(parsed.homeCarouselImageUrls) ? parsed.homeCarouselImageUrls : [],
       });
     } catch (e) {
@@ -82,6 +90,6 @@ export function computeDeliveryFeeAud(
   const key = normalizeSuburbKey(suburb);
   if (!key) return 0;
   const row = cfg.deliveryZones.find((z) => normalizeSuburbKey(z.suburbKey) === key);
-  if (!row) return 0;
+  if (!row || !row.enabled) return 0;
   return Math.max(0, Number(row.feeAud) || 0);
 }

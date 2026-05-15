@@ -49,12 +49,13 @@ public class AdminStoreController : ControllerBase
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        var fees = StoreDeliveryHelper.ParseZoneFees(store.DeliveryZoneFeesJson);
+        var infos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
         var zoneRows = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k => new DeliveryZoneFeeRowDto
         {
             Suburb = k,
             DisplayName = StoreDeliveryHelper.DisplaySuburb(k),
-            FeeAud = fees.TryGetValue(k, out var f) ? f : StoreDeliveryHelper.DefaultZoneFeeAud,
+            FeeAud = infos.TryGetValue(k, out var info) ? info.Fee : StoreDeliveryHelper.DefaultZoneFeeAud,
+            Enabled = infos.TryGetValue(k, out var info2) ? info2.Enabled : true,
         }).ToList();
 
         var carousel = StoreDeliveryHelper.ParseCarouselUrls(store.HomeCarouselImagesJson);
@@ -104,7 +105,12 @@ public class AdminStoreController : ControllerBase
                     return BadRequest(new { error = $"Unknown suburb: {row.Suburb}" });
                 if (row.FeeAud < 0 || row.FeeAud > 500)
                     return BadRequest(new { error = $"Invalid fee for {key}" });
-                list.Add(new { suburb = key, fee = Math.Round(row.FeeAud, 2, MidpointRounding.AwayFromZero) });
+                list.Add(new
+                {
+                    suburb = key,
+                    fee = Math.Round(row.FeeAud, 2, MidpointRounding.AwayFromZero),
+                    enabled = row.Enabled,
+                });
             }
 
             if (list.Count != StoreDeliveryHelper.AllowedDeliverySuburbKeys.Length)
@@ -222,6 +228,7 @@ public class AdminStoreController : ControllerBase
         public string Suburb { get; set; } = "";
         public string DisplayName { get; set; } = "";
         public decimal FeeAud { get; set; }
+        public bool Enabled { get; set; } = true;
     }
 
     public class StoreAdminPutDto
@@ -235,5 +242,6 @@ public class AdminStoreController : ControllerBase
     {
         public string? Suburb { get; set; }
         public decimal FeeAud { get; set; }
+        public bool Enabled { get; set; } = true;
     }
 }

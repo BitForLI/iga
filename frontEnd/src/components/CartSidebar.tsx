@@ -7,7 +7,7 @@ import { useOrderMode } from '../context/OrderModeContext';
 import { orderAPI, paymentAPI, ApiRequestError } from '../api';
 import { useStorePublicSettings, computeDeliveryFeeAud } from '../context/StorePublicSettingsContext';
 import { FulfillmentOptionsForm } from './FulfillmentOptionsForm';
-import { DELIVERY_SUBURBS, isDeliverableSuburb } from '../constants/deliveryZones';
+import { DELIVERY_SUBURBS, normalizeSuburbKey } from '../constants/deliveryZones';
 import cartIcon from '../assets/images/cart.png';
 import deleteIcon from '../assets/images/删除.png';
 import productImage from '../assets/images/main.png';
@@ -21,6 +21,14 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth();
   const { orderType, pickupTimeSlot, deliveryInfo, saveDeliveryAddress } = useOrderMode();
   const { settings: storeSettings } = useStorePublicSettings();
+  const enabledDeliveryZones =
+    storeSettings?.deliveryZones?.filter((zone) => zone.enabled) ??
+    DELIVERY_SUBURBS.map((displayName) => ({ suburbKey: displayName.trim().toLowerCase(), displayName }));
+  const isDeliverableSuburb = (suburb: string | undefined): boolean => {
+    const key = normalizeSuburbKey(suburb);
+    if (!key) return false;
+    return enabledDeliveryZones.some((zone) => normalizeSuburbKey(zone.suburbKey) === key);
+  };
   const deliveryFee =
     orderType === 'Delivery' ? computeDeliveryFeeAud(total, deliveryInfo.suburb, storeSettings) : 0;
   const freeShipMin = storeSettings?.freeShippingMinAud ?? 69;
@@ -513,7 +521,9 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                     return;
                   }
                   if (orderType === 'Delivery' && !isDeliverableSuburb(deliveryInfo.suburb)) {
-                    const msg = `Delivery is only available to these suburbs: ${DELIVERY_SUBURBS.join(', ')}.`;
+                    const msg = `Delivery is only available to these suburbs: ${enabledDeliveryZones
+                      .map((zone) => zone.displayName)
+                      .join(', ')}.`;
                     setCheckoutError(msg);
                     message.warning(msg);
                     return;

@@ -21,12 +21,17 @@ public class StorePublicController : ControllerBase
             ? (double)store.FreeDeliveryThreshold
             : (double)StoreDeliveryHelper.DefaultFreeShippingMinAud;
 
-        var fees = StoreDeliveryHelper.ParseZoneFees(store?.DeliveryZoneFeesJson);
-        var zones = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k => new
+        var infos = StoreDeliveryHelper.ParseZoneInfos(store?.DeliveryZoneFeesJson);
+        var zones = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k =>
         {
-            suburbKey = k,
-            displayName = StoreDeliveryHelper.DisplaySuburb(k),
-            feeAud = fees.TryGetValue(k, out var f) ? (double)f : (double)StoreDeliveryHelper.DefaultZoneFeeAud,
+            var info = infos.TryGetValue(k, out var zoneInfo) ? zoneInfo : new StoreDeliveryHelper.DeliveryZoneInfo();
+            return new
+            {
+                suburbKey = k,
+                displayName = StoreDeliveryHelper.DisplaySuburb(k),
+                feeAud = (double)info.Fee,
+                enabled = info.Enabled,
+            };
         }).ToList();
 
         var carousel = StoreDeliveryHelper.ParseCarouselUrls(store?.HomeCarouselImagesJson);

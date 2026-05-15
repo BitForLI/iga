@@ -52,7 +52,7 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
 
     private async Task RunOnceAsync(CancellationToken stoppingToken)
     {
-        var days = Math.Clamp(_configuration.GetValue("Invoice:DaysAfterCompletion", 2), 1, 30);
+        var days = Math.Clamp(_configuration.GetValue("Invoice:DaysAfterCompletion", 2), 0, 30);
         var cutoff = DateTime.UtcNow.AddDays(-days);
 
         string storeName;

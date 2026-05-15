@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { EnvironmentOutlined, CarOutlined } from '@ant-design/icons';
 import { useOrderMode, type OrderType } from '../context/OrderModeContext';
 import { API_BASE } from '../config/apiEnv';
-import { DELIVERY_SUBURBS, isDeliverableSuburb } from '../constants/deliveryZones';
+import { DELIVERY_SUBURBS, normalizeSuburbKey, suburbToKey } from '../constants/deliveryZones';
+import { useStorePublicSettings } from '../context/StorePublicSettingsContext';
 
 export { DELIVERY_SUBURBS } from '../constants/deliveryZones';
 
@@ -26,12 +27,26 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+const PICKUP_OPEN_HOUR = 9;
+const PICKUP_CLOSE_HOUR = 20;
+
 function pickupWindowEnd(now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0, 0, 0);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, PICKUP_CLOSE_HOUR, 0, 0, 0);
 }
 
 function pickupWindowStart(now: Date): Date {
-  return new Date(now.getTime() + 60 * 60 * 1000);
+  const lead = new Date(now.getTime() + 60 * 60 * 1000);
+  const todayOpen = new Date(now.getFullYear(), now.getMonth(), now.getDate(), PICKUP_OPEN_HOUR, 0, 0, 0);
+  const todayClose = new Date(now.getFullYear(), now.getMonth(), now.getDate(), PICKUP_CLOSE_HOUR, 0, 0, 0);
+  const tomorrowOpen = new Date(todayOpen.getTime() + DAY_MS);
+
+  if (lead < todayOpen) {
+    return todayOpen;
+  }
+  if (lead >= todayClose) {
+    return tomorrowOpen;
+  }
+  return lead;
 }
 
 function ceilToNextHour(d: Date): Date {
@@ -83,10 +98,6 @@ function generateDayCardsForPickup(now: Date): { key: string; dayTop: string; da
   });
 }
 
-function isInDeliveryZone(suburb: string): boolean {
-  return isDeliverableSuburb(suburb);
-}
-
 export type AddressSuggestion = {
   id: string;
   placeName: string;
@@ -131,8 +142,36 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
   const [addressInputDirty, setAddressInputDirty] = useState(false);
   const { orderType, setOrderType, pickupTimeSlot, setPickupTimeSlot, deliveryInfo, setDeliveryInfo, saveDeliveryAddress } =
     useOrderMode();
+  const { settings: storeSettings } = useStorePublicSettings();
   const [slotNow, setSlotNow] = useState(() => new Date());
   const [pickupDayKey, setPickupDayKey] = useState('');
+
+  const enabledDeliveryZones = useMemo(() => {
+    if (!storeSettings?.deliveryZones?.length) {
+      return DELIVERY_SUBURBS.map((displayName) => ({
+        suburbKey: suburbToKey(displayName),
+        displayName,
+      }));
+    }
+    return storeSettings.deliveryZones.filter((zone) => zone.enabled).map((zone) => ({
+      suburbKey: zone.suburbKey,
+      displayName: zone.displayName,
+    }));
+  }, [storeSettings]);
+
+  const isInDeliveryZone = useCallback(
+    (suburb: string): boolean => {
+      const key = normalizeSuburbKey(suburb);
+      if (!key) return false;
+      return enabledDeliveryZones.some((zone) => normalizeSuburbKey(zone.suburbKey) === key);
+    },
+    [enabledDeliveryZones]
+  );
+
+  const deliveryZoneDisplayNames = useMemo(
+    () => enabledDeliveryZones.map((zone) => zone.displayName),
+    [enabledDeliveryZones]
+  );
 
   const [addrBackendConfigured, setAddrBackendConfigured] = useState<boolean | null>(null);
   const [addrSuggestions, setAddrSuggestions] = useState<AddressSuggestion[]>([]);
@@ -277,7 +316,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
     else
       setAddressError(
         suburb
-          ? `This address (${suburb}) is outside our delivery zone. We only deliver to: ${DELIVERY_SUBURBS.join(', ')}.`
+          ? `This address (${suburb}) is outside our delivery zone. We only deliver to: ${deliveryZoneDisplayNames.join(', ')}.`
           : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
       );
   }, [setDeliveryInfo]);
@@ -727,7 +766,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                       setAddressError('');
                     } else {
                       setDeliveryInfo({ ...deliveryInfo, suburb });
-                      setAddressError(`Please choose one of: ${DELIVERY_SUBURBS.join(', ')}.`);
+                      setAddressError(`Please choose one of: ${deliveryZoneDisplayNames.join(', ')}.`);
                     }
                   }}
                   style={{
@@ -739,7 +778,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
                   }}
                 >
                   <option value="">Select suburb…</option>
-                  {DELIVERY_SUBURBS.map((s) => (
+                  {deliveryZoneDisplayNames.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>

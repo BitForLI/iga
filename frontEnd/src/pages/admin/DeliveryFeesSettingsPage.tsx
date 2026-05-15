@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Form, InputNumber, Space, Table, Typography, message } from 'antd';
+import { Button, Checkbox, Form, InputNumber, Space, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { adminStoreAPI } from '../../api';
 
-type ZoneRow = { suburb: string; displayName: string; feeAud: number };
+type ZoneRow = { suburb: string; displayName: string; feeAud: number; enabled: boolean };
 
 export function DeliveryFeesSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -16,13 +16,14 @@ export function DeliveryFeesSettingsPage() {
     try {
       const raw = (await adminStoreAPI.getSettings()) as {
         freeShippingMinAud?: number;
-        deliveryZoneFees?: { suburb?: string; displayName?: string; feeAud?: number }[];
+        deliveryZoneFees?: { suburb?: string; displayName?: string; feeAud?: number; enabled?: boolean }[];
       };
       setFreeMin(Number(raw.freeShippingMinAud) || 69);
       const rows = (raw.deliveryZoneFees ?? []).map((z) => ({
         suburb: String(z.suburb ?? ''),
         displayName: String(z.displayName ?? z.suburb ?? ''),
         feeAud: Number(z.feeAud) || 0,
+        enabled: z.enabled !== false,
       }));
       setZones(rows);
     } catch (e) {
@@ -41,7 +42,7 @@ export function DeliveryFeesSettingsPage() {
     try {
       await adminStoreAPI.putSettings({
         freeShippingMinAud: freeMin,
-        deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: z.feeAud })),
+        deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: z.feeAud, enabled: z.enabled })),
       });
       message.success('Saved');
     } catch (e) {
@@ -52,7 +53,29 @@ export function DeliveryFeesSettingsPage() {
   };
 
   const columns: ColumnsType<ZoneRow> = [
-    { title: 'Area', dataIndex: 'displayName', width: 160 },
+    {
+      title: 'Active',
+      dataIndex: 'enabled',
+      width: 100,
+      render: (_, r, index) => (
+        <Checkbox
+          checked={r.enabled}
+          onChange={(e) => {
+            const next = [...zones];
+            next[index] = { ...next[index], enabled: e.target.checked };
+            setZones(next);
+          }}
+        />
+      ),
+    },
+    {
+      title: 'Area',
+      dataIndex: 'displayName',
+      width: 200,
+      render: (_, r) => (
+        <span style={{ color: r.enabled ? undefined : '#9ca3af' }}>{r.displayName}</span>
+      ),
+    },
     {
       title: 'Delivery fee (AUD)',
       dataIndex: 'feeAud',
@@ -79,6 +102,9 @@ export function DeliveryFeesSettingsPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary">
         Fees apply per delivery suburb. Orders with subtotal (goods only) at or above the free-shipping minimum pay no delivery fee.
+      </Typography.Paragraph>
+      <Typography.Paragraph type="secondary">
+        Uncheck a suburb to make it unavailable for delivery. Only enabled suburbs can be selected at checkout.
       </Typography.Paragraph>
       <Form layout="vertical" style={{ maxWidth: 480, marginBottom: 16 }}>
         <Form.Item label="Free shipping from subtotal (AUD)">
