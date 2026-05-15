@@ -164,6 +164,7 @@ builder.Services.AddHttpClient(IGA.Services.TelegramNotificationService.HttpClie
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddScoped<IGA.Services.ITelegramNotificationService, IGA.Services.TelegramNotificationService>();
+builder.Services.AddHostedService<IGA.Services.OrderCompletionInvoiceHostedService>();
 
 var app = builder.Build();
 

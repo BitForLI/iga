@@ -45,4 +45,21 @@ public interface IResendEmailService
         string customerEmail,
         string message,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// After pickup/delivery completion (staff marked handoff): delayed customer receipt / simple tax invoice style email.
+    /// </summary>
+    Task<bool> SendOrderCompletionInvoiceAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        string orderType,
+        DateTime pickedUpAtUtc,
+        decimal chargedTotalAud,
+        decimal? finalTotalAud,
+        string? deliveryAddress,
+        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal)> lines,
+        string storeName,
+        string? abn,
+        CancellationToken cancellationToken = default);
 }

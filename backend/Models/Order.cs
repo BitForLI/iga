@@ -15,6 +15,9 @@ namespace igaServer.Models
         public string? StripeSessionId { get; set; } // Stripe Checkout Session ID
         
         public string? StripePaymentIntentId { get; set; } // Stripe 交易号 (退款必须用这个)
+
+        /// <summary>Checkout 开启 invoice_creation 时 Stripe 生成的正式发票 ID（in_xxx），用于延迟 Send invoice。</summary>
+        public string? StripeInvoiceId { get; set; }
         
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; } // 预付总金额
@@ -48,6 +51,9 @@ namespace igaServer.Models
 
         /// <summary>顾客已取货/已交接时间；仍为 Prepared，在后台「Completed *」列表中展示。</summary>
         public DateTime? PickedUpAt { get; set; }
+
+        /// <summary>自提/配送完成后（见 <see cref="PickedUpAt"/>）延迟发送收据邮件的时间；仅发送一次。</summary>
+        public DateTime? CompletionInvoiceSentAt { get; set; }
 
         // --- 关联 ---
         public List<OrderItem>? Items { get; set; } // 购买的商品列表

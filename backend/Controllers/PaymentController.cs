@@ -180,6 +180,26 @@ namespace igaServer.Controllers
                 ClientReferenceId = orderId.ToString(), // 关联订单 ID
             };
 
+            if (_configuration.GetValue("Stripe:CheckoutCreateInvoice", true))
+            {
+                var store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
+                var storeName = string.IsNullOrWhiteSpace(store?.StoreName) ? "IGA Beverly Hills" : store!.StoreName.Trim();
+                var abn = store?.AbnNumber?.Trim();
+                var footer = string.IsNullOrWhiteSpace(abn) ? null : $"ABN: {abn}";
+
+                options.CustomerCreation = "if_required";
+                options.InvoiceCreation = new SessionInvoiceCreationOptions
+                {
+                    Enabled = true,
+                    InvoiceData = new SessionInvoiceCreationInvoiceDataOptions
+                    {
+                        Description = $"{storeName} — order #{orderId}",
+                        Footer = footer,
+                        Metadata = new Dictionary<string, string> { ["order_id"] = orderId.ToString() },
+                    },
+                };
+            }
+
             var registeredEmail = order.User?.Email?.Trim();
             if (!string.IsNullOrWhiteSpace(registeredEmail) && registeredEmail.Contains('@'))
             {
@@ -382,8 +402,15 @@ namespace igaServer.Controllers
                     {
                         order.OrderStatus = "Paid";
                         order.StripePaymentIntentId = session.PaymentIntentId;
-                        _context.Orders.Update(order);
                     }
+
+                    var invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(
+                        session,
+                        order.StripeSessionId ?? session.Id);
+                    if (!string.IsNullOrWhiteSpace(invoiceId))
+                        order.StripeInvoiceId = invoiceId;
+
+                    _context.Orders.Update(order);
 
                     _context.StripeProcessedEvents.Add(new StripeProcessedEvent
                     {
@@ -447,6 +474,15 @@ namespace igaServer.Controllers
                         order.OrderStatus = "Paid";
                         if (string.IsNullOrEmpty(order.StripePaymentIntentId) && !string.IsNullOrEmpty(session.PaymentIntentId))
                             order.StripePaymentIntentId = session.PaymentIntentId;
+                    }
+
+                    if (order != null)
+                    {
+                        var invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(
+                            session,
+                            order.StripeSessionId ?? session.Id);
+                        if (!string.IsNullOrWhiteSpace(invoiceId))
+                            order.StripeInvoiceId = invoiceId;
                         _context.Orders.Update(order);
                     }
 

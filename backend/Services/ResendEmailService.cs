@@ -167,6 +167,74 @@ public class ResendEmailService : IResendEmailService
         return await SendEmailAsync(toEmails, subject, html, customerEmail.Trim(), cancellationToken);
     }
 
+    public async Task<bool> SendOrderCompletionInvoiceAsync(
+        string toEmail,
+        string customerName,
+        int orderId,
+        string orderType,
+        DateTime pickedUpAtUtc,
+        decimal chargedTotalAud,
+        decimal? finalTotalAud,
+        string? deliveryAddress,
+        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal)> lines,
+        string storeName,
+        string? abn,
+        CancellationToken cancellationToken = default)
+    {
+        var isPickup = string.Equals(orderType, "Pickup", StringComparison.OrdinalIgnoreCase);
+        var subject = $"{storeName} — receipt for order #{orderId}";
+        var when = $"{pickedUpAtUtc:yyyy-MM-dd HH:mm} UTC";
+        var fulfillment = isPickup
+            ? $"<p><strong>Fulfilment:</strong> Pickup completed on {System.Net.WebUtility.HtmlEncode(when)}.</p>"
+            : $"<p><strong>Fulfilment:</strong> Delivery completed on {System.Net.WebUtility.HtmlEncode(when)}.</p>" +
+              (string.IsNullOrWhiteSpace(deliveryAddress)
+                  ? ""
+                  : $"<p><strong>Delivery address:</strong> {System.Net.WebUtility.HtmlEncode(deliveryAddress.Trim())}</p>");
+
+        var rows = new StringBuilder();
+        rows.Append(
+            "<table style=\"border-collapse:collapse;width:100%;max-width:560px;font-size:14px;\">" +
+            "<thead><tr style=\"border-bottom:2px solid #e5e7eb;text-align:left;\">" +
+            "<th style=\"padding:8px 6px;\">Item</th><th style=\"padding:8px 6px;\">Qty</th>" +
+            "<th style=\"padding:8px 6px;\">Unit</th><th style=\"padding:8px 6px;text-align:right;\">Line</th></tr></thead><tbody>");
+        foreach (var line in lines)
+        {
+            rows.Append("<tr style=\"border-bottom:1px solid #f1f5f9;\">");
+            rows.Append($"<td style=\"padding:8px 6px;\">{System.Net.WebUtility.HtmlEncode(line.ProductName)}</td>");
+            rows.Append($"<td style=\"padding:8px 6px;\">{line.Quantity}</td>");
+            rows.Append($"<td style=\"padding:8px 6px;\">{Currency} ${line.UnitPrice:0.00}</td>");
+            rows.Append($"<td style=\"padding:8px 6px;text-align:right;\">{Currency} ${line.LineTotal:0.00}</td>");
+            rows.Append("</tr>");
+        }
+
+        rows.Append("</tbody></table>");
+
+        var totals = $"<p style=\"margin-top:16px;\"><strong>Charged at checkout:</strong> {Currency} ${chargedTotalAud:0.00}</p>";
+        if (finalTotalAud.HasValue && finalTotalAud.Value != chargedTotalAud)
+            totals += $"<p><strong>Adjusted total (e.g. weighed goods):</strong> {Currency} ${finalTotalAud.Value:0.00}</p>";
+
+        var abnLine = string.IsNullOrWhiteSpace(abn)
+            ? ""
+            : $"<p style=\"color:#64748b;font-size:13px;\"><strong>ABN:</strong> {System.Net.WebUtility.HtmlEncode(abn)}</p>";
+
+        var html =
+            $"""
+            <p>Hi {System.Net.WebUtility.HtmlEncode(customerName)},</p>
+            <p>Thank you for shopping at <strong>{System.Net.WebUtility.HtmlEncode(storeName)}</strong>.</p>
+            <p>Below is your receipt for <strong>order #{orderId}</strong> (payment was completed earlier at checkout).</p>
+            {fulfillment}
+            {rows}
+            {totals}
+            {abnLine}
+            <p style="color:#64748b;font-size:13px;margin-top:20px;">
+            Card payments were processed by Stripe. You may also have received Stripe&rsquo;s own payment receipt at the time of purchase; please keep this email for your records.
+            </p>
+            <p style="color:#64748b;font-size:13px;">This message was sent automatically. If you have questions, reply to the store using the contact details on our website.</p>
+            """;
+
+        return await SendEmailAsync(toEmail, subject, html, cancellationToken);
+    }
+
     private Task<bool> SendEmailAsync(string toEmail, string subject, string html, CancellationToken cancellationToken) =>
         SendEmailAsync(new[] { toEmail }, subject, html, replyTo: null, cancellationToken);
 
