@@ -9,6 +9,7 @@ export function DeliveryFeesSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [freeMin, setFreeMin] = useState(69);
+  const [abnNumber, setAbnNumber] = useState('');
   const [zones, setZones] = useState<ZoneRow[]>([]);
 
   const load = useCallback(async () => {
@@ -16,9 +17,11 @@ export function DeliveryFeesSettingsPage() {
     try {
       const raw = (await adminStoreAPI.getSettings()) as {
         freeShippingMinAud?: number;
+        abnNumber?: string;
         deliveryZoneFees?: { suburb?: string; displayName?: string; feeAud?: number; enabled?: boolean }[];
       };
       setFreeMin(Number(raw.freeShippingMinAud) || 69);
+      setAbnNumber(String(raw.abnNumber ?? ''));
       const rows = (raw.deliveryZoneFees ?? []).map((z) => ({
         suburb: String(z.suburb ?? ''),
         displayName: String(z.displayName ?? z.suburb ?? ''),
@@ -42,6 +45,7 @@ export function DeliveryFeesSettingsPage() {
     try {
       await adminStoreAPI.putSettings({
         freeShippingMinAud: freeMin,
+        abnNumber: abnNumber.trim(),
         deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: z.feeAud, enabled: z.enabled })),
       });
       message.success('Saved');
@@ -109,6 +113,14 @@ export function DeliveryFeesSettingsPage() {
       <Form layout="vertical" style={{ maxWidth: 480, marginBottom: 16 }}>
         <Form.Item label="Free shipping from subtotal (AUD)">
           <InputNumber min={0} max={5000} value={freeMin} onChange={(v) => setFreeMin(Number(v) || 0)} style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item label="Store ABN">
+          <input
+            type="text"
+            value={abnNumber}
+            onChange={(e) => setAbnNumber(e.target.value)}
+            style={{ width: '100%', padding: '8px 11px', borderRadius: 4, border: '1px solid #d9d9d9' }}
+          />
         </Form.Item>
       </Form>
       <Table<ZoneRow>

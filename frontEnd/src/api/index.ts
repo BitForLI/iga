@@ -52,7 +52,8 @@ export const adminStoreAPI = {
   getSettings: () => apiClient.get<unknown>('/admin/store/settings'),
   putSettings: (body: {
     freeShippingMinAud?: number;
-    deliveryZoneFees?: { suburb: string; feeAud: number }[];
+    abnNumber?: string;
+    deliveryZoneFees?: { suburb: string; feeAud: number; enabled?: boolean }[];
     homeCarouselImageUrls?: string[];
   }) => apiClient.put<{ message?: string }>('/admin/store/settings', body),
   uploadCarouselImage: async (file: File): Promise<{ url: string }> => {

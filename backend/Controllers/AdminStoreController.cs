@@ -63,6 +63,7 @@ public class AdminStoreController : ControllerBase
         return Ok(new StoreAdminSettingsDto
         {
             FreeShippingMinAud = store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud,
+            AbnNumber = store.AbnNumber?.Trim() ?? string.Empty,
             DeliveryZoneFees = zoneRows,
             HomeCarouselImageUrls = carousel,
         });
@@ -94,6 +95,11 @@ public class AdminStoreController : ControllerBase
         }
 
         store.FreeDeliveryThreshold = Math.Round(freeMin, 2, MidpointRounding.AwayFromZero);
+
+        if (body.AbnNumber != null)
+        {
+            store.AbnNumber = body.AbnNumber.Trim();
+        }
 
         if (body.DeliveryZoneFees != null)
         {
@@ -219,6 +225,7 @@ public class AdminStoreController : ControllerBase
     public class StoreAdminSettingsDto
     {
         public decimal FreeShippingMinAud { get; set; }
+        public string AbnNumber { get; set; } = string.Empty;
         public List<DeliveryZoneFeeRowDto> DeliveryZoneFees { get; set; } = new();
         public List<string> HomeCarouselImageUrls { get; set; } = new();
     }
@@ -234,6 +241,7 @@ public class AdminStoreController : ControllerBase
     public class StoreAdminPutDto
     {
         public decimal? FreeShippingMinAud { get; set; }
+        public string? AbnNumber { get; set; }
         public List<DeliveryZoneFeeInputDto>? DeliveryZoneFees { get; set; }
         public List<string>? HomeCarouselImageUrls { get; set; }
     }

@@ -193,7 +193,7 @@ namespace igaServer.Controllers
                     Enabled = true,
                     InvoiceData = new SessionInvoiceCreationInvoiceDataOptions
                     {
-                        Description = $"{storeName} — order #{orderId}",
+                        Description = $"{storeName} — order #{orderId} (GST included)",
                         Footer = footer,
                         Metadata = new Dictionary<string, string> { ["order_id"] = orderId.ToString() },
                     },

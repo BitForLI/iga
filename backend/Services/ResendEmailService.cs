@@ -209,9 +209,12 @@ public class ResendEmailService : IResendEmailService
 
         rows.Append("</tbody></table>");
 
+        var invoiceTotal = finalTotalAud ?? chargedTotalAud;
+        var gstAmount = Math.Round(invoiceTotal / 11m, 2);
         var totals = $"<p style=\"margin-top:16px;\"><strong>Charged at checkout:</strong> {Currency} ${chargedTotalAud:0.00}</p>";
         if (finalTotalAud.HasValue && finalTotalAud.Value != chargedTotalAud)
             totals += $"<p><strong>Adjusted total (e.g. weighed goods):</strong> {Currency} ${finalTotalAud.Value:0.00}</p>";
+        totals += $"<p><strong>GST included:</strong> {Currency} ${gstAmount:0.00}</p>";
 
         var abnLine = string.IsNullOrWhiteSpace(abn)
             ? ""

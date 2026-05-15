@@ -112,7 +112,7 @@ public static class StripeInvoiceHelper
                 CollectionMethod = "send_invoice",
                 DaysUntilDue = 0,
                 AutoAdvance = false,
-                Description = $"{storeName ?? "IGA"} — order #{order.Id}",
+                Description = $"{storeName ?? "IGA"} — order #{order.Id} (GST included)",
                 Footer = footer,
                 Metadata = new Dictionary<string, string> { ["order_id"] = order.Id.ToString() },
             },
