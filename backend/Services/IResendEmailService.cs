@@ -47,9 +47,9 @@ public interface IResendEmailService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// After pickup/delivery completion (staff marked handoff): delayed customer receipt / simple tax invoice style email.
+    /// After pickup/delivery completion (staff marked handoff): delayed customer receipt email.
     /// </summary>
-    Task<bool> SendOrderCompletionInvoiceAsync(
+    Task<bool> SendOrderCompletionReceiptAsync(
         string toEmail,
         string customerName,
         int orderId,

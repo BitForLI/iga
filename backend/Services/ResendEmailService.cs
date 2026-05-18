@@ -167,7 +167,7 @@ public class ResendEmailService : IResendEmailService
         return await SendEmailAsync(toEmails, subject, html, customerEmail.Trim(), cancellationToken);
     }
 
-    public async Task<bool> SendOrderCompletionInvoiceAsync(
+    public async Task<bool> SendOrderCompletionReceiptAsync(
         string toEmail,
         string customerName,
         int orderId,

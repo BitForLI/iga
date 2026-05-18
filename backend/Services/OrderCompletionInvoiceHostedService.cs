@@ -11,16 +11,16 @@ namespace IGA.Services;
 /// <summary>
 /// After pickup/delivery completion (Order.PickedUpAt) and a delay, send one customer receipt email (not a Stripe invoice).
 /// </summary>
-public sealed class OrderCompletionInvoiceHostedService : BackgroundService
+public sealed class OrderCompletionReceiptHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
-    private readonly ILogger<OrderCompletionInvoiceHostedService> _logger;
+    private readonly ILogger<OrderCompletionReceiptHostedService> _logger;
 
-    public OrderCompletionInvoiceHostedService(
+    public OrderCompletionReceiptHostedService(
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
-        ILogger<OrderCompletionInvoiceHostedService> logger)
+        ILogger<OrderCompletionReceiptHostedService> logger)
     {
         _scopeFactory = scopeFactory;
         _configuration = configuration;
@@ -43,10 +43,10 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[CompletionInvoice] Scheduled run failed");
-            }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[CompletionReceipt] Scheduled run failed");
+                }
         }
     }
 
@@ -122,14 +122,14 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
         }
 
         var email = (order.User.Email ?? "").Trim();
-        if (string.IsNullOrEmpty(email)
+            if (string.IsNullOrEmpty(email)
             || !email.Contains('@', StringComparison.Ordinal)
             || email.EndsWith("@iga.local", StringComparison.OrdinalIgnoreCase))
         {
             order.CompletionInvoiceSentAt = DateTime.UtcNow; // 避免永久重试无效邮箱
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
-            _logger.LogInformation("[CompletionInvoice] Skipped order {OrderId}: no usable customer email", orderId);
+            _logger.LogInformation("[CompletionReceipt] Skipped order {OrderId}: no usable customer email", orderId);
             return;
         }
 
@@ -146,7 +146,7 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
 
             var pickedUpUtc = order.PickedUpAt!.Value;
             var customerName = string.IsNullOrWhiteSpace(order.User.Name) ? "Customer" : order.User.Name.Trim();
-            sent = await resend.SendOrderCompletionInvoiceAsync(
+            sent = await resend.SendOrderCompletionReceiptAsync(
                 email,
                 customerName,
                 order.Id,
@@ -160,19 +160,19 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
                 abn,
                 ct);
 
-            if (!sent)
-            {
-                await tx.RollbackAsync(ct);
-                _logger.LogWarning("[CompletionInvoice] Invoice email failed for order {OrderId}; will retry later", orderId);
-                return;
-            }
+                if (!sent)
+                {
+                    await tx.RollbackAsync(ct);
+                    _logger.LogWarning("[CompletionReceipt] Receipt email failed for order {OrderId}; will retry later", orderId);
+                    return;
+                }
         }
 
         order.CompletionInvoiceSentAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         _logger.LogInformation(
-            "[CompletionInvoice] Sent receipt for order {OrderId} ({Channel})",
+            "[CompletionReceipt] Sent receipt for order {OrderId} ({Channel})",
             orderId,
             "Resend");
     }

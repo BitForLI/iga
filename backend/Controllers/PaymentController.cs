@@ -183,25 +183,8 @@ namespace igaServer.Controllers
                 ClientReferenceId = orderId.ToString(), // 关联订单 ID
             };
 
-            if (_configuration.GetValue("Stripe:CheckoutCreateInvoice", true))
-            {
-                var store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
-                var storeName = string.IsNullOrWhiteSpace(store?.StoreName) ? "IGA Beverly Hills" : store!.StoreName.Trim();
-                var abn = store?.AbnNumber?.Trim();
-                var footer = string.IsNullOrWhiteSpace(abn) ? null : $"ABN: {abn}";
-
-                options.CustomerCreation = "if_required";
-                options.InvoiceCreation = new SessionInvoiceCreationOptions
-                {
-                    Enabled = true,
-                    InvoiceData = new SessionInvoiceCreationInvoiceDataOptions
-                    {
-                        Description = $"{storeName} — order #{orderId} (GST included)",
-                        Footer = footer,
-                        Metadata = new Dictionary<string, string> { ["order_id"] = orderId.ToString() },
-                    },
-                };
-            }
+            // No Stripe invoice should be created at checkout; customers already pay during checkout.
+            // Order receipts are sent later via Resend email once pickup/delivery is completed.
 
             var registeredEmail = order.User?.Email?.Trim();
             if (!string.IsNullOrWhiteSpace(registeredEmail) && registeredEmail.Contains('@'))
