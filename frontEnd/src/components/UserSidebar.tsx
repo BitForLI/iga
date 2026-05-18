@@ -736,12 +736,12 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     const refundable = items.filter((it: any) => !it.customerRefundCompletedAt);
     const isCompleted = String(selectedOrder.orderStatus) === 'Completed';
     if (isCompleted && refundReason.trim().length < 5) {
-      message.warning('已完成订单须填写退款理由（至少 5 个字）。');
+      message.warning('Completed orders must include a refund reason (at least 5 characters).');
       throw new Error('validation');
     }
     const itemIds = refundable.length === 1 ? [refundable[0].id] : Array.from(refundSelectedIds);
     if (refundable.length > 1 && itemIds.length === 0) {
-      message.warning('请选择要申请退款的商品。');
+      message.warning('Please select at least one item to refund.');
       throw new Error('validation');
     }
     setRefundRequesting(true);
@@ -755,7 +755,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
       setSelectedOrder(next);
       setOrders((list) => list.map((o) => ((o.id ?? o.Id) === next.id ? { ...o, orderStatus: next.orderStatus } : o)));
       setRefundConfirmOpen(false);
-      message.success('退款申请已提交');
+      message.success('Refund request submitted');
     } catch (err) {
       setError((err as Error).message);
       throw err;
@@ -774,11 +774,11 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     return (
       <div>
         <Modal
-          title="申请退款"
+          title="Request refund"
           zIndex={1300}
           open={refundConfirmOpen}
-          okText="提交申请"
-          cancelText="取消"
+          okText="Submit request"
+          cancelText="Cancel"
           okButtonProps={{ danger: true }}
           confirmLoading={refundRequesting}
           cancelButtonProps={{ disabled: refundRequesting }}
@@ -788,23 +788,23 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
           onOk={submitRefundRequest}
         >
           <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#374151', lineHeight: 1.55 }}>
-            提交后由店员审核；并非立即自动退款。
+            The refund request will be reviewed by staff. Refunds are not processed automatically.
           </p>
           {String(selectedOrder.orderStatus) === 'Completed' ? (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>退款理由（必填，至少 5 字）</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>Refund reason (required, at least 5 characters)</div>
               <Input.TextArea
                 rows={3}
                 value={refundReason}
                 onChange={(e) => setRefundReason(e.target.value)}
-                placeholder="请说明退款原因"
+                placeholder="Explain why you want a refund"
                 maxLength={500}
                 showCount
               />
             </div>
           ) : (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>退款理由（选填）</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>Refund reason (optional)</div>
               <Input.TextArea rows={2} value={refundReason} onChange={(e) => setRefundReason(e.target.value)} maxLength={500} />
             </div>
           )}
@@ -813,7 +813,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
             if (refundable.length <= 1) return null;
             return (
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8 }}>选择要退款的商品（可多选）</div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8 }}>Select items to refund (multiple allowed)</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {refundable.map((it: any) => {
                     const checked = refundSelectedIds.has(it.id);
@@ -834,7 +834,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                           }}
                         />
                         <span>
-                          {it.productName} — 约 ${orderLinePaidAmount(it).toFixed(2)}
+                          {it.productName} — approx ${orderLinePaidAmount(it).toFixed(2)}
                         </span>
                       </label>
                     );
@@ -855,8 +855,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               gap: '0.5rem',
             }}
           >
-            <li>仅适用于未使用、未损坏且可再次销售的商品（含包装要求以门店政策为准）。</li>
-            <li>审核通过后一般约一周内处理到账，具体以银行/卡组织为准。</li>
+            <li>Refunds are only for unused, undamaged items that can be resold. Packaging requirements follow store policy.</li>
+            <li>Once approved, refunds typically take about one week to reach your bank or card provider.</li>
           </ul>
         </Modal>
         <button
@@ -909,7 +909,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
-          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Items</h4>
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Products</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {items.map((item: any, index: number) => {
               const name = item.productName ?? item.ProductName ?? 'Item';
@@ -932,7 +932,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                   <span>
                     {name}
                     {item.isWeighingRequired ? ` (${Number(item.expectedWeight ?? 0).toFixed(3)} kg est.)` : ` ×${quantity}`}
-                    {done ? <em style={{ marginLeft: 6, color: '#64748b' }}>（已退款处理）</em> : null}
+                    {done ? <em style={{ marginLeft: 6, color: '#64748b' }}>(refund processed)</em> : null}
                   </span>
                   <strong>${line.toFixed(2)}</strong>
                 </div>
@@ -943,17 +943,17 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
 
         {selectedOrder.orderStatus === 'RefundRequested' ? (
           <div style={{ fontSize: '0.85rem', color: '#991b1b', background: '#fee2e2', padding: '0.75rem', borderRadius: 6 }}>
-            <p style={{ margin: '0 0 0.5rem 0' }}>退款申请已提交，店员将尽快审核。</p>
+            <p style={{ margin: '0 0 0.5rem 0' }}>Your refund request has been submitted and will be reviewed by staff.</p>
             {selectedOrder.refundRequestReason ? (
               <p style={{ margin: 0, color: '#7f1d1d' }}>
-                <strong>您的理由：</strong>
+                <strong>Your reason:</strong>
                 {selectedOrder.refundRequestReason}
               </p>
             ) : null}
           </div>
         ) : selectedOrder.refundRejectionReason ? (
           <p style={{ fontSize: '0.85rem', color: '#92400e', background: '#fef3c7', padding: '0.75rem', borderRadius: 6 }}>
-            Refund request rejected: {selectedOrder.refundRejectionReason}
+            Refund request denied: {selectedOrder.refundRejectionReason}
           </p>
         ) : (
           <button
@@ -971,7 +971,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               cursor: canRequestRefund(selectedOrder) && !refundRequesting ? 'pointer' : 'not-allowed',
             }}
           >
-            {refundRequesting ? '提交中…' : '申请退款'}
+            {refundRequesting ? 'Submitting…' : 'Request refund'}
           </button>
         )}
       </div>

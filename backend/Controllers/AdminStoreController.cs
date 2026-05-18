@@ -49,22 +49,32 @@ public class AdminStoreController : ControllerBase
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        var infos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
+        var zoneInfos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
         var zoneRows = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k => new DeliveryZoneFeeRowDto
         {
             Suburb = k,
             DisplayName = StoreDeliveryHelper.DisplaySuburb(k),
-            FeeAud = infos.TryGetValue(k, out var info) ? info.Fee : StoreDeliveryHelper.DefaultZoneFeeAud,
-            Enabled = infos.TryGetValue(k, out var info2) ? info2.Enabled : true,
+            Enabled = zoneInfos.TryGetValue(k, out var info) ? info.Enabled : true,
         }).ToList();
 
+        var parsedFeeRules = StoreDeliveryHelper.ParseDeliveryFeeRules(store.DeliveryZoneFeesJson);
+        var feeRules = parsedFeeRules.Any()
+            ? parsedFeeRules.OrderBy(r => r.MinAmount).ToList()
+            : StoreDeliveryHelper.BuildFallbackFeeRules(store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud);
+
+        var freeMin = feeRules.Where(r => r.FeeAud == 0).Select(r => r.MinAmount).DefaultIfEmpty(store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud).Max();
         var carousel = StoreDeliveryHelper.ParseCarouselUrls(store.HomeCarouselImagesJson);
 
         return Ok(new StoreAdminSettingsDto
         {
-            FreeShippingMinAud = store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud,
+            FreeShippingMinAud = freeMin,
             AbnNumber = store.AbnNumber?.Trim() ?? string.Empty,
-            DeliveryZoneFees = zoneRows,
+            DeliveryZones = zoneRows,
+            DeliveryFeeRules = feeRules.Select(r => new DeliveryFeeRuleDto
+            {
+                MinAmount = r.MinAmount,
+                FeeAud = r.FeeAud,
+            }).ToList(),
             HomeCarouselImageUrls = carousel,
         });
     }
@@ -101,28 +111,71 @@ public class AdminStoreController : ControllerBase
             store.AbnNumber = body.AbnNumber.Trim();
         }
 
+        var existingZoneInfos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
+        var zoneRows = existingZoneInfos.ToDictionary(kv => kv.Key, kv => kv.Value.Enabled, StringComparer.OrdinalIgnoreCase);
+        var existingFeeRules = StoreDeliveryHelper.ParseDeliveryFeeRules(store.DeliveryZoneFeesJson);
+        var feeRules = existingFeeRules.Any()
+            ? existingFeeRules.OrderBy(r => r.MinAmount).ToList()
+            : StoreDeliveryHelper.BuildFallbackFeeRules(store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud);
+
         if (body.DeliveryZoneFees != null)
         {
-            var list = new List<object>();
+            var nextZones = new List<object>();
             foreach (var row in body.DeliveryZoneFees)
             {
                 var key = StoreDeliveryHelper.NormalizeSuburbKey(row.Suburb);
                 if (!StoreDeliveryHelper.AllowedDeliverySuburbKeys.Contains(key))
                     return BadRequest(new { error = $"Unknown suburb: {row.Suburb}" });
-                if (row.FeeAud < 0 || row.FeeAud > 500)
-                    return BadRequest(new { error = $"Invalid fee for {key}" });
-                list.Add(new
+                nextZones.Add(new
                 {
                     suburb = key,
-                    fee = Math.Round(row.FeeAud, 2, MidpointRounding.AwayFromZero),
                     enabled = row.Enabled,
+                });
+                zoneRows[key] = row.Enabled;
+            }
+
+            if (nextZones.Count != StoreDeliveryHelper.AllowedDeliverySuburbKeys.Length)
+                return BadRequest(new { error = "Provide exactly one zone row per delivery suburb" });
+        }
+
+        if (body.DeliveryFeeRules != null)
+        {
+            var nextRules = new List<StoreDeliveryHelper.DeliveryFeeRule>();
+            foreach (var row in body.DeliveryFeeRules)
+            {
+                if (row.MinAmount < 0 || row.FeeAud < 0 || row.FeeAud > 500)
+                    return BadRequest(new { error = "Delivery rule values must be between 0 and 500 AUD" });
+                nextRules.Add(new StoreDeliveryHelper.DeliveryFeeRule
+                {
+                    MinAmount = Math.Round(row.MinAmount, 2, MidpointRounding.AwayFromZero),
+                    FeeAud = Math.Round(row.FeeAud, 2, MidpointRounding.AwayFromZero),
                 });
             }
 
-            if (list.Count != StoreDeliveryHelper.AllowedDeliverySuburbKeys.Length)
-                return BadRequest(new { error = "Provide exactly one fee row per delivery zone" });
+            if (!nextRules.Any())
+                return BadRequest(new { error = "At least one delivery fee rule is required" });
+            if (!nextRules.Any(r => r.MinAmount == 0))
+                return BadRequest(new { error = "The first delivery rule must start at 0 AUD" });
 
-            store.DeliveryZoneFeesJson = JsonSerializer.Serialize(list);
+            feeRules = nextRules.OrderBy(r => r.MinAmount).ToList();
+            store.FreeDeliveryThreshold = feeRules.Where(r => r.FeeAud == 0).Select(r => r.MinAmount).DefaultIfEmpty(0).Max();
+        }
+
+        if (body.DeliveryZoneFees != null || body.DeliveryFeeRules != null)
+        {
+            var zonesArray = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k => new
+            {
+                suburb = k,
+                enabled = zoneRows.TryGetValue(k, out var enabled) ? enabled : true,
+            }).ToList();
+
+            var rulesArray = feeRules.OrderBy(r => r.MinAmount).Select(r => new
+            {
+                minAmount = r.MinAmount,
+                feeAud = r.FeeAud,
+            }).ToList();
+
+            store.DeliveryZoneFeesJson = JsonSerializer.Serialize(new { zones = zonesArray, deliveryFeeRules = rulesArray });
         }
 
         if (body.HomeCarouselImageUrls != null)
@@ -226,7 +279,8 @@ public class AdminStoreController : ControllerBase
     {
         public decimal FreeShippingMinAud { get; set; }
         public string AbnNumber { get; set; } = string.Empty;
-        public List<DeliveryZoneFeeRowDto> DeliveryZoneFees { get; set; } = new();
+        public List<DeliveryZoneFeeRowDto> DeliveryZones { get; set; } = new();
+        public List<DeliveryFeeRuleDto> DeliveryFeeRules { get; set; } = new();
         public List<string> HomeCarouselImageUrls { get; set; } = new();
     }
 
@@ -234,8 +288,13 @@ public class AdminStoreController : ControllerBase
     {
         public string Suburb { get; set; } = "";
         public string DisplayName { get; set; } = "";
-        public decimal FeeAud { get; set; }
         public bool Enabled { get; set; } = true;
+    }
+
+    public class DeliveryFeeRuleDto
+    {
+        public decimal MinAmount { get; set; }
+        public decimal FeeAud { get; set; }
     }
 
     public class StoreAdminPutDto
@@ -243,6 +302,7 @@ public class AdminStoreController : ControllerBase
         public decimal? FreeShippingMinAud { get; set; }
         public string? AbnNumber { get; set; }
         public List<DeliveryZoneFeeInputDto>? DeliveryZoneFees { get; set; }
+        public List<DeliveryFeeRuleInputDto>? DeliveryFeeRules { get; set; }
         public List<string>? HomeCarouselImageUrls { get; set; }
     }
 
@@ -251,5 +311,11 @@ public class AdminStoreController : ControllerBase
         public string? Suburb { get; set; }
         public decimal FeeAud { get; set; }
         public bool Enabled { get; set; } = true;
+    }
+
+    public class DeliveryFeeRuleInputDto
+    {
+        public decimal MinAmount { get; set; }
+        public decimal FeeAud { get; set; }
     }
 }

@@ -43,6 +43,24 @@ public static class StripeInvoiceHelper
         try
         {
             var invoiceService = new InvoiceService();
+            var invoice = await invoiceService.GetAsync(invoiceId, cancellationToken: cancellationToken);
+
+            if (!string.Equals(invoice.Status, "paid", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(invoice.Status, "draft", StringComparison.OrdinalIgnoreCase))
+                {
+                    invoice = await invoiceService.FinalizeInvoiceAsync(invoiceId, cancellationToken: cancellationToken);
+                }
+
+                if (!string.Equals(invoice.Status, "paid", StringComparison.OrdinalIgnoreCase))
+                {
+                    await invoiceService.PayAsync(
+                        invoiceId,
+                        new InvoicePayOptions { PaidOutOfBand = true },
+                        cancellationToken: cancellationToken);
+                }
+            }
+
             var sent = await invoiceService.SendInvoiceAsync(invoiceId, cancellationToken: cancellationToken);
             return (sent != null, null);
         }

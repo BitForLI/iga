@@ -9,7 +9,7 @@ using igaServer.Models;
 namespace IGA.Services;
 
 /// <summary>
-/// 自提/配送标记完成（<see cref="Order.PickedUpAt"/>）满 N 天后，向顾客邮箱发送一次收据（非 Stripe 官方发票）。
+/// After pickup/delivery completion (Order.PickedUpAt) and a delay, send one customer receipt email (not a Stripe invoice).
 /// </summary>
 public sealed class OrderCompletionInvoiceHostedService : BackgroundService
 {
@@ -133,57 +133,8 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
             return;
         }
 
-        var useStripeInvoice = _configuration.GetValue("Invoice:UseStripeInvoice", true);
         var sent = false;
 
-        if (useStripeInvoice)
-        {
-            StripeInvoiceHelper.EnsureApiKey(_configuration);
-            var invoiceId = order.StripeInvoiceId;
-
-            if (string.IsNullOrWhiteSpace(invoiceId))
-            {
-                invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(null, order.StripeSessionId, ct);
-                if (!string.IsNullOrWhiteSpace(invoiceId))
-                    order.StripeInvoiceId = invoiceId;
-            }
-
-            if (string.IsNullOrWhiteSpace(invoiceId)
-                && !string.IsNullOrWhiteSpace(order.StripePaymentIntentId))
-            {
-                var currency = (_configuration["Stripe:CheckoutCurrency"] ?? "aud").Trim().ToLowerInvariant();
-                if (string.IsNullOrEmpty(currency)) currency = "aud";
-                var (created, newId, createErr) = await StripeInvoiceHelper.CreateAndFinalizePaidInvoiceForOrderAsync(
-                    order, currency, storeName, abn, ct);
-                if (created && !string.IsNullOrWhiteSpace(newId))
-                {
-                    order.StripeInvoiceId = newId;
-                    invoiceId = newId;
-                }
-                else if (!string.IsNullOrEmpty(createErr))
-                {
-                    _logger.LogWarning(
-                        "[CompletionInvoice] Could not create Stripe invoice for order {OrderId}: {Error}",
-                        orderId,
-                        createErr);
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(invoiceId))
-            {
-                var (stripeOk, stripeErr) = await StripeInvoiceHelper.SendInvoiceEmailAsync(invoiceId, ct);
-                sent = stripeOk;
-                if (!stripeOk)
-                {
-                    _logger.LogWarning(
-                        "[CompletionInvoice] Stripe SendInvoice failed for order {OrderId}: {Error}",
-                        orderId,
-                        stripeErr);
-                }
-            }
-        }
-
-        if (!sent)
         {
             var lines = (order.Items ?? new List<OrderItem>())
                 .Select(i => (
@@ -221,9 +172,9 @@ public sealed class OrderCompletionInvoiceHostedService : BackgroundService
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         _logger.LogInformation(
-            "[CompletionInvoice] Sent invoice for order {OrderId} ({Channel})",
+            "[CompletionInvoice] Sent receipt for order {OrderId} ({Channel})",
             orderId,
-            useStripeInvoice && !string.IsNullOrWhiteSpace(order.StripeInvoiceId) ? "Stripe" : "Resend");
+            "Resend");
     }
 
     /// <summary>与结账行金额一致：称重按实际或预估重量 × 单价；否则 单价 × 数量。</summary>

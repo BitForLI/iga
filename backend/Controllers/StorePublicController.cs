@@ -17,14 +17,16 @@ public class StorePublicController : ControllerBase
     public async Task<IActionResult> GetPublicSettings(CancellationToken cancellationToken)
     {
         var store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
-        var freeMin = store != null && store.FreeDeliveryThreshold > 0
-            ? (double)store.FreeDeliveryThreshold
-            : (double)StoreDeliveryHelper.DefaultFreeShippingMinAud;
+        var zoneInfos = StoreDeliveryHelper.ParseZoneInfos(store?.DeliveryZoneFeesJson);
+        var feeRules = StoreDeliveryHelper.ParseDeliveryFeeRules(store?.DeliveryZoneFeesJson)
+            .Any()
+            ? StoreDeliveryHelper.ParseDeliveryFeeRules(store?.DeliveryZoneFeesJson).OrderBy(r => r.MinAmount).ToList()
+            : StoreDeliveryHelper.BuildFallbackFeeRules(store != null && store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud);
 
-        var infos = StoreDeliveryHelper.ParseZoneInfos(store?.DeliveryZoneFeesJson);
+        var freeMin = feeRules.Where(r => r.FeeAud == 0).Select(r => r.MinAmount).DefaultIfEmpty(store != null && store.FreeDeliveryThreshold > 0 ? store.FreeDeliveryThreshold : StoreDeliveryHelper.DefaultFreeShippingMinAud).Max();
         var zones = StoreDeliveryHelper.AllowedDeliverySuburbKeys.Select(k =>
         {
-            var info = infos.TryGetValue(k, out var zoneInfo) ? zoneInfo : new StoreDeliveryHelper.DeliveryZoneInfo();
+            var info = zoneInfos.TryGetValue(k, out var zoneInfo) ? zoneInfo : new StoreDeliveryHelper.DeliveryZoneInfo();
             return new
             {
                 suburbKey = k,
@@ -40,6 +42,7 @@ public class StorePublicController : ControllerBase
         {
             freeShippingMinAud = freeMin,
             deliveryZones = zones,
+            deliveryFeeRules = feeRules.Select(r => new { minAmount = (double)r.MinAmount, feeAud = (double)r.FeeAud }).ToList(),
             homeCarouselImageUrls = carousel,
         });
     }

@@ -3,10 +3,12 @@ import { storePublicAPI } from '../api';
 import { DELIVERY_SUBURBS, normalizeSuburbKey, suburbToKey } from '../constants/deliveryZones';
 
 export type DeliveryZonePublic = { suburbKey: string; displayName: string; feeAud: number; enabled: boolean };
+export type DeliveryFeeRulePublic = { minAmount: number; feeAud: number };
 
 export type StorePublicSettings = {
   freeShippingMinAud: number;
   deliveryZones: DeliveryZonePublic[];
+  deliveryFeeRules: DeliveryFeeRulePublic[];
   homeCarouselImageUrls: string[];
 };
 
@@ -27,6 +29,10 @@ const defaultSettings = (): StorePublicSettings => ({
     feeAud: 10,
     enabled: true,
   })),
+  deliveryFeeRules: [
+    { minAmount: 0, feeAud: 10 },
+    { minAmount: 69, feeAud: 0 },
+  ],
   homeCarouselImageUrls: [],
 });
 
@@ -51,6 +57,12 @@ export function StorePublicSettingsProvider({ children }: { children: ReactNode 
               enabled: z.enabled !== false,
             }))
           : defaultSettings().deliveryZones,
+        deliveryFeeRules: Array.isArray(parsed.deliveryFeeRules)
+          ? parsed.deliveryFeeRules.map((r) => ({
+              minAmount: Number(r.minAmount) || 0,
+              feeAud: Number(r.feeAud) || 0,
+            }))
+          : defaultSettings().deliveryFeeRules,
         homeCarouselImageUrls: Array.isArray(parsed.homeCarouselImageUrls) ? parsed.homeCarouselImageUrls : [],
       });
     } catch (e) {
@@ -91,5 +103,23 @@ export function computeDeliveryFeeAud(
   if (!key) return 0;
   const row = cfg.deliveryZones.find((z) => normalizeSuburbKey(z.suburbKey) === key);
   if (!row || !row.enabled) return 0;
-  return Math.max(0, Number(row.feeAud) || 0);
+
+  const rule = cfg.deliveryFeeRules
+    .slice()
+    .sort((a, b) => a.minAmount - b.minAmount)
+    .reduce<{
+      minAmount: number;
+      feeAud: number;
+    } | null>((selected, current) => {
+      if (subtotal >= current.minAmount) {
+        return current;
+      }
+      return selected;
+    }, null);
+
+  if (!rule) {
+    return Math.max(0, Number(row.feeAud) || 0);
+  }
+
+  return Math.max(0, Number(rule.feeAud) || 0);
 }

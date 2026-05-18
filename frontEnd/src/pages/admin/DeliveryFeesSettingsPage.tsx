@@ -3,14 +3,20 @@ import { Button, Checkbox, Form, InputNumber, Space, Table, Typography, message 
 import type { ColumnsType } from 'antd/es/table';
 import { adminStoreAPI } from '../../api';
 
-type ZoneRow = { suburb: string; displayName: string; feeAud: number; enabled: boolean };
+type ZoneRow = { suburb: string; displayName: string; enabled: boolean };
+type RuleRow = { id: string; minAmount: number; feeAud: number };
+
+const defaultRules = (): RuleRow[] => [
+  { id: 'rule-0', minAmount: 0, feeAud: 10 },
+  { id: 'rule-1', minAmount: 69, feeAud: 0 },
+];
 
 export function DeliveryFeesSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [freeMin, setFreeMin] = useState(69);
   const [abnNumber, setAbnNumber] = useState('');
   const [zones, setZones] = useState<ZoneRow[]>([]);
+  const [rules, setRules] = useState<RuleRow[]>(defaultRules());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -18,17 +24,21 @@ export function DeliveryFeesSettingsPage() {
       const raw = (await adminStoreAPI.getSettings()) as {
         freeShippingMinAud?: number;
         abnNumber?: string;
-        deliveryZoneFees?: { suburb?: string; displayName?: string; feeAud?: number; enabled?: boolean }[];
+        deliveryZones?: { suburb?: string; displayName?: string; enabled?: boolean }[];
+        deliveryFeeRules?: { minAmount?: number; feeAud?: number }[];
       };
-      setFreeMin(Number(raw.freeShippingMinAud) || 69);
       setAbnNumber(String(raw.abnNumber ?? ''));
-      const rows = (raw.deliveryZoneFees ?? []).map((z) => ({
+      setZones((raw.deliveryZones ?? []).map((z) => ({
         suburb: String(z.suburb ?? ''),
         displayName: String(z.displayName ?? z.suburb ?? ''),
-        feeAud: Number(z.feeAud) || 0,
         enabled: z.enabled !== false,
+      })));
+      const ruleRows = (raw.deliveryFeeRules ?? []).map((r, index) => ({
+        id: `rule-${index}`,
+        minAmount: Number(r.minAmount) || 0,
+        feeAud: Number(r.feeAud) || 0,
       }));
-      setZones(rows);
+      setRules(ruleRows.length > 0 ? ruleRows.sort((a, b) => a.minAmount - b.minAmount) : defaultRules());
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -41,12 +51,23 @@ export function DeliveryFeesSettingsPage() {
   }, [load]);
 
   const save = async () => {
+    if (rules.length === 0) {
+      message.error('Please add at least one delivery rule.');
+      return;
+    }
+    if (!rules.some((r) => r.minAmount === 0)) {
+      message.error('The first delivery rule must start at 0 AUD.');
+      return;
+    }
     setSaving(true);
     try {
       await adminStoreAPI.putSettings({
-        freeShippingMinAud: freeMin,
         abnNumber: abnNumber.trim(),
-        deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: z.feeAud, enabled: z.enabled })),
+        deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: 0, enabled: z.enabled })),
+        deliveryFeeRules: rules
+          .slice()
+          .sort((a, b) => a.minAmount - b.minAmount)
+          .map((r) => ({ minAmount: r.minAmount, feeAud: r.feeAud })),
       });
       message.success('Saved');
     } catch (e) {
@@ -56,7 +77,7 @@ export function DeliveryFeesSettingsPage() {
     }
   };
 
-  const columns: ColumnsType<ZoneRow> = [
+  const zoneColumns: ColumnsType<ZoneRow> = [
     {
       title: 'Active',
       dataIndex: 'enabled',
@@ -73,11 +94,29 @@ export function DeliveryFeesSettingsPage() {
       ),
     },
     {
-      title: 'Area',
+      title: 'Delivery area',
       dataIndex: 'displayName',
-      width: 200,
       render: (_, r) => (
         <span style={{ color: r.enabled ? undefined : '#9ca3af' }}>{r.displayName}</span>
+      ),
+    },
+  ];
+
+  const ruleColumns: ColumnsType<RuleRow> = [
+    {
+      title: 'Minimum subtotal (AUD)',
+      dataIndex: 'minAmount',
+      render: (_, r, index) => (
+        <InputNumber
+          min={0}
+          step={1}
+          value={r.minAmount}
+          onChange={(v) => {
+            const next = [...rules];
+            next[index] = { ...next[index], minAmount: Number(v) || 0 };
+            setRules(next.sort((a, b) => a.minAmount - b.minAmount));
+          }}
+        />
       ),
     },
     {
@@ -90,11 +129,25 @@ export function DeliveryFeesSettingsPage() {
           step={0.5}
           value={r.feeAud}
           onChange={(v) => {
-            const next = [...zones];
+            const next = [...rules];
             next[index] = { ...next[index], feeAud: Number(v) || 0 };
-            setZones(next);
+            setRules(next);
           }}
         />
+      ),
+    },
+    {
+      title: 'Action',
+      key: 'action',
+      render: (_, r) => (
+        <Button
+          type="link"
+          danger
+          onClick={() => setRules((prev) => prev.filter((item) => item.id !== r.id))}
+          disabled={rules.length <= 1}
+        >
+          Delete
+        </Button>
       ),
     },
   ];
@@ -105,15 +158,12 @@ export function DeliveryFeesSettingsPage() {
         Delivery fees
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        Fees apply per delivery suburb. Orders with subtotal (goods only) at or above the free-shipping minimum pay no delivery fee.
+        Keep delivery areas available while configuring tiered delivery fees based on order subtotal.
       </Typography.Paragraph>
       <Typography.Paragraph type="secondary">
-        Uncheck a suburb to make it unavailable for delivery. Only enabled suburbs can be selected at checkout.
+        The first rule must start at 0 AUD. The applicable fee is the one with the largest subtotal threshold less than or equal to the order total.
       </Typography.Paragraph>
-      <Form layout="vertical" style={{ maxWidth: 480, marginBottom: 16 }}>
-        <Form.Item label="Free shipping from subtotal (AUD)">
-          <InputNumber min={0} max={5000} value={freeMin} onChange={(v) => setFreeMin(Number(v) || 0)} style={{ width: '100%' }} />
-        </Form.Item>
+      <Form layout="vertical" style={{ maxWidth: 680, marginBottom: 16 }}>
         <Form.Item label="Store ABN">
           <input
             type="text"
@@ -123,16 +173,56 @@ export function DeliveryFeesSettingsPage() {
           />
         </Form.Item>
       </Form>
+
+      <Typography.Title level={5} style={{ marginBottom: 12 }}>
+        Delivery zones
+      </Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Uncheck a suburb to disable delivery there. Only enabled suburbs will appear at checkout.
+      </Typography.Paragraph>
       <Table<ZoneRow>
         rowKey="suburb"
         loading={loading}
-        columns={columns}
+        columns={zoneColumns}
         dataSource={zones}
         pagination={false}
         size="small"
         scroll={{ x: 'max-content' }}
+        style={{ maxWidth: '100%', marginBottom: 24 }}
+      />
+
+      <Typography.Title level={5} style={{ marginBottom: 12 }}>
+        Delivery fee rules
+      </Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Add tiered fees such as “0 AUD subtotal → 15 AUD delivery” and “50 AUD subtotal → 10 AUD delivery”.
+      </Typography.Paragraph>
+      <Table<RuleRow>
+        rowKey="id"
+        loading={loading}
+        columns={ruleColumns}
+        dataSource={rules}
+        pagination={false}
+        size="small"
         style={{ maxWidth: '100%', marginBottom: 16 }}
       />
+      <Space style={{ marginBottom: 24 }}>
+        <Button
+          onClick={() =>
+            setRules((prev) => [
+              ...prev,
+              {
+                id: `rule-${Date.now()}`,
+                minAmount: prev.length > 0 ? Math.max(...prev.map((r) => r.minAmount)) + 1 : 0,
+                feeAud: 0,
+              },
+            ])
+          }
+        >
+          Add rule
+        </Button>
+      </Space>
+
       <Space>
         <Button type="primary" onClick={save} loading={saving}>
           Save

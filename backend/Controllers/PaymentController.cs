@@ -17,6 +17,7 @@ namespace igaServer.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IResendEmailService _resendEmail;
         private readonly ITelegramNotificationService _telegram;
+        private readonly StripeWebhookProcessor _webhookProcessor;
         private readonly ILogger<PaymentController> _logger;
 
         public PaymentController(
@@ -25,6 +26,7 @@ namespace igaServer.Controllers
             ApplicationDbContext context,
             IResendEmailService resendEmail,
             ITelegramNotificationService telegram,
+            StripeWebhookProcessor webhookProcessor,
             ILogger<PaymentController> logger)
         {
             _stripeService = stripeService;
@@ -32,6 +34,7 @@ namespace igaServer.Controllers
             _context = context;
             _resendEmail = resendEmail;
             _telegram = telegram;
+            _webhookProcessor = webhookProcessor;
             _logger = logger;
         }
 
@@ -363,206 +366,13 @@ namespace igaServer.Controllers
         /// 4. 可选：发送确认邮件/Telegram 通知
         /// </summary>
         [HttpPost("webhook")]
-        public async Task<IActionResult> Webhook()
+        public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
         {
-            var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-            var sigHeader = Request.Headers["Stripe-Signature"];
-            var webhookSecret = _configuration["Stripe:WebhookSecret"];
-
-            if (string.IsNullOrEmpty(webhookSecret))
-            {
-                return BadRequest(new { error = "Webhook secret not configured" });
-            }
-
-            try
-            {
-                var stripeEvent = EventUtility.ConstructEvent(json, sigHeader, webhookSecret);
-
-                // Stripe 会重试同一事件：已处理则直接 200，避免重复改单
-                if (await _context.StripeProcessedEvents.AnyAsync(e => e.Id == stripeEvent.Id))
-                    return Ok();
-
-                // === 处理支付成功事件 ===
-                if (stripeEvent.Type == "checkout.session.completed")
-                {
-                    var session = stripeEvent.Data.Object as Session;
-
-                    if (session == null)
-                        return BadRequest(new { error = "Invalid session object" });
-
-                    if (!int.TryParse(session.ClientReferenceId, out int orderId))
-                        return BadRequest(new { error = "Invalid order ID in session" });
-
-                    var order = await _context.Orders.FindAsync(orderId);
-                    if (order == null)
-                        return BadRequest(new { error = $"Order {orderId} not found" });
-
-                    var wasAlreadyPaid = string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-                    if (!wasAlreadyPaid)
-                    {
-                        order.OrderStatus = "Paid";
-                        order.StripePaymentIntentId = session.PaymentIntentId;
-                    }
-
-                    var invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(
-                        session,
-                        order.StripeSessionId ?? session.Id);
-                    if (!string.IsNullOrWhiteSpace(invoiceId))
-                        order.StripeInvoiceId = invoiceId;
-
-                    _context.Orders.Update(order);
-
-                    _context.StripeProcessedEvents.Add(new StripeProcessedEvent
-                    {
-                        Id = stripeEvent.Id,
-                        ProcessedAtUtc = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
-
-                    if (!wasAlreadyPaid)
-                    {
-                        try
-                        {
-                            await OrderPaidNotifier.TryNotifyPickupEmailAsync(
-                                _context,
-                                _resendEmail,
-                                orderId,
-                                _logger,
-                                session.CustomerDetails?.Email ?? session.CustomerEmail,
-                                _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Webhook] 取件码邮件发送失败 order {OrderId}", orderId);
-                        }
-
-                        try
-                        {
-                            await _telegram.NotifyOrderPaidAsync(orderId, HttpContext.RequestAborted);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Webhook] Telegram paid-order notification failed order {OrderId}", orderId);
-                        }
-                    }
-
-                    return Ok();
-                }
-
-                // === 处理异步支付成功（ACH 等延迟支付方式） ===
-                if (stripeEvent.Type == "checkout.session.async_payment_succeeded")
-                {
-                    var session = stripeEvent.Data.Object as Session;
-                    if (session == null)
-                    {
-                        _context.StripeProcessedEvents.Add(new StripeProcessedEvent
-                        {
-                            Id = stripeEvent.Id,
-                            ProcessedAtUtc = DateTime.UtcNow
-                        });
-                        await _context.SaveChangesAsync();
-                        return Ok();
-                    }
-
-                    if (!int.TryParse(session.ClientReferenceId, out int orderId))
-                        return BadRequest();
-
-                    var order = await _context.Orders.FindAsync(orderId);
-                    var wasAlreadyPaid = order != null && string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-                    if (order != null && !wasAlreadyPaid)
-                    {
-                        order.OrderStatus = "Paid";
-                        if (string.IsNullOrEmpty(order.StripePaymentIntentId) && !string.IsNullOrEmpty(session.PaymentIntentId))
-                            order.StripePaymentIntentId = session.PaymentIntentId;
-                    }
-
-                    if (order != null)
-                    {
-                        var invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(
-                            session,
-                            order.StripeSessionId ?? session.Id);
-                        if (!string.IsNullOrWhiteSpace(invoiceId))
-                            order.StripeInvoiceId = invoiceId;
-                        _context.Orders.Update(order);
-                    }
-
-                    _context.StripeProcessedEvents.Add(new StripeProcessedEvent
-                    {
-                        Id = stripeEvent.Id,
-                        ProcessedAtUtc = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
-
-                    if (order != null && !wasAlreadyPaid)
-                    {
-                        try
-                        {
-                            await OrderPaidNotifier.TryNotifyPickupEmailAsync(
-                                _context,
-                                _resendEmail,
-                                orderId,
-                                _logger,
-                                session.CustomerDetails?.Email ?? session.CustomerEmail,
-                                _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Webhook] async 取件码邮件发送失败 order {OrderId}", orderId);
-                        }
-
-                        try
-                        {
-                            await _telegram.NotifyOrderPaidAsync(orderId, HttpContext.RequestAborted);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Webhook] async Telegram paid-order notification failed order {OrderId}", orderId);
-                        }
-                    }
-
-                    return Ok();
-                }
-
-                // === 处理异步支付失败 ===
-                if (stripeEvent.Type == "checkout.session.async_payment_failed")
-                {
-                    var session = stripeEvent.Data.Object as Session;
-                    if (session == null)
-                    {
-                        _context.StripeProcessedEvents.Add(new StripeProcessedEvent
-                        {
-                            Id = stripeEvent.Id,
-                            ProcessedAtUtc = DateTime.UtcNow
-                        });
-                        await _context.SaveChangesAsync();
-                        return Ok();
-                    }
-
-                    if (!int.TryParse(session.ClientReferenceId, out int orderId))
-                        return BadRequest();
-
-                    var order = await _context.Orders.FindAsync(orderId);
-                    if (order != null)
-                    {
-                        order.OrderStatus = "Pending";
-                        _context.Orders.Update(order);
-                    }
-
-                    _context.StripeProcessedEvents.Add(new StripeProcessedEvent
-                    {
-                        Id = stripeEvent.Id,
-                        ProcessedAtUtc = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
-                    return Ok();
-                }
-
-                return Ok();
-            }
-            catch (StripeException ex)
-            {
-                return BadRequest(new { error = $"Webhook error: {ex.Message}" });
-            }
+            using var reader = new StreamReader(Request.Body);
+            var json = await reader.ReadToEndAsync(cancellationToken);
+            var sig = Request.Headers["Stripe-Signature"].ToString();
+            var (status, body) = await _webhookProcessor.ProcessAsync(json, sig, cancellationToken);
+            return body == null ? StatusCode(status) : StatusCode(status, body);
         }
     }
 }
