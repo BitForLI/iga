@@ -50,7 +50,12 @@ public class StripeWebhookProcessor
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ConstructEvent(json, stripeSignatureHeader, webhookSecret);
+            // Dashboard 端点 API 版本常比 SDK 新（如 dahlia vs clover）；仍校验签名，放宽版本校验以免 400。
+            stripeEvent = EventUtility.ConstructEvent(
+                json,
+                stripeSignatureHeader,
+                webhookSecret,
+                throwOnApiVersionMismatch: false);
         }
         catch (StripeException ex)
         {
