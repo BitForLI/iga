@@ -31,7 +31,7 @@ namespace IGA.Services
             if (string.IsNullOrEmpty(webhookSecret)) return false;
             try
             {
-                var stripeEvent = EventUtility.ConstructEvent(payload, sigHeader, webhookSecret);
+                var stripeEvent = EventUtility.ConstructEvent(payload, sigHeader, webhookSecret, throwOnApiVersionMismatch: false);
                 return await Task.FromResult(stripeEvent != null);
             }
             catch
