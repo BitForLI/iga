@@ -17,6 +17,7 @@ const CATEGORY_OPTIONS = [
   { value: 'Drink', label: 'Drink' },
   { value: 'Dairy', label: 'Dairy' },
   { value: 'Meat', label: 'Meat' },
+  { value: 'Seafood', label: 'Seafood' },
   { value: 'Bakery', label: 'Bakery' },
   { value: 'Pantry', label: 'Pantry' },
 ];

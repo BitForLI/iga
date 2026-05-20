@@ -108,6 +108,7 @@ const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
   { label: 'Drink', value: 'Drink', icon: drinkCategoryIcon },
   { label: 'Dairy', value: 'Dairy', icon: dairyCategoryIcon },
   { label: 'Meat', value: 'Meat', icon: meatCategoryIcon },
+  { label: 'Seafood', value: 'Seafood' },
   { label: 'Bakery', value: 'Bakery', icon: bakeryCategoryIcon },
   { label: 'Pantry', value: 'Pantry', icon: pantryCategoryIcon },
 ];
