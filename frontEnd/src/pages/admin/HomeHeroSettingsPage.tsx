@@ -67,11 +67,6 @@ export function HomeHeroSettingsPage() {
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         Home hero carousel
       </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        Up to 6 images. New uploads are stored in the database (backup the DB and images survive redeploys without an
-        uploads volume). Click Save after changes. You can still use https links or legacy /uploads/ paths. Use wide
-        landscape photos for best results.
-      </Typography.Paragraph>
       <Space wrap style={{ marginBottom: 16, width: '100%' }}>
         <Upload {...uploadProps} accept="image/*">
           <Button icon={<PlusOutlined />} loading={loading}>

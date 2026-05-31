@@ -157,12 +157,6 @@ export function DeliveryFeesSettingsPage() {
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         Delivery fees
       </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        Keep delivery areas available while configuring tiered delivery fees based on order subtotal.
-      </Typography.Paragraph>
-      <Typography.Paragraph type="secondary">
-        The first rule must start at 0 AUD. The applicable fee is the one with the largest subtotal threshold less than or equal to the order total.
-      </Typography.Paragraph>
       <Form layout="vertical" style={{ maxWidth: 680, marginBottom: 16 }}>
         <Form.Item label="Store ABN">
           <input
@@ -177,9 +171,6 @@ export function DeliveryFeesSettingsPage() {
       <Typography.Title level={5} style={{ marginBottom: 12 }}>
         Delivery zones
       </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        Uncheck a suburb to disable delivery there. Only enabled suburbs will appear at checkout.
-      </Typography.Paragraph>
       <Table<ZoneRow>
         rowKey="suburb"
         loading={loading}
@@ -194,9 +185,6 @@ export function DeliveryFeesSettingsPage() {
       <Typography.Title level={5} style={{ marginBottom: 12 }}>
         Delivery fee rules
       </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        Add tiered fees such as “0 AUD subtotal → 15 AUD delivery” and “50 AUD subtotal → 10 AUD delivery”.
-      </Typography.Paragraph>
       <Table<RuleRow>
         rowKey="id"
         loading={loading}

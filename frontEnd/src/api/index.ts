@@ -111,7 +111,7 @@ export const adminProductAPI = {
   },
   /** 编辑前拉取完整商品（含 costPrice） */
   getById: (id: number) => apiClient.get(`/admin/products/${id}`),
-  /** 本地上传商品图，返回 { url: "/uploads/products/..." } */
+  /** 上传商品图到数据库，返回 { url: "/api/product/image/{id}" } */
   uploadProductImage: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
