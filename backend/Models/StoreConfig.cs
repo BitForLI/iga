@@ -26,6 +26,7 @@ namespace igaServer.Models
         // 对应功能：电子收据上的商家信息
         public string StoreName { get; set; } = "IGA Local";
         public string AbnNumber { get; set; } // 澳洲税务要求
+        public string? PhoneNumber { get; set; } // 门店电话
 
         // --- 通知设置 ---
         // 对应功能：Telegram 推送

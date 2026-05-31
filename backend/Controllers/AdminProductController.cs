@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 using System.Text.Json;
 using Stripe;
 using Stripe.Checkout;
@@ -19,7 +19,6 @@ namespace igaServer.Controllers
     public class AdminProductController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _configuration;
         private readonly IStripeService _stripeService;
         private readonly IResendEmailService _resendEmail;
@@ -27,14 +26,12 @@ namespace igaServer.Controllers
 
         public AdminProductController(
             ApplicationDbContext context,
-            IWebHostEnvironment env,
             IConfiguration configuration,
             IStripeService stripeService,
             IResendEmailService resendEmail,
             ILogger<AdminProductController> logger)
         {
             _context = context;
-            _env = env;
             _configuration = configuration;
             _stripeService = stripeService;
             _resendEmail = resendEmail;
@@ -650,7 +647,7 @@ namespace igaServer.Controllers
             return Ok(p);
         }
 
-        /// <summary>上传商品图片（保存到 wwwroot/uploads/products，返回相对路径 URL）</summary>
+        /// <summary>上传商品图片（保存到数据库，返回可直接访问的 /api/product/image/{id}）</summary>
         [HttpPost("products/upload-image")]
         [RequestSizeLimit(5 * 1024 * 1024)]
         public async Task<IActionResult> UploadProductImage(IFormFile? file)
@@ -667,22 +664,37 @@ namespace igaServer.Controllers
             if (file.Length > 5 * 1024 * 1024)
                 return BadRequest(new { error = "File size must not exceed 5MB" });
 
-            var webRoot = _env.WebRootPath;
-            if (string.IsNullOrEmpty(webRoot))
-                return StatusCode(500, new { error = "Web root path is not configured" });
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            if (bytes.Length == 0)
+                return BadRequest(new { error = "No file uploaded" });
+            if (bytes.Length > 5 * 1024 * 1024)
+                return BadRequest(new { error = "File size must not exceed 5MB" });
 
-            var uploadDir = Path.Combine(webRoot, "uploads", "products");
-            Directory.CreateDirectory(uploadDir);
-
-            var fileName = $"{Guid.NewGuid():N}{ext}";
-            var savePath = Path.Combine(uploadDir, fileName);
-            await using (var stream = System.IO.File.Create(savePath))
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? ContentTypeFromImageExtension(ext) : file.ContentType.Trim();
+            var id = Guid.NewGuid();
+            _context.ProductImages.Add(new ProductImage
             {
-                await file.CopyToAsync(stream);
-            }
+                Id = id,
+                ImageBytes = bytes,
+                ContentType = contentType,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+            await _context.SaveChangesAsync();
 
-            var url = $"/uploads/products/{fileName}";
+            var url = $"/api/product/image/{id:D}";
             return Ok(new { url });
         }
+
+        private static string ContentTypeFromImageExtension(string ext) =>
+            ext switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                _ => "application/octet-stream",
+            };
     }
 }

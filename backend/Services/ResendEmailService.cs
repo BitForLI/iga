@@ -176,63 +176,86 @@ public class ResendEmailService : IResendEmailService
         decimal chargedTotalAud,
         decimal? finalTotalAud,
         string? deliveryAddress,
-        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal)> lines,
+        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal, double ExpectedWeight, double? ActualWeight)> lines,
         string storeName,
         string? abn,
+        string? storePhone,
+        string? storeAddress,
         CancellationToken cancellationToken = default)
     {
-        var isPickup = string.Equals(orderType, "Pickup", StringComparison.OrdinalIgnoreCase);
         var subject = $"{storeName} — receipt for order #{orderId}";
-        var when = $"{pickedUpAtUtc:yyyy-MM-dd HH:mm} UTC";
-        var fulfillment = isPickup
-            ? $"<p><strong>Fulfilment:</strong> Pickup completed on {System.Net.WebUtility.HtmlEncode(when)}.</p>"
-            : $"<p><strong>Fulfilment:</strong> Delivery completed on {System.Net.WebUtility.HtmlEncode(when)}.</p>" +
-              (string.IsNullOrWhiteSpace(deliveryAddress)
-                  ? ""
-                  : $"<p><strong>Delivery address:</strong> {System.Net.WebUtility.HtmlEncode(deliveryAddress.Trim())}</p>");
+        var saleTime = pickedUpAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
+        var invoiceTotal = finalTotalAud ?? chargedTotalAud;
+        var totalItems = lines.Sum(l => l.Quantity);
 
-        var rows = new StringBuilder();
-        rows.Append(
-            "<table style=\"border-collapse:collapse;width:100%;max-width:560px;font-size:14px;\">" +
-            "<thead><tr style=\"border-bottom:2px solid #e5e7eb;text-align:left;\">" +
-            "<th style=\"padding:8px 6px;\">Item</th><th style=\"padding:8px 6px;\">Qty</th>" +
-            "<th style=\"padding:8px 6px;\">Unit</th><th style=\"padding:8px 6px;text-align:right;\">Line</th></tr></thead><tbody>");
+        var safeStoreName = System.Net.WebUtility.HtmlEncode(storeName.ToUpperInvariant());
+        var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {System.Net.WebUtility.HtmlEncode(abn)}";
+        var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {System.Net.WebUtility.HtmlEncode(storePhone.Trim())}";
+        var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : System.Net.WebUtility.HtmlEncode(storeAddress.Trim()).ToUpperInvariant();
+        var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {System.Net.WebUtility.HtmlEncode(deliveryAddress.Trim())}";
+        var safeCustomerName = System.Net.WebUtility.HtmlEncode(customerName);
+
+        var receipt = new StringBuilder();
+        receipt.AppendLine("<div style=\"font-family:Menlo,Consolas,monospace;white-space:pre-wrap;line-height:1.3;max-width:560px;\">");
+        receipt.AppendLine("* TAX INVOICE *");
+        receipt.AppendLine(safeStoreName);
+        if (!string.IsNullOrEmpty(safePhone))
+        {
+            receipt.AppendLine(safePhone);
+        }
+        if (!string.IsNullOrEmpty(safeStoreAddress))
+        {
+            receipt.AppendLine(safeStoreAddress);
+        }
+        if (!string.IsNullOrEmpty(safeAbn))
+        {
+            receipt.AppendLine(safeAbn);
+        }
+        receipt.AppendLine();
+        receipt.AppendLine($"SALE Tx# {orderId}  {saleTime}");
+        if (!string.IsNullOrEmpty(safeDelivery))
+        {
+            receipt.AppendLine(safeDelivery);
+        }
+        receipt.AppendLine();
+
         foreach (var line in lines)
         {
-            rows.Append("<tr style=\"border-bottom:1px solid #f1f5f9;\">");
-            rows.Append($"<td style=\"padding:8px 6px;\">{System.Net.WebUtility.HtmlEncode(line.ProductName)}</td>");
-            rows.Append($"<td style=\"padding:8px 6px;\">{line.Quantity}</td>");
-            rows.Append($"<td style=\"padding:8px 6px;\">{Currency} ${line.UnitPrice:0.00}</td>");
-            rows.Append($"<td style=\"padding:8px 6px;text-align:right;\">{Currency} ${line.LineTotal:0.00}</td>");
-            rows.Append("</tr>");
+            var productName = System.Net.WebUtility.HtmlEncode(line.ProductName);
+            receipt.AppendLine(productName);
+
+            if (line.ExpectedWeight > 0)
+            {
+                var weight = line.ActualWeight ?? line.ExpectedWeight;
+                receipt.AppendLine($"weight: {weight:0.##}kg @ {Currency} ${line.UnitPrice:0.00} per kg");
+            }
+            else
+            {
+                receipt.AppendLine($"quantity: {line.Quantity} @ {Currency} ${line.UnitPrice:0.00} each");
+            }
+
+            receipt.AppendLine($"{Currency} ${line.LineTotal:0.00}".PadLeft(40));
+            receipt.AppendLine();
         }
 
-        rows.Append("</tbody></table>");
-
-        var invoiceTotal = finalTotalAud ?? chargedTotalAud;
-        var gstAmount = Math.Round(invoiceTotal / 11m, 2);
-        var totals = $"<p style=\"margin-top:16px;\"><strong>Charged at checkout:</strong> {Currency} ${chargedTotalAud:0.00}</p>";
-        if (finalTotalAud.HasValue && finalTotalAud.Value != chargedTotalAud)
-            totals += $"<p><strong>Adjusted total (e.g. weighed goods):</strong> {Currency} ${finalTotalAud.Value:0.00}</p>";
-        totals += $"<p><strong>GST included:</strong> {Currency} ${gstAmount:0.00}</p>";
-
-        var abnLine = string.IsNullOrWhiteSpace(abn)
-            ? ""
-            : $"<p style=\"color:#64748b;font-size:13px;\"><strong>ABN:</strong> {System.Net.WebUtility.HtmlEncode(abn)}</p>";
+        receipt.AppendLine($"{("Total for " + totalItems + " items:").PadRight(28)}{Currency} ${invoiceTotal:0.00}");
+        receipt.AppendLine($"{("Cheque:").PadRight(28)}{Currency} ${invoiceTotal:0.00}");
+        receipt.AppendLine($"{("CHANGE:").PadRight(28)}{Currency} $0.00");
+        receipt.AppendLine();
+        receipt.AppendLine("STORE: 1  REGISTER: 2");
+        receipt.AppendLine("* - Denotes Taxable Item");
+        receipt.AppendLine("** - Denotes Manual Weight Entry");
+        receipt.AppendLine("TRADING HOURS");
+        receipt.AppendLine("MON-FRI 7AM - 8PM");
+        receipt.AppendLine("SAT 8AM - 6PM");
+        receipt.AppendLine("SUN 9AM - 6PM");
+        receipt.AppendLine("</div>");
 
         var html =
             $"""
-            <p>Hi {System.Net.WebUtility.HtmlEncode(customerName)},</p>
-            <p>Thank you for shopping at <strong>{System.Net.WebUtility.HtmlEncode(storeName)}</strong>.</p>
-            <p>Below is your receipt for <strong>order #{orderId}</strong> (payment was completed earlier at checkout).</p>
-            {fulfillment}
-            {rows}
-            {totals}
-            {abnLine}
-            <p style="color:#64748b;font-size:13px;margin-top:20px;">
-            Card payments were processed by Stripe. You may also have received Stripe&rsquo;s own payment receipt at the time of purchase; please keep this email for your records.
-            </p>
-            <p style="color:#64748b;font-size:13px;">This message was sent automatically. If you have questions, reply to the store using the contact details on our website.</p>
+            <p>Hi {safeCustomerName},</p>
+            <p>Thank you for shopping at <strong>{safeStoreName}</strong>. Your receipt is shown below.</p>
+            {receipt}
             """;
 
         return await SendEmailAsync(toEmail, subject, html, cancellationToken);

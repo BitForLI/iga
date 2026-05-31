@@ -57,6 +57,8 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
 
         string storeName;
         string? abn;
+        string? storePhone;
+        string storeAddress;
         List<int> orderIds;
 
         using (var scope = _scopeFactory.CreateScope())
@@ -65,6 +67,8 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
             var store = await db.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync(stoppingToken);
             storeName = string.IsNullOrWhiteSpace(store?.StoreName) ? "IGA Beverly Hills" : store!.StoreName.Trim();
             abn = store?.AbnNumber?.Trim();
+            storePhone = store?.PhoneNumber?.Trim();
+            storeAddress = _configuration["Store:PickupAddress"]?.Trim() ?? "IGA Beverly Hills";
 
             orderIds = await db.Orders
                 .AsNoTracking()
@@ -85,7 +89,7 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
         foreach (var orderId in orderIds)
         {
             stoppingToken.ThrowIfCancellationRequested();
-            await TrySendForOrderAsync(orderId, days, storeName, abn, stoppingToken);
+            await TrySendForOrderAsync(orderId, days, storeName, abn, storePhone, storeAddress, stoppingToken);
         }
     }
 
@@ -94,6 +98,8 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
         int daysAfterCompletion,
         string storeName,
         string? abn,
+        string? storePhone,
+        string storeAddress,
         CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -141,7 +147,9 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
                     ProductName: i.ProductName ?? $"Item #{i.Id}",
                     Quantity: i.Quantity,
                     UnitPrice: i.PriceAtPurchase,
-                    LineTotal: ComputeLineTotal(i)))
+                    LineTotal: ComputeLineTotal(i),
+                    ExpectedWeight: i.ExpectedWeight,
+                    ActualWeight: i.ActualWeight))
                 .ToList();
 
             var pickedUpUtc = order.PickedUpAt!.Value;
@@ -158,14 +166,16 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
                 lines,
                 storeName,
                 abn,
+                storePhone,
+                storeAddress,
                 ct);
 
-                if (!sent)
-                {
-                    await tx.RollbackAsync(ct);
-                    _logger.LogWarning("[CompletionReceipt] Receipt email failed for order {OrderId}; will retry later", orderId);
-                    return;
-                }
+            if (!sent)
+            {
+                await tx.RollbackAsync(ct);
+                _logger.LogWarning("[CompletionReceipt] Receipt email failed for order {OrderId}; will retry later", orderId);
+                return;
+            }
         }
 
         order.CompletionInvoiceSentAt = DateTime.UtcNow;

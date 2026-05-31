@@ -58,8 +58,10 @@ public interface IResendEmailService
         decimal chargedTotalAud,
         decimal? finalTotalAud,
         string? deliveryAddress,
-        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal)> lines,
+        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal, double ExpectedWeight, double? ActualWeight)> lines,
         string storeName,
         string? abn,
+        string? storePhone,
+        string? storeAddress,
         CancellationToken cancellationToken = default);
 }

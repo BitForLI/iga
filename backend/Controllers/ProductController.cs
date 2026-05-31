@@ -78,6 +78,20 @@ namespace igaServer.Controllers
             return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg });
         }
 
+        // 3. 读取数据库存储商品图片
+        // GET: api/product/image/{id}
+        [HttpGet("image/{id:guid}")]
+        public async Task<IActionResult> GetProductImage(Guid id)
+        {
+            var image = await _context.ProductImages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+            if (image == null)
+            {
+                return NotFound();
+            }
+
+            return File(image.ImageBytes, image.ContentType);
+        }
+
         // ==========================================
         // 🔧 商家端后台功能 (Merchant Backend)
         // ==========================================
