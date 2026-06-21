@@ -114,7 +114,7 @@ function productMatchesSearchKeyword(p: Product, rawKeyword: string): boolean {
 
 /** Aligned with admin product categories; empty value = all products */
 const HOME_CATEGORIES: { label: string; value: string; icon?: string }[] = [
-  { label: 'All Products', value: '' },
+  { label: 'All Products', value: 'all' },
   { label: 'Special', value: 'Special', icon: specialCategoryIcon },
   { label: 'Recommended', value: 'Recommended', icon: recommendedCategoryIcon },
   { label: 'Vegetables', value: 'Vegetables', icon: vegetableIcon },
@@ -162,13 +162,12 @@ function CategoryChipButton({
   chipMinWidthPx: number;
   rowLayout: 'equal' | 'intrinsic';
 }) {
-  const isSelected = cat.value === '' ? !selectedCategory : selectedCategory === cat.value;
+  const isSelected = selectedCategory === cat.value;
   return (
     <button
       type="button"
       onClick={() => {
-        if (cat.value === '') onSelectCategory('');
-        else onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
+        onSelectCategory(selectedCategory === cat.value ? '' : cat.value);
       }}
       style={{
         display: 'flex',
@@ -479,7 +478,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
   }, []);
 
   const filtered = products.filter((p) => {
-    const matchCategory = !selectedCategory || p.category === selectedCategory;
+    const matchCategory = !selectedCategory || selectedCategory === 'all' || p.category === selectedCategory;
     const kw = searchKeyword.trim();
     if (!kw) return matchCategory;
     return matchCategory && productMatchesSearchKeyword(p, kw);
