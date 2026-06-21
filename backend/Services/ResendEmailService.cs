@@ -337,28 +337,37 @@ public class ResendEmailService : IResendEmailService
     {
         using var stream = new MemoryStream();
 
+        // Strip leading "IGA " prefix from store name
+        var displayStoreName = storeName.Trim().ToUpperInvariant();
+        if (displayStoreName.StartsWith("IGA ", StringComparison.Ordinal))
+            displayStoreName = displayStoreName[4..].TrimStart();
+
         var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {abn.Trim()}";
         var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {storePhone.Trim()}";
         var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : storeAddress.Trim().ToUpperInvariant();
         var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {deliveryAddress.Trim()}";
 
-        // Tuple: Text, Bold, FontSize, SeparatorBefore, Align ("center"/"left"/"right")
-        var receiptLines = new List<(string Text, bool Bold, float FontSize, bool SeparatorBefore, string Align)>();
-        void AddLine(string text, bool bold = false, float fontSize = 9f, bool separatorBefore = false, string align = "center") =>
-            receiptLines.Add((text, bold, fontSize, separatorBefore, align));
+        // Tuple: Text, Bold, FontSize, SeparatorBefore, Align, RightText (non-null = two-column row)
+        var receiptLines = new List<(string Text, bool Bold, float FontSize, bool SeparatorBefore, string Align, string? RightText)>();
+        void AddLine(string text, bool bold = false, float fontSize = 9f, bool separatorBefore = false, string align = "center", string? rightText = null) =>
+            receiptLines.Add((text, bold, fontSize, separatorBefore, align, rightText));
 
+        // Header
         AddLine("* TAX INVOICE *", bold: true, fontSize: 11f);
+        AddLine(string.Empty);
+        AddLine(displayStoreName, bold: true, fontSize: 10f);
         if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone);
         if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress);
-        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn);
         AddLine(string.Empty);
-        AddLine($"SALE    Tx# {orderId}  {saleTime}", bold: true, fontSize: 8.5f);
+        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn, fontSize: 8f);
+        AddLine(string.Empty);
+        AddLine($"SALE    Tx# {orderId}  {saleTime}", fontSize: 8f, separatorBefore: true);
         if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery, align: "left");
-        AddLine(string.Empty);
 
+        // Products — name + line total on same row, no blank line between products
         foreach (var line in lines)
         {
-            AddLine(line.ProductName, bold: true, align: "left");
+            AddLine(line.ProductName, bold: true, align: "left", rightText: $"{line.LineTotal:0.00}");
 
             if (line.ExpectedWeight > 0)
             {
@@ -369,15 +378,13 @@ public class ResendEmailService : IResendEmailService
             {
                 AddLine($"  {line.Quantity} x ${line.UnitPrice:0.00}", align: "left");
             }
-
-            AddLine($"${line.LineTotal:0.00}", align: "right");
-            AddLine(string.Empty);
         }
 
-        var totalLabel = $"Total for {totalItems} items:";
-        AddLine($"{totalLabel.PadRight(22)}${invoiceTotal:0.00}", align: "left");
-        AddLine($"{"Cheque:".PadRight(22)}${invoiceTotal:0.00}", align: "left");
-        AddLine($"{"CHANGE:".PadRight(22)}$0.00", align: "left");
+        // Totals — two-column with separator
+        AddLine($"Total for {totalItems} items:", separatorBefore: true, align: "left", rightText: $"${invoiceTotal:0.00}");
+        AddLine("Cheque:", align: "left", rightText: $"${invoiceTotal:0.00}");
+        AddLine("CHANGE:", align: "left", rightText: "$0.00");
+
         AddLine(string.Empty);
         AddLine("STORE: 1  REGISTER: 2", separatorBefore: true);
         AddLine("* Denotes Taxable Item");
@@ -412,17 +419,31 @@ public class ResendEmailService : IResendEmailService
                             column.Item().PaddingTop(4).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                         }
 
-                        column.Item().Element(item =>
+                        if (line.RightText != null)
                         {
-                            var text = line.Align switch
+                            // Two-column: label on left, value on right
+                            column.Item().Row(row =>
                             {
-                                "left" => item.Text(line.Text).FontSize(line.FontSize).AlignLeft(),
-                                "right" => item.Text(line.Text).FontSize(line.FontSize).AlignRight(),
-                                _ => item.Text(line.Text).FontSize(line.FontSize).AlignCenter(),
-                            };
-                            if (line.Bold)
-                                text.SemiBold();
-                        });
+                                var leftText = row.RelativeItem().Text(line.Text).FontSize(line.FontSize).AlignLeft();
+                                if (line.Bold) leftText.SemiBold();
+
+                                var rightText = row.AutoItem().Text(line.RightText).FontSize(line.FontSize).AlignRight();
+                                if (line.Bold) rightText.SemiBold();
+                            });
+                        }
+                        else
+                        {
+                            column.Item().Element(item =>
+                            {
+                                var text = line.Align switch
+                                {
+                                    "left" => item.Text(line.Text).FontSize(line.FontSize).AlignLeft(),
+                                    "right" => item.Text(line.Text).FontSize(line.FontSize).AlignRight(),
+                                    _ => item.Text(line.Text).FontSize(line.FontSize).AlignCenter(),
+                                };
+                                if (line.Bold) text.SemiBold();
+                            });
+                        }
                     }
                 });
             });
