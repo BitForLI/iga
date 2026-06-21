@@ -266,6 +266,15 @@ export function ProductFormModal({
           <Input placeholder="Enter product name" />
         </Form.Item>
 
+        <Form.Item name="description" label="Description (optional)">
+          <Input.TextArea
+            placeholder="e.g. Organic, farm fresh, 500g pack..."
+            autoSize={{ minRows: 2, maxRows: 4 }}
+            maxLength={200}
+            showCount
+          />
+        </Form.Item>
+
         <Form.Item label="Product image">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Upload

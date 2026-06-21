@@ -59,7 +59,7 @@ namespace igaServer.Controllers
 
             // 顾客端不暴露成本价，仅返回卖价等字段
             var items = await query
-                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.UnitPriceOptionsJson, p.IsActive, p.IsWeighingRequired, p.DefaultExpectedWeightKg })
+                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.UnitPriceOptionsJson, p.IsActive, p.IsWeighingRequired, p.DefaultExpectedWeightKg, p.Description })
                 .ToListAsync();
             return Ok(items);
         }
@@ -76,7 +76,7 @@ namespace igaServer.Controllers
                 return NotFound();
             }
 
-            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.UnitPriceOptionsJson, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg });
+            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.UnitPriceOptionsJson, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg, product.Description });
         }
 
         // 3. 读取数据库存储商品图片

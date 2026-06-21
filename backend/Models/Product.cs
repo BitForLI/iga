@@ -42,5 +42,8 @@ namespace igaServer.Models
 
         /// <summary>称重商品：顾客端默认预估重量（kg），用于展示预估价与加购初值。</summary>
         public double DefaultExpectedWeightKg { get; set; }
+
+        /// <summary>商品描述信息（顾客端小字显示）</summary>
+        public string? Description { get; set; }
     }
 }
