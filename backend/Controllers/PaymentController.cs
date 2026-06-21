@@ -98,7 +98,7 @@ namespace igaServer.Controllers
 
             foreach (var item in order.Items)
             {
-                var isWeighed = item.Product?.IsWeighingRequired == true;
+                var isWeighed = item.ExpectedWeight > 0;
                 decimal lineTotal;
                 long stripeQty;
                 long unitCents;
@@ -141,7 +141,7 @@ namespace igaServer.Controllers
             if (order.OrderType == "Delivery")
             {
                 var itemsTotal = order.Items.Sum(i =>
-                    i.Product?.IsWeighingRequired == true
+                    i.ExpectedWeight > 0
                         ? i.PriceAtPurchase * (decimal)i.ExpectedWeight
                         : i.PriceAtPurchase * i.Quantity);
                 var deliveryFee = order.TotalAmount - itemsTotal;

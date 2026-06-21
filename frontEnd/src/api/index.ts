@@ -51,7 +51,9 @@ export const storePublicAPI = {
 export const adminStoreAPI = {
   getSettings: () => apiClient.get<unknown>('/admin/store/settings'),
   putSettings: (body: {
-    abnNumber?: string;
+    storeName?: string;
+    phoneNumber?: string;
+    storeAddress?: string;
     deliveryZoneFees?: { suburb: string; feeAud: number; enabled?: boolean }[];
     deliveryFeeRules?: { minAmount: number; feeAud: number }[];
     homeCarouselImageUrls?: string[];

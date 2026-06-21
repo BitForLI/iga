@@ -5,6 +5,7 @@ export interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  selectedUnit?: string;
   imageUrl?: string;
   /** 称重商品：预估 kg；非称重勿设 */
   isWeighingRequired?: boolean;
@@ -14,7 +15,7 @@ export interface CartItem {
 function lineAmount(item: CartItem): number {
   const p = Number(item.price);
   const priceOk = Number.isFinite(p) ? p : 0;
-  if (item.isWeighingRequired) {
+  if (item.isWeighingRequired || item.selectedUnit?.toLowerCase() === 'kg') {
     const w = Number(item.expectedWeightKg);
     return priceOk * (Number.isFinite(w) && w > 0 ? w : 0);
   }
@@ -49,6 +50,9 @@ function parseCartFromStorage(raw: string | null): CartItem[] {
         const qty = Number(x.quantity ?? x.Quantity);
         if (!Number.isFinite(productId) || productId <= 0) return null;
         const isWeighing = Boolean(x.isWeighingRequired ?? x.IsWeighingRequired);
+        const selectedUnit = typeof (x.selectedUnit ?? x.SelectedUnit) === 'string'
+          ? String(x.selectedUnit ?? x.SelectedUnit)
+          : undefined;
         let expectedWeightKg = Number(x.expectedWeightKg ?? x.ExpectedWeightKg);
         const quantity = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
         if (isWeighing) {
@@ -60,6 +64,7 @@ function parseCartFromStorage(raw: string | null): CartItem[] {
             name: String(x.name ?? x.Name ?? ''),
             price: Number.isFinite(Number(x.price ?? x.Price)) ? Number(x.price ?? x.Price) : 0,
             quantity: 1,
+            selectedUnit,
             imageUrl: typeof x.imageUrl === 'string' ? x.imageUrl : undefined,
             isWeighingRequired: true,
             expectedWeightKg,
@@ -71,6 +76,7 @@ function parseCartFromStorage(raw: string | null): CartItem[] {
           name: String(x.name ?? x.Name ?? ''),
           price: Number.isFinite(Number(x.price ?? x.Price)) ? Number(x.price ?? x.Price) : 0,
           quantity,
+          selectedUnit,
           imageUrl: typeof x.imageUrl === 'string' ? x.imageUrl : undefined,
         };
       })
@@ -100,6 +106,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const existing = prev.find((i) => i.productId === newItem.productId);
       let updated: CartItem[];
       if (existing && existing.isWeighingRequired && newItem.isWeighingRequired) {
+        if ((existing.selectedUnit ?? '').toLowerCase() !== (newItem.selectedUnit ?? '').toLowerCase()) {
+          updated = prev.map((i) => (i.productId === newItem.productId ? newItem : i));
+        } else {
         const w1 = Number(existing.expectedWeightKg ?? 0);
         const w2 = Number(newItem.expectedWeightKg ?? 0);
         const nw = (Number.isFinite(w1) ? w1 : 0) + (Number.isFinite(w2) ? w2 : 0);
@@ -108,12 +117,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
             ? { ...i, expectedWeightKg: nw > 0 ? nw : i.expectedWeightKg, imageUrl: i.imageUrl || newItem.imageUrl }
             : i
         );
+        }
       } else if (existing && !existing.isWeighingRequired && !newItem.isWeighingRequired) {
+        if ((existing.selectedUnit ?? '').toLowerCase() !== (newItem.selectedUnit ?? '').toLowerCase()) {
+          updated = prev.map((i) => (i.productId === newItem.productId ? newItem : i));
+        } else {
         updated = prev.map((i) =>
           i.productId === newItem.productId
             ? { ...i, quantity: i.quantity + newItem.quantity, imageUrl: i.imageUrl || newItem.imageUrl }
             : i
         );
+        }
       } else if (!existing) {
         updated = [...prev, newItem];
       } else {

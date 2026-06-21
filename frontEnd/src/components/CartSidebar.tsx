@@ -551,6 +551,7 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                         productId: i.productId,
                         quantity: i.isWeighingRequired ? 1 : i.quantity,
                         expectedWeight: i.isWeighingRequired ? Number(i.expectedWeightKg ?? 0) : 0,
+                        selectedUnit: i.selectedUnit ?? (i.isWeighingRequired ? 'kg' : 'ea'),
                       })),
                     })) as { orderId?: number };
                     const orderId = orderRes?.orderId;

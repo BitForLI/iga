@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Checkbox, Form, InputNumber, Space, Table, Typography, message } from 'antd';
+import { Button, Checkbox, InputNumber, Space, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { adminStoreAPI } from '../../api';
 
@@ -14,7 +14,6 @@ const defaultRules = (): RuleRow[] => [
 export function DeliveryFeesSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [abnNumber, setAbnNumber] = useState('');
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [rules, setRules] = useState<RuleRow[]>(defaultRules());
 
@@ -23,11 +22,9 @@ export function DeliveryFeesSettingsPage() {
     try {
       const raw = (await adminStoreAPI.getSettings()) as {
         freeShippingMinAud?: number;
-        abnNumber?: string;
         deliveryZones?: { suburb?: string; displayName?: string; enabled?: boolean }[];
         deliveryFeeRules?: { minAmount?: number; feeAud?: number }[];
       };
-      setAbnNumber(String(raw.abnNumber ?? ''));
       setZones((raw.deliveryZones ?? []).map((z) => ({
         suburb: String(z.suburb ?? ''),
         displayName: String(z.displayName ?? z.suburb ?? ''),
@@ -62,7 +59,6 @@ export function DeliveryFeesSettingsPage() {
     setSaving(true);
     try {
       await adminStoreAPI.putSettings({
-        abnNumber: abnNumber.trim(),
         deliveryZoneFees: zones.map((z) => ({ suburb: z.suburb, feeAud: 0, enabled: z.enabled })),
         deliveryFeeRules: rules
           .slice()
@@ -157,16 +153,6 @@ export function DeliveryFeesSettingsPage() {
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         Delivery fees
       </Typography.Title>
-      <Form layout="vertical" style={{ maxWidth: 680, marginBottom: 16 }}>
-        <Form.Item label="Store ABN">
-          <input
-            type="text"
-            value={abnNumber}
-            onChange={(e) => setAbnNumber(e.target.value)}
-            style={{ width: '100%', padding: '8px 11px', borderRadius: 4, border: '1px solid #d9d9d9' }}
-          />
-        </Form.Item>
-      </Form>
 
       <Typography.Title level={5} style={{ marginBottom: 12 }}>
         Delivery zones

@@ -5,6 +5,7 @@ using igaServer.Data;
 using igaServer.Models;
 using igaServer.DTOs;
 using igaServer.Utils;
+using System.Text.Json;
 
 namespace igaServer.Controllers
 {
@@ -105,16 +106,19 @@ namespace igaServer.Controllers
             foreach (var item in request.Items)
             {
                 var product = products.First(p => p.Id == item.ProductId);
+                var selectedUnit = (item.SelectedUnit ?? product.Unit ?? "ea").Trim();
+                var unitPrice = ResolveUnitPrice(product, selectedUnit);
+                var isWeighed = string.Equals(selectedUnit, "kg", StringComparison.OrdinalIgnoreCase);
 
                 decimal lineAmount;
                 var orderItem = new OrderItem
                 {
                     ProductId = product.Id,
                     ProductName = product.Name,
-                    PriceAtPurchase = product.Price,
+                    PriceAtPurchase = unitPrice,
                 };
 
-                if (product.IsWeighingRequired)
+                if (isWeighed)
                 {
                     var w = item.ExpectedWeight;
                     if (w <= 0 || double.IsNaN(w) || double.IsInfinity(w))
@@ -124,7 +128,7 @@ namespace igaServer.Controllers
 
                     orderItem.Quantity = 1;
                     orderItem.ExpectedWeight = w;
-                    lineAmount = product.Price * (decimal)w;
+                    lineAmount = unitPrice * (decimal)w;
                 }
                 else
                 {
@@ -135,7 +139,7 @@ namespace igaServer.Controllers
 
                     orderItem.Quantity = item.Quantity;
                     orderItem.ExpectedWeight = item.ExpectedWeight > 0 ? item.ExpectedWeight : 0;
-                    lineAmount = product.Price * item.Quantity;
+                    lineAmount = unitPrice * item.Quantity;
                 }
 
                 order.Items.Add(orderItem);
@@ -469,7 +473,7 @@ namespace igaServer.Controllers
             }
 
             // 验证商品是否需要称重
-            if (!orderItem.Product.IsWeighingRequired)
+            if (orderItem.ExpectedWeight <= 0)
             {
                 return BadRequest($"Product {orderItem.Product.Name} does not require weighing");
             }
@@ -681,7 +685,7 @@ namespace igaServer.Controllers
                 PriceAtPurchase = item.PriceAtPurchase,
                 ExpectedWeight = item.ExpectedWeight,
                 ActualWeight = item.ActualWeight,
-                IsWeighingRequired = item.Product?.IsWeighingRequired ?? false,
+                IsWeighingRequired = item.ExpectedWeight > 0,
                 CustomerRefundCompletedAt = item.CustomerRefundCompletedAt,
             };
         }
@@ -702,7 +706,7 @@ namespace igaServer.Controllers
         /// <summary>该行顾客实付金额（与下单/称重逻辑一致）。</summary>
         private static decimal LineChargeForRefund(OrderItem oi)
         {
-            if (oi.Product?.IsWeighingRequired == true)
+            if (oi.ExpectedWeight > 0)
             {
                 var kg = (decimal)(oi.ActualWeight ?? oi.ExpectedWeight);
                 if (kg < 0) kg = 0;
@@ -710,6 +714,51 @@ namespace igaServer.Controllers
             }
 
             return oi.PriceAtPurchase * oi.Quantity;
+        }
+
+        private static decimal ResolveUnitPrice(Product product, string selectedUnit)
+        {
+            var options = ParseUnitPriceOptions(product.UnitPriceOptionsJson);
+            if (options.Count == 0)
+            {
+                return product.Price;
+            }
+
+            var match = options.FirstOrDefault(x => string.Equals(x.Unit, selectedUnit, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                return match.Price;
+            }
+
+            return options[0].Price;
+        }
+
+        private static List<ProductUnitPriceOption> ParseUnitPriceOptions(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            try
+            {
+                var list = JsonSerializer.Deserialize<List<ProductUnitPriceOption>>(json);
+                if (list == null) return new();
+                return list
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Unit) && x.Price > 0)
+                    .Select(x => new ProductUnitPriceOption
+                    {
+                        Unit = x.Unit.Trim(),
+                        Price = Math.Round(x.Price, 2, MidpointRounding.AwayFromZero),
+                    })
+                    .ToList();
+            }
+            catch
+            {
+                return new();
+            }
+        }
+
+        private sealed class ProductUnitPriceOption
+        {
+            public string Unit { get; set; } = string.Empty;
+            public decimal Price { get; set; }
         }
     }
 

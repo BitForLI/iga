@@ -32,6 +32,23 @@ const MOCK_PRODUCTS: Product[] = [
   { id: 3, name: 'Tomato', imageUrl: '', category: 'Vegetables', price: 2.99, costPrice: 1.2, unit: 'kg', isActive: false },
 ];
 
+function parseUnitOptions(raw: unknown, fallbackUnit: string, fallbackPrice: number) {
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as Array<{ unit?: string; price?: number }>;
+      const list = Array.isArray(parsed)
+        ? parsed
+            .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+            .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
+        : [];
+      if (list.length > 0) return list;
+    } catch {
+      /* ignore */
+    }
+  }
+  return [{ unit: fallbackUnit || 'ea', price: Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : 0 }];
+}
+
 export function ProductManagementPage() {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,6 +76,12 @@ export function ProductManagementPage() {
       price: Number(p.price ?? p.Price ?? 0),
       costPrice: Number(p.costPrice ?? p.CostPrice ?? 0) || undefined,
       unit: p.unit ?? p.Unit ?? '',
+      unitPriceOptionsJson: p.unitPriceOptionsJson ?? p.UnitPriceOptionsJson ?? '[]',
+      unitPriceOptions: parseUnitOptions(
+        p.unitPriceOptionsJson ?? p.UnitPriceOptionsJson ?? '[]',
+        String(p.unit ?? p.Unit ?? 'ea'),
+        Number(p.price ?? p.Price ?? 0)
+      ),
       isActive: p.isActive ?? p.IsActive ?? true,
       isWeighingRequired: p.isWeighingRequired ?? p.IsWeighingRequired ?? false,
       defaultExpectedWeightKg:
@@ -226,8 +249,13 @@ export function ProductManagementPage() {
       title: 'Price',
       dataIndex: 'price',
       key: 'price',
-      width: 100,
-      render: (v: number, r) => `$${Number(v).toFixed(2)}/${r.unit || ''}`,
+      width: 220,
+      render: (_: number, r) => {
+        const options = r.unitPriceOptions && r.unitPriceOptions.length > 0
+          ? r.unitPriceOptions
+          : [{ unit: r.unit || 'ea', price: Number(r.price || 0) }];
+        return options.map((o) => `$${Number(o.price).toFixed(2)}/${o.unit}`).join(' | ');
+      },
     },
     {
       title: 'Cost',

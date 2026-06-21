@@ -24,5 +24,6 @@ namespace igaServer.DTOs
         public int ProductId { get; set; }
         public int Quantity { get; set; }
         public double ExpectedWeight { get; set; } // 预估重量（称重商品需要）
+        public string? SelectedUnit { get; set; } // 顾客在前端选择的购买单位（kg/box/half-box/ea）
     }
 }

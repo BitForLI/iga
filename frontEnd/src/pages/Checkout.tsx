@@ -51,6 +51,7 @@ export function Checkout() {
           ProductId: item.productId,
           Quantity: item.isWeighingRequired ? 1 : item.quantity,
           ExpectedWeight: item.isWeighingRequired ? Number(item.expectedWeightKg ?? 0) : 0,
+          SelectedUnit: item.selectedUnit ?? (item.isWeighingRequired ? 'kg' : 'ea'),
         })),
       });
 

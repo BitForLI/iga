@@ -67,8 +67,10 @@ public class AdminStoreController : ControllerBase
 
         return Ok(new StoreAdminSettingsDto
         {
+            StoreName = store.StoreName?.Trim() ?? string.Empty,
+            PhoneNumber = store.PhoneNumber?.Trim() ?? string.Empty,
+            StoreAddress = store.StoreAddress?.Trim() ?? string.Empty,
             FreeShippingMinAud = freeMin,
-            AbnNumber = store.AbnNumber?.Trim() ?? string.Empty,
             DeliveryZones = zoneRows,
             DeliveryFeeRules = feeRules.Select(r => new DeliveryFeeRuleDto
             {
@@ -106,10 +108,12 @@ public class AdminStoreController : ControllerBase
 
         store.FreeDeliveryThreshold = Math.Round(freeMin, 2, MidpointRounding.AwayFromZero);
 
-        if (body.AbnNumber != null)
-        {
-            store.AbnNumber = body.AbnNumber.Trim();
-        }
+        if (body.StoreName != null)
+            store.StoreName = body.StoreName.Trim();
+        if (body.PhoneNumber != null)
+            store.PhoneNumber = body.PhoneNumber.Trim();
+        if (body.StoreAddress != null)
+            store.StoreAddress = body.StoreAddress.Trim();
 
         var existingZoneInfos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
         var zoneRows = existingZoneInfos.ToDictionary(kv => kv.Key, kv => kv.Value.Enabled, StringComparer.OrdinalIgnoreCase);
@@ -277,8 +281,10 @@ public class AdminStoreController : ControllerBase
 
     public class StoreAdminSettingsDto
     {
+        public string StoreName { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string StoreAddress { get; set; } = string.Empty;
         public decimal FreeShippingMinAud { get; set; }
-        public string AbnNumber { get; set; } = string.Empty;
         public List<DeliveryZoneFeeRowDto> DeliveryZones { get; set; } = new();
         public List<DeliveryFeeRuleDto> DeliveryFeeRules { get; set; } = new();
         public List<string> HomeCarouselImageUrls { get; set; } = new();
@@ -299,8 +305,10 @@ public class AdminStoreController : ControllerBase
 
     public class StoreAdminPutDto
     {
+        public string? StoreName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? StoreAddress { get; set; }
         public decimal? FreeShippingMinAud { get; set; }
-        public string? AbnNumber { get; set; }
         public List<DeliveryZoneFeeInputDto>? DeliveryZoneFees { get; set; }
         public List<DeliveryFeeRuleInputDto>? DeliveryFeeRules { get; set; }
         public List<string>? HomeCarouselImageUrls { get; set; }

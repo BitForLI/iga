@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
 using igaServer.Utils;
 using igaServer.Models;
+using System.Text.Json;
 
 namespace igaServer.Controllers
 {
@@ -58,7 +59,7 @@ namespace igaServer.Controllers
 
             // 顾客端不暴露成本价，仅返回卖价等字段
             var items = await query
-                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.IsActive, p.IsWeighingRequired, p.DefaultExpectedWeightKg })
+                .Select(p => new { p.Id, p.Name, p.ImageUrl, p.Category, p.Price, p.Unit, p.UnitPriceOptionsJson, p.IsActive, p.IsWeighingRequired, p.DefaultExpectedWeightKg })
                 .ToListAsync();
             return Ok(items);
         }
@@ -75,7 +76,7 @@ namespace igaServer.Controllers
                 return NotFound();
             }
 
-            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg });
+            return Ok(new { product.Id, product.Name, product.ImageUrl, product.Category, product.Price, product.Unit, product.UnitPriceOptionsJson, product.IsActive, product.IsWeighingRequired, product.DefaultExpectedWeightKg });
         }
 
         // 3. 读取数据库存储商品图片
@@ -103,6 +104,7 @@ namespace igaServer.Controllers
         {
             if (await RequireAdminAsync() is { } denied) return denied;
             product.ImageUrl = product.ImageUrl?.Trim() ?? "";
+            NormalizeUnitPrices(product);
             // 自动设置创建时间
             // product.CreatedAt = DateTime.Now; (如果在 Model 里没赋值的话)
             
@@ -123,6 +125,7 @@ namespace igaServer.Controllers
                 return BadRequest();
             }
             product.ImageUrl = product.ImageUrl?.Trim() ?? "";
+            NormalizeUnitPrices(product);
 
             _context.Entry(product).State = EntityState.Modified;
 
@@ -143,6 +146,63 @@ namespace igaServer.Controllers
             }
 
             return NoContent();
+        }
+
+        private static void NormalizeUnitPrices(Product product)
+        {
+            var normalized = ParseUnitPriceOptions(product.UnitPriceOptionsJson);
+            if (normalized.Count == 0)
+            {
+                var fallbackUnit = string.IsNullOrWhiteSpace(product.Unit) ? "ea" : product.Unit.Trim();
+                var fallbackPrice = product.Price > 0 ? product.Price : 0.01m;
+                normalized = new List<UnitPriceOption>
+                {
+                    new() { Unit = fallbackUnit, Price = Math.Round(fallbackPrice, 2, MidpointRounding.AwayFromZero) }
+                };
+            }
+
+            product.UnitPriceOptionsJson = JsonSerializer.Serialize(normalized);
+            product.Unit = normalized[0].Unit;
+            product.Price = normalized[0].Price;
+            product.IsWeighingRequired = normalized.Any(x => string.Equals(x.Unit, "kg", StringComparison.OrdinalIgnoreCase));
+
+            if (!product.IsWeighingRequired)
+            {
+                product.DefaultExpectedWeightKg = 0;
+            }
+            else if (product.DefaultExpectedWeightKg <= 0)
+            {
+                product.DefaultExpectedWeightKg = 1;
+            }
+        }
+
+        private static List<UnitPriceOption> ParseUnitPriceOptions(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            try
+            {
+                var list = JsonSerializer.Deserialize<List<UnitPriceOption>>(json) ?? new();
+                return list
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Unit) && x.Price > 0)
+                    .Select(x => new UnitPriceOption
+                    {
+                        Unit = x.Unit.Trim(),
+                        Price = Math.Round(x.Price, 2, MidpointRounding.AwayFromZero),
+                    })
+                    .GroupBy(x => x.Unit, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+            }
+            catch
+            {
+                return new();
+            }
+        }
+
+        private sealed class UnitPriceOption
+        {
+            public string Unit { get; set; } = string.Empty;
+            public decimal Price { get; set; }
         }
 
         // 5. 一键上下架 (关键功能)

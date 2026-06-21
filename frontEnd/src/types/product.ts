@@ -1,3 +1,8 @@
+export interface ProductUnitPriceOption {
+  unit: string;
+  price: number;
+}
+
 /** 商品类型，与后端 Product 模型对应（后台含 costPrice） */
 export interface Product {
   id: number;
@@ -7,6 +12,8 @@ export interface Product {
   price: number;
   costPrice?: number; // 成本价，仅后台可见
   unit: string;
+  unitPriceOptionsJson?: string;
+  unitPriceOptions?: ProductUnitPriceOption[];
   isActive: boolean;
   isWeighingRequired?: boolean;
   /** 称重商品默认预估重量（kg），用于顾客端展示与加购初值 */
@@ -21,6 +28,8 @@ export interface ProductFormValues {
   price: number;
   costPrice?: number;
   unit: string;
+  unitPriceOptions: ProductUnitPriceOption[];
+  unitPriceOptionsJson?: string;
   isActive: boolean;
   isWeighingRequired: boolean;
   defaultExpectedWeightKg?: number;

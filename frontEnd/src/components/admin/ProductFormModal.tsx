@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Form, Input, InputNumber, Select, Switch, Upload, message, Space } from 'antd';
+import { Modal, Form, Input, InputNumber, Select, Switch, Upload, message, Space, Button } from 'antd';
 import type { FormInstance } from 'antd/es/form';
 import type { UploadFile } from 'antd/es/upload/interface';
-import type { Product, ProductFormValues } from '../../types/product';
+import type { Product, ProductFormValues, ProductUnitPriceOption } from '../../types/product';
 import { adminProductAPI } from '../../api';
 import { resolveProductImageUrl } from '../../utils/imageUrl';
 import productImage from '../../assets/images/main.png';
@@ -26,18 +26,25 @@ const UNIT_OPTIONS = [
   { value: 'kg', label: 'kg' },
   { value: 'ea', label: 'ea' },
   { value: 'box', label: 'box' },
-  { value: 'dozen', label: 'dozen' },
-  { value: 'bunch', label: 'bunch' },
-  { value: 'loaf', label: 'loaf' },
-  { value: '2L', label: '2L' },
-  { value: '500g', label: '500g' },
-  { value: '1kg', label: '1kg' },
-  { value: '175g', label: '175g' },
-  { value: '200g', label: '200g' },
-  { value: '250g', label: '250g' },
-  { value: '365g', label: '365g' },
-  { value: '700g', label: '700g' },
+  { value: 'half-box', label: 'half-box' },
 ];
+
+function parseUnitPriceOptions(raw: string | undefined, fallbackUnit: string, fallbackPrice: number): ProductUnitPriceOption[] {
+  if (raw?.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as Array<{ unit?: string; price?: number }>;
+      const options = Array.isArray(parsed)
+        ? parsed
+            .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+            .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
+        : [];
+      if (options.length > 0) return options;
+    } catch {
+      /* ignore */
+    }
+  }
+  return [{ unit: fallbackUnit || 'ea', price: Number.isFinite(fallbackPrice) ? fallbackPrice : 0 }];
+}
 
 interface ProductFormModalProps {
   open: boolean;
@@ -49,19 +56,26 @@ interface ProductFormModalProps {
 }
 
 function applyProductToForm(form: FormInstance<ProductFormValues>, data: Product) {
+  const unitPriceOptions =
+    data.unitPriceOptions && data.unitPriceOptions.length > 0
+      ? data.unitPriceOptions
+      : parseUnitPriceOptions(data.unitPriceOptionsJson, data.unit, Number(data.price));
+  const first = unitPriceOptions[0] ?? { unit: data.unit || 'ea', price: Number(data.price) || 0 };
+  const hasKg = unitPriceOptions.some((x) => x.unit.toLowerCase() === 'kg');
   form.setFieldsValue({
     name: data.name,
     imageUrl: data.imageUrl ?? '',
     category: data.category,
-    price: Number(data.price),
+    price: Number(first.price),
     costPrice: data.costPrice != null ? Number(data.costPrice) : undefined,
-    unit: data.unit,
+    unit: first.unit,
+    unitPriceOptions,
     isActive: data.isActive,
-    isWeighingRequired: data.isWeighingRequired ?? false,
+    isWeighingRequired: hasKg,
     defaultExpectedWeightKg:
       data.defaultExpectedWeightKg != null && data.defaultExpectedWeightKg > 0
         ? Number(data.defaultExpectedWeightKg)
-        : data.isWeighingRequired
+        : hasKg
           ? 1
           : undefined,
   });
@@ -77,9 +91,10 @@ export function ProductFormModal({
 }: ProductFormModalProps) {
   const [form] = Form.useForm<ProductFormValues>();
   const [imageFileList, setImageFileList] = useState<UploadFile[]>([]);
-  const isWeighingRequiredWatch = Form.useWatch('isWeighingRequired', form);
-  const priceWatch = Form.useWatch('price', form);
+  const unitPriceOptionsWatch = (Form.useWatch('unitPriceOptions', form) as ProductUnitPriceOption[] | undefined) ?? [];
   const kgWatch = Form.useWatch('defaultExpectedWeightKg', form);
+  const kgUnitPrice = unitPriceOptionsWatch.find((x) => x?.unit?.toLowerCase() === 'kg')?.price ?? 0;
+  const hasKgUnit = unitPriceOptionsWatch.some((x) => x?.unit?.toLowerCase() === 'kg');
 
   const syncImageFileListFromUrl = (url: string | undefined) => {
     if (!url?.trim()) {
@@ -124,25 +139,41 @@ export function ProductFormModal({
       form.setFieldsValue({
         isActive: true,
         isWeighingRequired: false,
+        unitPriceOptions: [{ unit: 'ea', price: 0 }],
       });
       setImageFileList([]);
     }
   }, [open, mode, initialData, form]);
 
   useEffect(() => {
-    if (!open || !isWeighingRequiredWatch) return;
+    if (!open || !hasKgUnit) return;
     const cur = form.getFieldValue('defaultExpectedWeightKg');
     if (cur == null || cur === '' || !(Number(cur) > 0)) {
       form.setFieldsValue({ defaultExpectedWeightKg: 1 });
     }
-  }, [open, isWeighingRequiredWatch, form]);
+  }, [open, hasKgUnit, form]);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      const normalizedUnitOptions = (values.unitPriceOptions ?? [])
+        .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+        .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
+        .filter((x, idx, arr) => arr.findIndex((y) => y.unit.toLowerCase() === x.unit.toLowerCase()) === idx);
+      if (normalizedUnitOptions.length === 0) {
+        message.error('Please add at least one unit with a valid price');
+        return;
+      }
+      const first = normalizedUnitOptions[0];
+      const hasKg = normalizedUnitOptions.some((x) => x.unit.toLowerCase() === 'kg');
       await onSubmit({
         ...values,
-        defaultExpectedWeightKg: values.isWeighingRequired ? values.defaultExpectedWeightKg : 0,
+        unitPriceOptions: normalizedUnitOptions,
+        unitPriceOptionsJson: JSON.stringify(normalizedUnitOptions),
+        unit: first.unit,
+        price: first.price,
+        isWeighingRequired: hasKg,
+        defaultExpectedWeightKg: hasKg ? values.defaultExpectedWeightKg : 0,
       });
       form.resetFields();
       onClose();
@@ -247,20 +278,37 @@ export function ProductFormModal({
           />
         </Form.Item>
 
-        <Form.Item
-          name="price"
-          label="Price"
-          rules={[{ required: true, message: 'Please enter price' }]}
-        >
-          <InputNumber
-            min={0}
-            step={0.01}
-            precision={2}
-            style={{ width: '100%' }}
-            placeholder="Enter price"
-            prefix="$"
-          />
-        </Form.Item>
+        <Form.List name="unitPriceOptions">
+          {(fields, { add, remove }) => (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Units and prices</div>
+              {fields.map((field) => (
+                <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }} align="start">
+                  <Form.Item
+                    name={[field.name, 'unit']}
+                    rules={[{ required: true, message: 'Select unit' }]}
+                    style={{ minWidth: 160 }}
+                  >
+                    <Select options={unitOptions} placeholder="Unit" />
+                  </Form.Item>
+                  <Form.Item
+                    name={[field.name, 'price']}
+                    rules={[{ required: true, message: 'Enter price' }]}
+                    style={{ minWidth: 180 }}
+                  >
+                    <InputNumber min={0.01} step={0.01} precision={2} prefix="$" style={{ width: '100%' }} placeholder="Price" />
+                  </Form.Item>
+                  <Button danger type="text" onClick={() => remove(field.name)}>
+                    Delete
+                  </Button>
+                </Space>
+              ))}
+              <Button type="dashed" onClick={() => add({ unit: 'ea', price: 0 })}>
+                Add unit price
+              </Button>
+            </div>
+          )}
+        </Form.List>
 
         <Form.Item name="costPrice" label="Cost price (admin only)">
           <InputNumber
@@ -273,28 +321,11 @@ export function ProductFormModal({
           />
         </Form.Item>
 
-        <Form.Item
-          name="unit"
-          label="Unit"
-          rules={[{ required: true, message: 'Please select unit' }]}
-        >
-          <Select
-            placeholder="Select unit"
-            options={unitOptions}
-            showSearch
-            optionFilterProp="label"
-          />
-        </Form.Item>
-
         <Form.Item name="isActive" label="Status" valuePropName="checked">
           <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
         </Form.Item>
 
-        <Form.Item name="isWeighingRequired" label="Weighing required" valuePropName="checked">
-          <Switch checkedChildren="Yes" unCheckedChildren="No" />
-        </Form.Item>
-
-        {isWeighingRequiredWatch ? (
+        {hasKgUnit ? (
           <>
             <Form.Item
               name="defaultExpectedWeightKg"
@@ -308,7 +339,7 @@ export function ProductFormModal({
               <strong style={{ color: '#dc2626' }}>
                 $
                 {(() => {
-                  const price = Number(priceWatch ?? 0);
+                  const price = Number(kgUnitPrice ?? 0);
                   const kg = Number(kgWatch ?? 0);
                   const est = Number.isFinite(price) && Number.isFinite(kg) ? price * kg : 0;
                   return est.toFixed(2);

@@ -447,7 +447,7 @@ namespace igaServer.Controllers
 
         private static decimal LineChargeForRefund(OrderItem oi)
         {
-            if (oi.Product?.IsWeighingRequired == true)
+            if (oi.ExpectedWeight > 0)
             {
                 var kg = (decimal)(oi.ActualWeight ?? oi.ExpectedWeight);
                 if (kg < 0) kg = 0;

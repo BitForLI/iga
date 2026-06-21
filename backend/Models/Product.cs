@@ -24,6 +24,9 @@ namespace igaServer.Models
 
         public string Unit { get; set; } // kg, ea, box
 
+        /// <summary>可选单位与单价（JSON）：[{"unit":"kg","price":12.5},{"unit":"ea","price":3.2}]</summary>
+        public string UnitPriceOptionsJson { get; set; } = "[]";
+
         public bool IsActive { get; set; } = true; // 上下架
 
         /// <summary>Stripe Product ID（后台同步后写入）</summary>
