@@ -8,7 +8,6 @@ import { HomePage } from './pages/HomePage';
 import { CartSidebar } from './components/CartSidebar';
 import { UserSidebar } from './components/UserSidebar';
 import { PickupDeliverySidebar } from './components/PickupDeliverySidebar';
-import { ContactService } from './components/ContactService';
 import { AdminLayout } from './layouts/AdminLayout';
 import { StaffLayout } from './layouts/StaffLayout';
 import { RequireAdmin, RequireStaffOrAdmin } from './components/BackofficeRouteGuards';
@@ -281,7 +280,6 @@ function MainApp() {
           searchKeyword={searchKeyword}
         />
       </main>
-      <ContactService />
     </div>
   );
 }

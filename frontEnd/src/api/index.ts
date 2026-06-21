@@ -32,11 +32,6 @@ export const authAPI = {
     apiClient.post<{ message: string }>('/auth/reset-password', data),
 };
 
-export const contactAPI = {
-  sendInquiry: (data: { name: string; email: string; message: string }) =>
-    apiClient.post<{ ok?: boolean; message?: string }>('/contact/inquiry', data),
-};
-
 export const productAPI = {
   list: () => apiClient.get<any[]>('/product'),
   create: (data: any) => apiClient.post('/product', data),

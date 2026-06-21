@@ -193,7 +193,6 @@ public class ResendEmailService : IResendEmailService
         var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {System.Net.WebUtility.HtmlEncode(storePhone.Trim())}";
         var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : System.Net.WebUtility.HtmlEncode(storeAddress.Trim()).ToUpperInvariant();
         var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {System.Net.WebUtility.HtmlEncode(deliveryAddress.Trim())}";
-        var safeCustomerName = System.Net.WebUtility.HtmlEncode(customerName);
 
         var receipt = new StringBuilder();
         receipt.AppendLine("<div style=\"font-family:Menlo,Consolas,monospace;white-space:pre-wrap;line-height:1.3;max-width:560px;\">");
@@ -212,7 +211,7 @@ public class ResendEmailService : IResendEmailService
             receipt.AppendLine(safeAbn);
         }
         receipt.AppendLine();
-        receipt.AppendLine($"SALE Tx# {orderId}  {saleTime}");
+        receipt.AppendLine($"SALE    Tx# {orderId}  {saleTime}");
         if (!string.IsNullOrEmpty(safeDelivery))
         {
             receipt.AppendLine(safeDelivery);
@@ -227,20 +226,20 @@ public class ResendEmailService : IResendEmailService
             if (line.ExpectedWeight > 0)
             {
                 var weight = line.ActualWeight ?? line.ExpectedWeight;
-                receipt.AppendLine($"weight: {weight:0.##}kg @ {Currency} ${line.UnitPrice:0.00} per kg");
+                receipt.AppendLine($"quantity: {weight:0.##} @ ${line.UnitPrice:0.00} per kg");
             }
             else
             {
-                receipt.AppendLine($"quantity: {line.Quantity} @ {Currency} ${line.UnitPrice:0.00} each");
+                receipt.AppendLine($"quantity: {line.Quantity} @ ${line.UnitPrice:0.00} each");
             }
 
-            receipt.AppendLine($"{Currency} ${line.LineTotal:0.00}".PadLeft(40));
+            receipt.AppendLine($"${line.LineTotal:0.00}".PadLeft(40));
             receipt.AppendLine();
         }
 
-        receipt.AppendLine($"{("Total for " + totalItems + " items:").PadRight(28)}{Currency} ${invoiceTotal:0.00}");
-        receipt.AppendLine($"{("Cheque:").PadRight(28)}{Currency} ${invoiceTotal:0.00}");
-        receipt.AppendLine($"{("CHANGE:").PadRight(28)}{Currency} $0.00");
+        receipt.AppendLine($"{("Total for " + totalItems + " items:").PadRight(28)}${invoiceTotal:0.00}");
+        receipt.AppendLine($"{("Cheque:").PadRight(28)}${invoiceTotal:0.00}");
+        receipt.AppendLine($"{("CHANGE:").PadRight(28)}$0.00");
         receipt.AppendLine();
         receipt.AppendLine("STORE: 1  REGISTER: 2");
         receipt.AppendLine("* - Denotes Taxable Item");
@@ -251,12 +250,7 @@ public class ResendEmailService : IResendEmailService
         receipt.AppendLine("SUN 9AM - 6PM");
         receipt.AppendLine("</div>");
 
-        var html =
-            $"""
-            <p>Hi {safeCustomerName},</p>
-            <p>Thank you for shopping at <strong>{safeStoreName}</strong>. Your receipt is shown below.</p>
-            {receipt}
-            """;
+        var html = receipt.ToString();
 
         return await SendEmailAsync(toEmail, subject, html, cancellationToken);
     }

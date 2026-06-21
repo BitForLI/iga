@@ -91,6 +91,8 @@ export function ProductFormModal({
 }: ProductFormModalProps) {
   const [form] = Form.useForm<ProductFormValues>();
   const [imageFileList, setImageFileList] = useState<UploadFile[]>([]);
+  const [draftUnit, setDraftUnit] = useState<string>('ea');
+  const [draftPrice, setDraftPrice] = useState<number | null>(null);
   const unitPriceOptionsWatch = (Form.useWatch('unitPriceOptions', form) as ProductUnitPriceOption[] | undefined) ?? [];
   const kgWatch = Form.useWatch('defaultExpectedWeightKg', form);
   const kgUnitPrice = unitPriceOptionsWatch.find((x) => x?.unit?.toLowerCase() === 'kg')?.price ?? 0;
@@ -120,28 +122,25 @@ export function ProductFormModal({
     return opts;
   }, [initialData?.category]);
 
-  const unitOptions = useMemo(() => {
-    const opts = [...UNIT_OPTIONS];
-    const u = initialData?.unit?.trim();
-    if (u && !opts.some((o) => o.value === u)) {
-      opts.unshift({ value: u, label: u });
-    }
-    return opts;
-  }, [initialData?.unit]);
+  const unitOptions = UNIT_OPTIONS;
 
   useEffect(() => {
     if (!open) return;
     if (mode === 'edit' && initialData) {
       applyProductToForm(form, initialData);
       syncImageFileListFromUrl(initialData.imageUrl);
+      setDraftUnit('ea');
+      setDraftPrice(null);
     } else {
       form.resetFields();
       form.setFieldsValue({
         isActive: true,
         isWeighingRequired: false,
-        unitPriceOptions: [{ unit: 'ea', price: 0 }],
+        unitPriceOptions: [],
       });
       setImageFileList([]);
+      setDraftUnit('ea');
+      setDraftPrice(null);
     }
   }, [open, mode, initialData, form]);
 
@@ -184,7 +183,37 @@ export function ProductFormModal({
 
   const handleCancel = () => {
     form.resetFields();
+    setDraftUnit('ea');
+    setDraftPrice(null);
     onClose();
+  };
+
+  const handleAddUnitPrice = () => {
+    const price = Number(draftPrice ?? 0);
+    if (!Number.isFinite(price) || price <= 0) {
+      message.error('Please enter a valid price');
+      return;
+    }
+
+    const current = (form.getFieldValue('unitPriceOptions') as ProductUnitPriceOption[] | undefined) ?? [];
+    const next = [...current];
+    const idx = next.findIndex((x) => x.unit.toLowerCase() === draftUnit.toLowerCase());
+    const row = { unit: draftUnit, price: Math.round(price * 100) / 100 };
+    if (idx >= 0) {
+      next[idx] = row;
+    } else {
+      next.push(row);
+    }
+    form.setFieldValue('unitPriceOptions', next);
+    setDraftPrice(null);
+  };
+
+  const handleRemoveUnitPrice = (unit: string) => {
+    const current = (form.getFieldValue('unitPriceOptions') as ProductUnitPriceOption[] | undefined) ?? [];
+    form.setFieldValue(
+      'unitPriceOptions',
+      current.filter((x) => x.unit.toLowerCase() !== unit.toLowerCase())
+    );
   };
 
   return (
@@ -278,37 +307,55 @@ export function ProductFormModal({
           />
         </Form.Item>
 
-        <Form.List name="unitPriceOptions">
-          {(fields, { add, remove }) => (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Units and prices</div>
-              {fields.map((field) => (
-                <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }} align="start">
-                  <Form.Item
-                    name={[field.name, 'unit']}
-                    rules={[{ required: true, message: 'Select unit' }]}
-                    style={{ minWidth: 160 }}
-                  >
-                    <Select options={unitOptions} placeholder="Unit" />
-                  </Form.Item>
-                  <Form.Item
-                    name={[field.name, 'price']}
-                    rules={[{ required: true, message: 'Enter price' }]}
-                    style={{ minWidth: 180 }}
-                  >
-                    <InputNumber min={0.01} step={0.01} precision={2} prefix="$" style={{ width: '100%' }} placeholder="Price" />
-                  </Form.Item>
-                  <Button danger type="text" onClick={() => remove(field.name)}>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Units and prices</div>
+          <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
+            <InputNumber
+              min={0.01}
+              step={0.01}
+              precision={2}
+              prefix="$"
+              value={draftPrice as number | null}
+              onChange={(v) => setDraftPrice(v == null ? null : Number(v))}
+              placeholder="Price"
+              style={{ width: '45%' }}
+            />
+            <Select
+              value={draftUnit}
+              onChange={setDraftUnit}
+              options={unitOptions}
+              style={{ width: '35%' }}
+            />
+            <Button type="primary" onClick={handleAddUnitPrice} style={{ width: '20%' }}>
+              Add
+            </Button>
+          </Space.Compact>
+
+          {unitPriceOptionsWatch.length === 0 ? (
+            <div style={{ color: '#6b7280', fontSize: 12 }}>No unit-price bindings yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {unitPriceOptionsWatch.map((x) => (
+                <div
+                  key={x.unit}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                  }}
+                >
+                  <span>${Number(x.price).toFixed(2)} / {x.unit}</span>
+                  <Button type="text" danger onClick={() => handleRemoveUnitPrice(x.unit)}>
                     Delete
                   </Button>
-                </Space>
+                </div>
               ))}
-              <Button type="dashed" onClick={() => add({ unit: 'ea', price: 0 })}>
-                Add unit price
-              </Button>
             </div>
           )}
-        </Form.List>
+        </div>
 
         <Form.Item name="costPrice" label="Cost price (admin only)">
           <InputNumber
