@@ -70,6 +70,7 @@ public class AdminStoreController : ControllerBase
             StoreName = store.StoreName?.Trim() ?? string.Empty,
             PhoneNumber = store.PhoneNumber?.Trim() ?? string.Empty,
             StoreAddress = store.StoreAddress?.Trim() ?? string.Empty,
+            AbnNumber = store.AbnNumber?.Trim() ?? string.Empty,
             FreeShippingMinAud = freeMin,
             DeliveryZones = zoneRows,
             DeliveryFeeRules = feeRules.Select(r => new DeliveryFeeRuleDto
@@ -114,6 +115,8 @@ public class AdminStoreController : ControllerBase
             store.PhoneNumber = body.PhoneNumber.Trim();
         if (body.StoreAddress != null)
             store.StoreAddress = body.StoreAddress.Trim();
+        if (body.AbnNumber != null)
+            store.AbnNumber = body.AbnNumber.Trim();
 
         var existingZoneInfos = StoreDeliveryHelper.ParseZoneInfos(store.DeliveryZoneFeesJson);
         var zoneRows = existingZoneInfos.ToDictionary(kv => kv.Key, kv => kv.Value.Enabled, StringComparer.OrdinalIgnoreCase);
@@ -284,6 +287,7 @@ public class AdminStoreController : ControllerBase
         public string StoreName { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
         public string StoreAddress { get; set; } = string.Empty;
+        public string AbnNumber { get; set; } = string.Empty;
         public decimal FreeShippingMinAud { get; set; }
         public List<DeliveryZoneFeeRowDto> DeliveryZones { get; set; } = new();
         public List<DeliveryFeeRuleDto> DeliveryFeeRules { get; set; } = new();
@@ -308,6 +312,7 @@ public class AdminStoreController : ControllerBase
         public string? StoreName { get; set; }
         public string? PhoneNumber { get; set; }
         public string? StoreAddress { get; set; }
+        public string? AbnNumber { get; set; }
         public decimal? FreeShippingMinAud { get; set; }
         public List<DeliveryZoneFeeInputDto>? DeliveryZoneFees { get; set; }
         public List<DeliveryFeeRuleInputDto>? DeliveryFeeRules { get; set; }

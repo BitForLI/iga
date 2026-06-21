@@ -337,9 +337,11 @@ public class ResendEmailService : IResendEmailService
     {
         using var stream = new MemoryStream();
 
-        // Strip leading "IGA " prefix from store name
+        // Strip leading "IGA" or "IGA " prefix from store name
         var displayStoreName = storeName.Trim().ToUpperInvariant();
-        if (displayStoreName.StartsWith("IGA ", StringComparison.Ordinal))
+        if (displayStoreName == "IGA")
+            displayStoreName = string.Empty;
+        else if (displayStoreName.StartsWith("IGA ", StringComparison.Ordinal))
             displayStoreName = displayStoreName[4..].TrimStart();
 
         var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {abn.Trim()}";

@@ -8,6 +8,7 @@ export function StoreInfoSettingsPage() {
   const [storeName, setStoreName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
+  const [abnNumber, setAbnNumber] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -16,10 +17,12 @@ export function StoreInfoSettingsPage() {
         storeName?: string;
         phoneNumber?: string;
         storeAddress?: string;
+        abnNumber?: string;
       };
       setStoreName(String(raw.storeName ?? ''));
       setPhoneNumber(String(raw.phoneNumber ?? ''));
       setStoreAddress(String(raw.storeAddress ?? ''));
+      setAbnNumber(String(raw.abnNumber ?? ''));
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -42,6 +45,7 @@ export function StoreInfoSettingsPage() {
         storeName: storeName.trim(),
         phoneNumber: phoneNumber.trim(),
         storeAddress: storeAddress.trim(),
+        abnNumber: abnNumber.trim(),
       });
       message.success('Saved');
     } catch (e) {
@@ -78,6 +82,14 @@ export function StoreInfoSettingsPage() {
             value={storeAddress}
             onChange={(e) => setStoreAddress(e.target.value)}
             placeholder="e.g. 22-26 Tooronga TCE"
+            disabled={loading}
+          />
+        </Form.Item>
+        <Form.Item label="ABN">
+          <Input
+            value={abnNumber}
+            onChange={(e) => setAbnNumber(e.target.value)}
+            placeholder="e.g. 20619331547"
             disabled={loading}
           />
         </Form.Item>

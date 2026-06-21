@@ -49,6 +49,7 @@ export const adminStoreAPI = {
     storeName?: string;
     phoneNumber?: string;
     storeAddress?: string;
+    abnNumber?: string;
     deliveryZoneFees?: { suburb: string; feeAud: number; enabled?: boolean }[];
     deliveryFeeRules?: { minAmount: number; feeAud: number }[];
     homeCarouselImageUrls?: string[];
