@@ -337,47 +337,47 @@ public class ResendEmailService : IResendEmailService
     {
         using var stream = new MemoryStream();
 
-        var safeStoreName = storeName.ToUpperInvariant();
         var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {abn.Trim()}";
         var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {storePhone.Trim()}";
         var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : storeAddress.Trim().ToUpperInvariant();
         var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {deliveryAddress.Trim()}";
 
-        var receiptLines = new List<(string Text, bool Bold, float FontSize, bool SeparatorBefore)>();
-        void AddLine(string text, bool bold = false, float fontSize = 10f, bool separatorBefore = false) =>
-            receiptLines.Add((text, bold, fontSize, separatorBefore));
+        // Tuple: Text, Bold, FontSize, SeparatorBefore, Align ("center"/"left"/"right")
+        var receiptLines = new List<(string Text, bool Bold, float FontSize, bool SeparatorBefore, string Align)>();
+        void AddLine(string text, bool bold = false, float fontSize = 9f, bool separatorBefore = false, string align = "center") =>
+            receiptLines.Add((text, bold, fontSize, separatorBefore, align));
 
-        AddLine("* TAX INVOICE *", bold: true, fontSize: 12f);
-        AddLine(safeStoreName, fontSize: 12f);
+        AddLine("* TAX INVOICE *", bold: true, fontSize: 11f);
         if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone);
         if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress);
         if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn);
         AddLine(string.Empty);
-        AddLine($"SALE    Tx# {orderId}  {saleTime}", bold: true);
-        if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery);
+        AddLine($"SALE    Tx# {orderId}  {saleTime}", bold: true, fontSize: 8.5f);
+        if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery, align: "left");
         AddLine(string.Empty);
 
         foreach (var line in lines)
         {
-            AddLine(line.ProductName, bold: true);
+            AddLine(line.ProductName, bold: true, align: "left");
 
             if (line.ExpectedWeight > 0)
             {
                 var weight = line.ActualWeight ?? line.ExpectedWeight;
-                AddLine($"quantity: {weight:0.##} @ ${line.UnitPrice:0.00} per kg");
+                AddLine($"  {weight:0.##} kg @ ${line.UnitPrice:0.00}/kg", align: "left");
             }
             else
             {
-                AddLine($"quantity: {line.Quantity} @ ${line.UnitPrice:0.00} each");
+                AddLine($"  {line.Quantity} x ${line.UnitPrice:0.00}", align: "left");
             }
 
-            AddLine($"${line.LineTotal:0.00}".PadLeft(36));
+            AddLine($"${line.LineTotal:0.00}", align: "right");
             AddLine(string.Empty);
         }
 
-        AddLine($"{("Total for " + totalItems + " items:").PadRight(24)}${invoiceTotal:0.00}");
-        AddLine($"{("Cheque:").PadRight(24)}${invoiceTotal:0.00}");
-        AddLine($"{("CHANGE:").PadRight(24)}$0.00");
+        var totalLabel = $"Total for {totalItems} items:";
+        AddLine($"{totalLabel.PadRight(22)}${invoiceTotal:0.00}", align: "left");
+        AddLine($"{"Cheque:".PadRight(22)}${invoiceTotal:0.00}", align: "left");
+        AddLine($"{"CHANGE:".PadRight(22)}$0.00", align: "left");
         AddLine(string.Empty);
         AddLine("STORE: 1  REGISTER: 2", separatorBefore: true);
         AddLine("* Denotes Taxable Item");
@@ -388,14 +388,18 @@ public class ResendEmailService : IResendEmailService
         AddLine("SAT 8AM - 6PM");
         AddLine("SUN 9AM - 6PM");
 
+        // 80 mm wide receipt paper: 1 mm = 2.8346 pt
+        const float receiptWidthPt = 226.77f;
+        const float receiptHeightPt = 900f;
+
         Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
-                page.Margin(24);
+                page.Size(new PageSize(receiptWidthPt, receiptHeightPt));
+                page.Margin(8);
                 page.PageColor(Colors.White);
-                page.DefaultTextStyle(style => style.FontSize(10).FontFamily("Courier New"));
+                page.DefaultTextStyle(style => style.FontSize(9).FontFamily("Courier New"));
 
                 page.Content().Column(column =>
                 {
@@ -405,12 +409,17 @@ public class ResendEmailService : IResendEmailService
                     {
                         if (line.SeparatorBefore)
                         {
-                            column.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                            column.Item().PaddingTop(4).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                         }
 
                         column.Item().Element(item =>
                         {
-                            var text = item.Text(line.Text).FontSize(line.FontSize).AlignCenter();
+                            var text = line.Align switch
+                            {
+                                "left" => item.Text(line.Text).FontSize(line.FontSize).AlignLeft(),
+                                "right" => item.Text(line.Text).FontSize(line.FontSize).AlignRight(),
+                                _ => item.Text(line.Text).FontSize(line.FontSize).AlignCenter(),
+                            };
                             if (line.Bold)
                                 text.SemiBold();
                         });
