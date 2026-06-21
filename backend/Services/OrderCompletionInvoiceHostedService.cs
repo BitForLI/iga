@@ -73,7 +73,7 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
             orderIds = await db.Orders
                 .AsNoTracking()
                 .Where(o =>
-                    o.OrderStatus == "Prepared"
+                    (o.OrderStatus == "Prepared" || o.OrderStatus == "Completed")
                     && o.PickedUpAt != null
                     && o.PickedUpAt <= cutoff
                     && o.CompletionInvoiceSentAt == null)
@@ -112,7 +112,7 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
             .FirstOrDefaultAsync(o => o.Id == orderId, ct);
 
         if (order?.User == null
-            || order.OrderStatus != "Prepared"
+            || !IsCompletedForReceipt(order)
             || !order.PickedUpAt.HasValue
             || order.CompletionInvoiceSentAt != null)
         {
@@ -199,4 +199,8 @@ public sealed class OrderCompletionReceiptHostedService : BackgroundService
 
         return Math.Round(i.PriceAtPurchase * i.Quantity, 2, MidpointRounding.AwayFromZero);
     }
+
+    private static bool IsCompletedForReceipt(Order order) =>
+        string.Equals(order.OrderStatus, "Prepared", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(order.OrderStatus, "Completed", StringComparison.OrdinalIgnoreCase);
 }

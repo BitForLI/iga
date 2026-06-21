@@ -430,8 +430,9 @@ namespace igaServer.Controllers
                 return BadRequest("Invalid pickup code");
             }
 
-            // 更新订单状态为已完成
+            // 更新订单状态为已完成，并记录交接时间，后续发票邮件只依赖这个完成标记发送。
             order.OrderStatus = "Completed";
+            order.PickedUpAt ??= DateTime.UtcNow;
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
 
