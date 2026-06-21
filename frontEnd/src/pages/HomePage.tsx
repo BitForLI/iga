@@ -974,13 +974,16 @@ function SpecialCard({ product, productImage }: { product: Product; productImage
             margin: 0,
             fontSize: 'clamp(0.52rem, 1.5vw, 0.7rem)',
             color: '#9ca3af',
-            lineHeight: 1.3,
+            lineHeight: '1.3em',
+            height: '1.3em',
+            minHeight: '1.3em',
+            maxHeight: '1.3em',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
         >
-          {product.description?.trim() || ' '}
+          {product.description?.trim() || '\u00A0'}
         </p>
         {product.wasPrice != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
@@ -1014,7 +1017,7 @@ function SpecialCard({ product, productImage }: { product: Product; productImage
             minWidth: 0,
             display: 'flex',
             flexDirection: 'column',
-            gap: 'clamp(0.08rem, 0.8vw, 0.16rem)',
+            gap: 'clamp(0.06rem, 0.6vw, 0.12rem)',
             marginTop: 'clamp(0.08rem, 0.8vw, 0.16rem)',
           }}
         >
@@ -1152,16 +1155,19 @@ function ProductCard({ product, productImage }: { product: Product; productImage
             margin: 0,
             fontSize: 'clamp(0.54rem, 1.6vw, 0.72rem)',
             color: '#9ca3af',
-            lineHeight: 1.3,
+            lineHeight: '1.3em',
+            height: '1.3em',
+            minHeight: '1.3em',
+            maxHeight: '1.3em',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}
         >
-          {product.description?.trim() || ' '}
+          {product.description?.trim() || '\u00A0'}
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.08rem, 0.8vw, 0.16rem)', width: '100%', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.06rem, 0.6vw, 0.12rem)', width: '100%', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', lineHeight: 1.2, minWidth: 0 }}>
             <span style={{ fontSize: 'clamp(0.86rem, 2.6vw, 1.15rem)', fontWeight: 'bold', color: '#dc2626' }}>
               ${priceValue.toFixed(2)}
