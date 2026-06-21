@@ -35,10 +35,10 @@ const MOCK_PRODUCTS: Product[] = [
 function parseUnitOptions(raw: unknown, fallbackUnit: string, fallbackPrice: number) {
   if (typeof raw === 'string' && raw.trim()) {
     try {
-      const parsed = JSON.parse(raw) as Array<{ unit?: string; price?: number }>;
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
       const list = Array.isArray(parsed)
         ? parsed
-            .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+            .map((x) => ({ unit: String(x.unit ?? x.Unit ?? '').trim(), price: Number(x.price ?? x.Price ?? 0) }))
             .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
         : [];
       if (list.length > 0) return list;

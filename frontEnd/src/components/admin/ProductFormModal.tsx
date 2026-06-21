@@ -32,10 +32,10 @@ const UNIT_OPTIONS = [
 function parseUnitPriceOptions(raw: string | undefined, fallbackUnit: string, fallbackPrice: number): ProductUnitPriceOption[] {
   if (raw?.trim()) {
     try {
-      const parsed = JSON.parse(raw) as Array<{ unit?: string; price?: number }>;
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
       const options = Array.isArray(parsed)
         ? parsed
-            .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+            .map((x) => ({ unit: String(x.unit ?? x.Unit ?? '').trim(), price: Number(x.price ?? x.Price ?? 0) }))
             .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
         : [];
       if (options.length > 0) return options;
@@ -93,7 +93,7 @@ export function ProductFormModal({
   const [imageFileList, setImageFileList] = useState<UploadFile[]>([]);
   const [draftUnit, setDraftUnit] = useState<string>('ea');
   const [draftPrice, setDraftPrice] = useState<number | null>(null);
-  const unitPriceOptionsWatch = (Form.useWatch('unitPriceOptions', form) as ProductUnitPriceOption[] | undefined) ?? [];
+  const [unitPriceOptionsWatch, setUnitPriceOptionsWatch] = useState<ProductUnitPriceOption[]>([]);
   const kgWatch = Form.useWatch('defaultExpectedWeightKg', form);
   const kgUnitPrice = unitPriceOptionsWatch.find((x) => x?.unit?.toLowerCase() === 'kg')?.price ?? 0;
   const hasKgUnit = unitPriceOptionsWatch.some((x) => x?.unit?.toLowerCase() === 'kg');
@@ -131,6 +131,11 @@ export function ProductFormModal({
       syncImageFileListFromUrl(initialData.imageUrl);
       setDraftUnit('ea');
       setDraftPrice(null);
+      const opts =
+        initialData.unitPriceOptions && initialData.unitPriceOptions.length > 0
+          ? initialData.unitPriceOptions
+          : parseUnitPriceOptions(initialData.unitPriceOptionsJson, initialData.unit, Number(initialData.price));
+      setUnitPriceOptionsWatch(opts);
     } else {
       form.resetFields();
       form.setFieldsValue({
@@ -141,6 +146,7 @@ export function ProductFormModal({
       setImageFileList([]);
       setDraftUnit('ea');
       setDraftPrice(null);
+      setUnitPriceOptionsWatch([]);
     }
   }, [open, mode, initialData, form]);
 
@@ -205,15 +211,15 @@ export function ProductFormModal({
       next.push(row);
     }
     form.setFieldValue('unitPriceOptions', next);
+    setUnitPriceOptionsWatch(next);
     setDraftPrice(null);
   };
 
   const handleRemoveUnitPrice = (unit: string) => {
     const current = (form.getFieldValue('unitPriceOptions') as ProductUnitPriceOption[] | undefined) ?? [];
-    form.setFieldValue(
-      'unitPriceOptions',
-      current.filter((x) => x.unit.toLowerCase() !== unit.toLowerCase())
-    );
+    const next = current.filter((x) => x.unit.toLowerCase() !== unit.toLowerCase());
+    form.setFieldValue('unitPriceOptions', next);
+    setUnitPriceOptionsWatch(next);
   };
 
   return (
@@ -233,6 +239,11 @@ export function ProductFormModal({
           requestAnimationFrame(() => {
             applyProductToForm(form, initialData);
             syncImageFileListFromUrl(initialData.imageUrl);
+            const opts =
+              initialData.unitPriceOptions && initialData.unitPriceOptions.length > 0
+                ? initialData.unitPriceOptions
+                : parseUnitPriceOptions(initialData.unitPriceOptionsJson, initialData.unit, Number(initialData.price));
+            setUnitPriceOptionsWatch(opts);
           });
         }
       }}
