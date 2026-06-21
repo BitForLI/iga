@@ -72,6 +72,7 @@ function applyProductToForm(form: FormInstance<ProductFormValues>, data: Product
     unitPriceOptions,
     isActive: data.isActive,
     isWeighingRequired: hasKg,
+    description: data.description ?? '',
     defaultExpectedWeightKg:
       data.defaultExpectedWeightKg != null && data.defaultExpectedWeightKg > 0
         ? Number(data.defaultExpectedWeightKg)
