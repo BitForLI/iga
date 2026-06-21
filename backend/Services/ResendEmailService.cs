@@ -337,15 +337,10 @@ public class ResendEmailService : IResendEmailService
     {
         using var stream = new MemoryStream();
 
-        // Strip leading "IGA" or "IGA " prefix from store name
-        var displayStoreName = storeName.Trim().ToUpperInvariant();
-        if (displayStoreName == "IGA")
-            displayStoreName = string.Empty;
-        else if (displayStoreName.StartsWith("IGA ", StringComparison.Ordinal))
-            displayStoreName = displayStoreName[4..].TrimStart();
-
-        var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {abn.Trim()}";
-        var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {storePhone.Trim()}";
+        // Force receipt header text so invoice always shows required store legal info.
+        var displayStoreName = "BEVERLY HILLS";
+        const string safePhone = "TEL 9150 0190";
+        const string safeAbn = "ABN: 20619331547";
         var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : storeAddress.Trim().ToUpperInvariant();
         var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {deliveryAddress.Trim()}";
 
@@ -358,10 +353,10 @@ public class ResendEmailService : IResendEmailService
         AddLine("* TAX INVOICE *", bold: true, fontSize: 11f);
         AddLine(string.Empty);
         AddLine(displayStoreName, bold: true, fontSize: 10f);
-        if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone);
+        AddLine(safePhone);
         if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress);
         AddLine(string.Empty);
-        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn, fontSize: 8f);
+        AddLine(safeAbn, fontSize: 8f);
         AddLine(string.Empty);
         AddLine($"SALE    Tx# {orderId}  {saleTime}", fontSize: 8f, separatorBefore: true);
         if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery, align: "left");
