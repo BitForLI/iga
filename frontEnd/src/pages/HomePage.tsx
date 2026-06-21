@@ -969,11 +969,19 @@ function SpecialCard({ product, productImage }: { product: Product; productImage
         >
           {product.name}
         </h3>
-        {product.description && (
-          <p style={{ margin: 0, fontSize: 'clamp(0.52rem, 1.5vw, 0.7rem)', color: '#9ca3af', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {product.description}
-          </p>
-        )}
+        <p
+          style={{
+            margin: 0,
+            fontSize: 'clamp(0.52rem, 1.5vw, 0.7rem)',
+            color: '#9ca3af',
+            lineHeight: 1.3,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {product.description?.trim() || ' '}
+        </p>
         {product.wasPrice != null && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
             <span
@@ -1139,11 +1147,19 @@ function ProductCard({ product, productImage }: { product: Product; productImage
         >
           {product.name}
         </h3>
-        {product.description && (
-          <p style={{ margin: 0, fontSize: 'clamp(0.54rem, 1.6vw, 0.72rem)', color: '#9ca3af', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {product.description}
-          </p>
-        )}
+        <p
+          style={{
+            margin: 0,
+            fontSize: 'clamp(0.54rem, 1.6vw, 0.72rem)',
+            color: '#9ca3af',
+            lineHeight: 1.3,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {product.description?.trim() || ' '}
+        </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.08rem, 0.8vw, 0.16rem)', width: '100%', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', lineHeight: 1.2, minWidth: 0 }}>
