@@ -15,15 +15,18 @@ namespace igaServer.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IStripeService _stripeService;
+        private readonly IOrderCompletionReceiptSender _completionReceiptSender;
         private readonly ILogger<OrderController> _logger;
 
         public OrderController(
             ApplicationDbContext context,
             IStripeService stripeService,
+            IOrderCompletionReceiptSender completionReceiptSender,
             ILogger<OrderController> logger)
         {
             _context = context;
             _stripeService = stripeService;
+            _completionReceiptSender = completionReceiptSender;
             _logger = logger;
         }
 
@@ -384,8 +387,13 @@ namespace igaServer.Controllers
 
             // 更新订单状态
             order.OrderStatus = request.NewStatus;
+            var completedNow = string.Equals(request.NewStatus, "Completed", StringComparison.OrdinalIgnoreCase);
+            if (completedNow)
+                order.PickedUpAt ??= DateTime.UtcNow;
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
+            if (completedNow)
+                await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
 
             var dto = MapToOrderDetailDto(order);
             return Ok(dto);
@@ -435,9 +443,22 @@ namespace igaServer.Controllers
             order.PickedUpAt ??= DateTime.UtcNow;
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
+            await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
 
             var dto = MapToOrderDetailDto(order);
             return Ok(new { message = "Order verified", order = dto });
+        }
+
+        private async Task TrySendCompletionReceiptNowAsync(int orderId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _completionReceiptSender.TrySendForOrderAsync(orderId, TimeSpan.Zero, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CompletionReceipt] Immediate receipt send failed for order {OrderId}", orderId);
+            }
         }
 
         // ==========================================

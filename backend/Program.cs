@@ -168,6 +168,7 @@ builder.Services.AddHttpClient(IGA.Services.TelegramNotificationService.HttpClie
 });
 builder.Services.AddScoped<IGA.Services.ITelegramNotificationService, IGA.Services.TelegramNotificationService>();
 builder.Services.AddScoped<IGA.Services.StripeWebhookProcessor>();
+builder.Services.AddScoped<IGA.Services.IOrderCompletionReceiptSender, IGA.Services.OrderCompletionReceiptSender>();
 builder.Services.AddHostedService<IGA.Services.OrderCompletionReceiptHostedService>();
 
 var app = builder.Build();

@@ -22,6 +22,7 @@ namespace igaServer.Controllers
         private readonly IConfiguration _configuration;
         private readonly IStripeService _stripeService;
         private readonly IResendEmailService _resendEmail;
+        private readonly IOrderCompletionReceiptSender _completionReceiptSender;
         private readonly ILogger<AdminProductController> _logger;
 
         public AdminProductController(
@@ -29,12 +30,14 @@ namespace igaServer.Controllers
             IConfiguration configuration,
             IStripeService stripeService,
             IResendEmailService resendEmail,
+            IOrderCompletionReceiptSender completionReceiptSender,
             ILogger<AdminProductController> logger)
         {
             _context = context;
             _configuration = configuration;
             _stripeService = stripeService;
             _resendEmail = resendEmail;
+            _completionReceiptSender = completionReceiptSender;
             _logger = logger;
         }
 
@@ -546,7 +549,20 @@ namespace igaServer.Controllers
                 return BadRequest("Already marked as picked up");
             order.PickedUpAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
             return Ok(new { id = order.Id, orderStatus = order.OrderStatus, pickedUpAt = order.PickedUpAt, message = "Marked as picked up" });
+        }
+
+        private async Task TrySendCompletionReceiptNowAsync(int orderId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _completionReceiptSender.TrySendForOrderAsync(orderId, TimeSpan.Zero, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CompletionReceipt] Immediate receipt send failed for order {OrderId}", orderId);
+            }
         }
 
         public sealed class RejectRefundRequestDto
