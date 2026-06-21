@@ -447,6 +447,7 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
         const list = raw.map((p: Record<string, unknown>) => ({
           id: (p.id ?? p.Id) as number,
           name: (p.name ?? p.Name) as string,
+          description: (p.description ?? p.Description ?? '') as string,
           price: Number(p.price ?? p.Price ?? 0),
           category: (p.category ?? p.Category ?? '') as string,
           unit: (p.unit ?? p.Unit ?? '') as string,

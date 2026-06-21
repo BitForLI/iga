@@ -71,6 +71,7 @@ export function ProductManagementPage() {
     return list.map((p: any) => ({
       id: p.id ?? p.Id,
       name: p.name ?? p.Name ?? '',
+      description: p.description ?? p.Description ?? '',
       imageUrl: p.imageUrl ?? p.ImageUrl ?? '',
       category: p.category ?? p.Category ?? '',
       price: Number(p.price ?? p.Price ?? 0),
