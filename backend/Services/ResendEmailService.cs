@@ -198,7 +198,7 @@ public class ResendEmailService : IResendEmailService
         CancellationToken cancellationToken = default)
     {
         var subject = $"{storeName} — receipt for order #{orderId}";
-        var saleTime = pickedUpAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
+        var saleTime = FormatAustralianTime(pickedUpAtUtc);
         var invoiceTotal = finalTotalAud ?? chargedTotalAud;
         var totalItems = lines.Sum(l => l.Quantity);
         var pdfBytes = BuildReceiptPdf(
@@ -343,15 +343,15 @@ public class ResendEmailService : IResendEmailService
         var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : storeAddress.Trim().ToUpperInvariant();
         var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {deliveryAddress.Trim()}";
 
-        var receiptLines = new List<(string Text, bool Centered, bool Bold, float FontSize)>();
-        void AddLine(string text, bool centered = false, bool bold = false, float fontSize = 10f) =>
-            receiptLines.Add((text, centered, bold, fontSize));
+        var receiptLines = new List<(string Text, bool Bold, float FontSize, bool SeparatorBefore)>();
+        void AddLine(string text, bool bold = false, float fontSize = 10f, bool separatorBefore = false) =>
+            receiptLines.Add((text, bold, fontSize, separatorBefore));
 
-        AddLine("* TAX INVOICE *", centered: true, bold: true, fontSize: 12f);
-        AddLine(safeStoreName, centered: true, bold: true, fontSize: 12f);
-        if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone, centered: true);
-        if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress, centered: true);
-        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn, centered: true);
+        AddLine("* TAX INVOICE *", bold: true, fontSize: 12f);
+        AddLine(safeStoreName, fontSize: 12f);
+        if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone);
+        if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress);
+        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn);
         AddLine(string.Empty);
         AddLine($"SALE    Tx# {orderId}  {saleTime}", bold: true);
         if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery);
@@ -379,13 +379,14 @@ public class ResendEmailService : IResendEmailService
         AddLine($"{("Cheque:").PadRight(24)}${invoiceTotal:0.00}");
         AddLine($"{("CHANGE:").PadRight(24)}$0.00");
         AddLine(string.Empty);
-        AddLine("STORE: 1  REGISTER: 2", centered: true);
-        AddLine("* - Denotes Taxable Item", centered: true);
-        AddLine("** - Denotes Manual Weight Entry", centered: true);
-        AddLine("TRADING HOURS", centered: true, bold: true);
-        AddLine("MON-FRI 7AM - 8PM", centered: true);
-        AddLine("SAT 8AM - 6PM", centered: true);
-        AddLine("SUN 9AM - 6PM", centered: true);
+        AddLine("STORE: 1  REGISTER: 2", separatorBefore: true);
+        AddLine("* Denotes Taxable Item");
+        AddLine("** Denotes Manual Weight Entry");
+        AddLine(string.Empty);
+        AddLine("TRADING HOURS", bold: true);
+        AddLine("MON-FRI 7AM - 8PM");
+        AddLine("SAT 8AM - 6PM");
+        AddLine("SUN 9AM - 6PM");
 
         Document.Create(container =>
         {
@@ -402,14 +403,16 @@ public class ResendEmailService : IResendEmailService
 
                     foreach (var line in receiptLines)
                     {
+                        if (line.SeparatorBefore)
+                        {
+                            column.Item().PaddingTop(6).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                        }
+
                         column.Item().Element(item =>
                         {
-                            var text = item.Text(line.Text).FontSize(line.FontSize);
+                            var text = item.Text(line.Text).FontSize(line.FontSize).AlignCenter();
                             if (line.Bold)
                                 text.SemiBold();
-
-                            if (line.Centered)
-                                text.AlignCenter();
                         });
                     }
                 });
@@ -417,5 +420,33 @@ public class ResendEmailService : IResendEmailService
         }).GeneratePdf(stream);
 
         return stream.ToArray();
+    }
+
+    private static string FormatAustralianTime(DateTime utcDateTime)
+    {
+        var tz = GetAustralianTimeZone();
+        var converted = utcDateTime.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc)
+            : utcDateTime.ToUniversalTime();
+        return TimeZoneInfo.ConvertTimeFromUtc(converted, tz).ToString("dd/MM/yyyy HH:mm:ss");
+    }
+
+    private static TimeZoneInfo GetAustralianTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Australia/Sydney");
+        }
+        catch
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("AUS Eastern Standard Time");
+            }
+            catch
+            {
+                return TimeZoneInfo.Local;
+            }
+        }
     }
 }
