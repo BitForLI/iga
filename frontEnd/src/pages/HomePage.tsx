@@ -44,9 +44,9 @@ const WEIGHT_MIN_KG = 0.05;
 /** 首页商品 / Special 共用：水平居中内容区 */
 const HOME_CONTENT_MAX = 'min(1400px, 100%)';
 const GRID_GAP = 'clamp(6px, 1.8vw, 22px)';
-/** 列数随容器宽度变化；min 控制最小列宽，避免过挤 */
+/** 列数随容器宽度变化；auto-fill 保持固定列宽，单商品时不撑满整行 */
 const PRODUCT_AND_SPECIAL_GRID =
-  'repeat(auto-fit, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
+  'repeat(auto-fill, minmax(min(100%, clamp(104px, 22vw, 280px)), 1fr))';
 /** 主行 chip 高度与图标；宽度由 flex 均分，最小占位用测量值 */
 const CATEGORY_CHIP_H_PX = 36;
 const CATEGORY_ICON_PX = 15;
@@ -90,10 +90,10 @@ function parseUnitPriceOptions(p: Record<string, unknown>): { unit: string; pric
   const raw = p.unitPriceOptionsJson ?? p.UnitPriceOptionsJson;
   if (typeof raw !== 'string' || !raw.trim()) return fallback;
   try {
-    const parsed = JSON.parse(raw) as Array<{ unit?: string; price?: number }>;
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
     const list = Array.isArray(parsed)
       ? parsed
-          .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
+          .map((x) => ({ unit: String(x.unit ?? x.Unit ?? '').trim(), price: Number(x.price ?? x.Price ?? 0) }))
           .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
       : [];
     return list.length > 0 ? list : fallback;
