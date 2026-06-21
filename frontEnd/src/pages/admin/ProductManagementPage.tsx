@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Table, Button, Space, Image, message, Switch, Select, Input } from 'antd';
+import { Table, Button, Space, Image, message, Switch, Select, Input, Popconfirm } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -225,6 +225,16 @@ export function ProductManagementPage() {
     }
   };
 
+  const handleDelete = async (record: Product) => {
+    try {
+      await adminProductAPI.delete(record.id);
+      message.success('Product deleted');
+      fetchProducts(pagination.current, pagination.pageSize);
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
   const columns: ColumnsType<Product> = [
     {
       title: 'Image',
@@ -292,11 +302,25 @@ export function ProductManagementPage() {
     {
       title: 'Actions',
       key: 'action',
-      width: 100,
+      width: 160,
       render: (_, record) => (
-        <Button type="link" size="small" onClick={() => handleEdit(record)}>
-          Edit
-        </Button>
+        <Space size={4}>
+          <Button type="link" size="small" onClick={() => handleEdit(record)}>
+            Edit
+          </Button>
+          <Popconfirm
+            title="Delete this product?"
+            description="This action cannot be undone."
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+            cancelText="Cancel"
+            onConfirm={() => handleDelete(record)}
+          >
+            <Button type="link" size="small" danger>
+              Delete
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

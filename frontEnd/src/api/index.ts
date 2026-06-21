@@ -141,6 +141,7 @@ export const adminProductAPI = {
   },
   create: (data: any) => apiClient.post('/product', data),
   update: (id: number, data: any) => apiClient.put(`/product/${id}`, data),
+  delete: (id: number) => apiClient.delete(`/product/${id}`),
   toggleStatus: (id: number) => apiClient.patch(`/product/${id}/toggle-status`),
 };
 
