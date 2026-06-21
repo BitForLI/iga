@@ -168,6 +168,9 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       if (tabKey === 'PreparedDelivery' && deliverySuburbFilter.trim()) {
         params.deliverySuburb = deliverySuburbFilter.trim().toLowerCase();
       }
+      if (tabKey === 'RefundRequested' && isRefundsOnlyPage) {
+        params.refundHistoryOnly = true;
+      }
       const res = (await apiClient.get('/admin/orders', { params })) as { items?: any[]; total?: number };
       const list = res?.items ?? [];
       const rows = list.map((o: any) => ({
@@ -220,6 +223,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
         CompletedPickup: (c?.completedPickup ?? c?.CompletedPickup) ?? 0,
         CompletedDelivery: (c?.completedDelivery ?? c?.CompletedDelivery) ?? 0,
         RefundRequested: (c?.refundRequested ?? c?.RefundRequested) ?? 0,
+        RefundHistory: (c?.refundHistory ?? c?.RefundHistory) ?? 0,
       });
     } catch (_) {}
   }, []);
@@ -425,6 +429,42 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       width: 100,
       render: (v: number, r) => `$${(r.finalAmount ?? v ?? 0).toFixed(2)}`,
     },
+    ...(isRefundsOnlyPage
+      ? [
+          {
+            title: 'Status',
+            key: 'status',
+            width: 120,
+            render: (_: unknown, r: OrderRow) => (
+              <span
+                style={{
+                  fontSize: 12,
+                  padding: '0.2rem 0.45rem',
+                  borderRadius: 999,
+                  backgroundColor:
+                    r.orderStatus === 'RefundRequested'
+                      ? '#fee2e2'
+                      : r.orderStatus === 'Refunded'
+                        ? '#dcfce7'
+                        : r.orderStatus === 'Completed'
+                          ? '#e0f2fe'
+                          : '#f3f4f6',
+                  color:
+                    r.orderStatus === 'RefundRequested'
+                      ? '#991b1b'
+                      : r.orderStatus === 'Refunded'
+                        ? '#166534'
+                        : r.orderStatus === 'Completed'
+                          ? '#075985'
+                          : '#374151',
+                }}
+              >
+                {r.orderStatus}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       title: 'Actions',
       key: 'action',
@@ -497,6 +537,8 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           {isRefundsOnlyPage && (
             <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6b7280' }}>
               Open requests: <strong>{tabCounts.RefundRequested ?? 0}</strong>
+              {'  '}
+              · Processed refunds: <strong>{tabCounts.RefundHistory ?? 0}</strong>
             </p>
           )}
         </div>

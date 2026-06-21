@@ -3,6 +3,7 @@ using igaServer.Models;
 using igaServer.Seed;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using QuestPDF.Infrastructure;
 
 static string[] GetCorsAllowedOrigins(IConfiguration config)
 {
@@ -16,6 +17,8 @@ static string[] GetCorsAllowedOrigins(IConfiguration config)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+QuestPDF.Settings.License = LicenseType.Community;
 
 // Stripe：兼容 Railway 等平台常用的扁平环境变量名（与 Stripe__SecretKey 等效；仅在嵌套键为空时回填）
 static void MapStripeFlatEnvIfNeeded(ConfigurationManager cfg)

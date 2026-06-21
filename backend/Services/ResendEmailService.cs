@@ -2,11 +2,19 @@ using System.Linq;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace IGA.Services;
 
 public class ResendEmailService : IResendEmailService
 {
+    static ResendEmailService()
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+    }
+
     private readonly HttpClient _http;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ResendEmailService> _logger;
@@ -164,7 +172,13 @@ public class ResendEmailService : IResendEmailService
             <p style="white-space:pre-wrap;border-left:3px solid #dc2626;padding-left:12px;">{safeMsg}</p>
             <p style="color:#64748b;font-size:13px;">Reply in your mail client will go to the customer if your client supports Reply-To.</p>
             """;
-        return await SendEmailAsync(toEmails, subject, html, customerEmail.Trim(), cancellationToken);
+        return await SendEmailAsync(
+            toEmails,
+            subject,
+            html,
+            replyTo: customerEmail.Trim(),
+            attachments: null,
+            cancellationToken: cancellationToken);
     }
 
     public async Task<bool> SendOrderCompletionReceiptAsync(
@@ -187,82 +201,48 @@ public class ResendEmailService : IResendEmailService
         var saleTime = pickedUpAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
         var invoiceTotal = finalTotalAud ?? chargedTotalAud;
         var totalItems = lines.Sum(l => l.Quantity);
+        var pdfBytes = BuildReceiptPdf(
+            orderId,
+            saleTime,
+            invoiceTotal,
+            totalItems,
+            lines,
+            storeName,
+            abn,
+            storePhone,
+            storeAddress,
+            deliveryAddress);
 
-        var safeStoreName = System.Net.WebUtility.HtmlEncode(storeName.ToUpperInvariant());
-        var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {System.Net.WebUtility.HtmlEncode(abn)}";
-        var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {System.Net.WebUtility.HtmlEncode(storePhone.Trim())}";
-        var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : System.Net.WebUtility.HtmlEncode(storeAddress.Trim()).ToUpperInvariant();
-        var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {System.Net.WebUtility.HtmlEncode(deliveryAddress.Trim())}";
-
-        var receipt = new StringBuilder();
-        receipt.AppendLine("<div style=\"font-family:Menlo,Consolas,monospace;white-space:pre-wrap;line-height:1.3;max-width:560px;\">");
-        receipt.AppendLine("* TAX INVOICE *");
-        receipt.AppendLine(safeStoreName);
-        if (!string.IsNullOrEmpty(safePhone))
+        var html = $"<p>Your tax invoice for order <strong>#{orderId}</strong> is attached as a PDF.</p>";
+        var attachments = new[]
         {
-            receipt.AppendLine(safePhone);
-        }
-        if (!string.IsNullOrEmpty(safeStoreAddress))
-        {
-            receipt.AppendLine(safeStoreAddress);
-        }
-        if (!string.IsNullOrEmpty(safeAbn))
-        {
-            receipt.AppendLine(safeAbn);
-        }
-        receipt.AppendLine();
-        receipt.AppendLine($"SALE    Tx# {orderId}  {saleTime}");
-        if (!string.IsNullOrEmpty(safeDelivery))
-        {
-            receipt.AppendLine(safeDelivery);
-        }
-        receipt.AppendLine();
+            (Filename: $"invoice-order-{orderId}.pdf", Content: Convert.ToBase64String(pdfBytes))
+        };
 
-        foreach (var line in lines)
-        {
-            var productName = System.Net.WebUtility.HtmlEncode(line.ProductName);
-            receipt.AppendLine(productName);
-
-            if (line.ExpectedWeight > 0)
-            {
-                var weight = line.ActualWeight ?? line.ExpectedWeight;
-                receipt.AppendLine($"quantity: {weight:0.##} @ ${line.UnitPrice:0.00} per kg");
-            }
-            else
-            {
-                receipt.AppendLine($"quantity: {line.Quantity} @ ${line.UnitPrice:0.00} each");
-            }
-
-            receipt.AppendLine($"${line.LineTotal:0.00}".PadLeft(40));
-            receipt.AppendLine();
-        }
-
-        receipt.AppendLine($"{("Total for " + totalItems + " items:").PadRight(28)}${invoiceTotal:0.00}");
-        receipt.AppendLine($"{("Cheque:").PadRight(28)}${invoiceTotal:0.00}");
-        receipt.AppendLine($"{("CHANGE:").PadRight(28)}$0.00");
-        receipt.AppendLine();
-        receipt.AppendLine("STORE: 1  REGISTER: 2");
-        receipt.AppendLine("* - Denotes Taxable Item");
-        receipt.AppendLine("** - Denotes Manual Weight Entry");
-        receipt.AppendLine("TRADING HOURS");
-        receipt.AppendLine("MON-FRI 7AM - 8PM");
-        receipt.AppendLine("SAT 8AM - 6PM");
-        receipt.AppendLine("SUN 9AM - 6PM");
-        receipt.AppendLine("</div>");
-
-        var html = receipt.ToString();
-
-        return await SendEmailAsync(toEmail, subject, html, cancellationToken);
+        return await SendEmailAsync(
+            new[] { toEmail },
+            subject,
+            html,
+            replyTo: null,
+            attachments: attachments,
+            cancellationToken: cancellationToken);
     }
 
     private Task<bool> SendEmailAsync(string toEmail, string subject, string html, CancellationToken cancellationToken) =>
-        SendEmailAsync(new[] { toEmail }, subject, html, replyTo: null, cancellationToken);
+        SendEmailAsync(
+            new[] { toEmail },
+            subject,
+            html,
+            replyTo: null,
+            attachments: null,
+            cancellationToken: cancellationToken);
 
     private async Task<bool> SendEmailAsync(
         IReadOnlyList<string> toEmails,
         string subject,
         string html,
         string? replyTo,
+        IReadOnlyList<(string Filename, string Content)>? attachments,
         CancellationToken cancellationToken)
     {
         var list = toEmails?.Where(e => !string.IsNullOrWhiteSpace(e)).Select(e => e.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
@@ -288,9 +268,27 @@ public class ResendEmailService : IResendEmailService
             subject,
             replyTo != null ? DescribeEmail(replyTo) : "(none)");
 
-        object payload = string.IsNullOrWhiteSpace(replyTo)
-            ? new { from = FromEmail, to = list, subject, html }
-            : new { from = FromEmail, to = list, reply_to = replyTo.Trim(), subject, html };
+        var payload = new Dictionary<string, object?>
+        {
+            ["from"] = FromEmail,
+            ["to"] = list,
+            ["subject"] = subject,
+            ["html"] = html,
+        };
+
+        if (!string.IsNullOrWhiteSpace(replyTo))
+            payload["reply_to"] = replyTo.Trim();
+
+        if (attachments is { Count: > 0 })
+        {
+            payload["attachments"] = attachments
+                .Select(a => new Dictionary<string, object?>
+                {
+                    ["filename"] = a.Filename,
+                    ["content"] = a.Content,
+                })
+                .ToArray();
+        }
 
         using var req = new HttpRequestMessage(HttpMethod.Post, "emails");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey);
@@ -323,5 +321,101 @@ public class ResendEmailService : IResendEmailService
             _logger.LogError(ex, "[Resend] Send failed");
             return false;
         }
+    }
+
+    private static byte[] BuildReceiptPdf(
+        int orderId,
+        string saleTime,
+        decimal invoiceTotal,
+        int totalItems,
+        IReadOnlyList<(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal, double ExpectedWeight, double? ActualWeight)> lines,
+        string storeName,
+        string? abn,
+        string? storePhone,
+        string? storeAddress,
+        string? deliveryAddress)
+    {
+        using var stream = new MemoryStream();
+
+        var safeStoreName = storeName.ToUpperInvariant();
+        var safeAbn = string.IsNullOrWhiteSpace(abn) ? string.Empty : $"ABN: {abn.Trim()}";
+        var safePhone = string.IsNullOrWhiteSpace(storePhone) ? string.Empty : $"TEL {storePhone.Trim()}";
+        var safeStoreAddress = string.IsNullOrWhiteSpace(storeAddress) ? string.Empty : storeAddress.Trim().ToUpperInvariant();
+        var safeDelivery = string.IsNullOrWhiteSpace(deliveryAddress) ? string.Empty : $"Delivery: {deliveryAddress.Trim()}";
+
+        var receiptLines = new List<(string Text, bool Centered, bool Bold, float FontSize)>();
+        void AddLine(string text, bool centered = false, bool bold = false, float fontSize = 10f) =>
+            receiptLines.Add((text, centered, bold, fontSize));
+
+        AddLine("* TAX INVOICE *", centered: true, bold: true, fontSize: 12f);
+        AddLine(safeStoreName, centered: true, bold: true, fontSize: 12f);
+        if (!string.IsNullOrWhiteSpace(safePhone)) AddLine(safePhone, centered: true);
+        if (!string.IsNullOrWhiteSpace(safeStoreAddress)) AddLine(safeStoreAddress, centered: true);
+        if (!string.IsNullOrWhiteSpace(safeAbn)) AddLine(safeAbn, centered: true);
+        AddLine(string.Empty);
+        AddLine($"SALE    Tx# {orderId}  {saleTime}", bold: true);
+        if (!string.IsNullOrWhiteSpace(safeDelivery)) AddLine(safeDelivery);
+        AddLine(string.Empty);
+
+        foreach (var line in lines)
+        {
+            AddLine(line.ProductName, bold: true);
+
+            if (line.ExpectedWeight > 0)
+            {
+                var weight = line.ActualWeight ?? line.ExpectedWeight;
+                AddLine($"quantity: {weight:0.##} @ ${line.UnitPrice:0.00} per kg");
+            }
+            else
+            {
+                AddLine($"quantity: {line.Quantity} @ ${line.UnitPrice:0.00} each");
+            }
+
+            AddLine($"${line.LineTotal:0.00}".PadLeft(36));
+            AddLine(string.Empty);
+        }
+
+        AddLine($"{("Total for " + totalItems + " items:").PadRight(24)}${invoiceTotal:0.00}");
+        AddLine($"{("Cheque:").PadRight(24)}${invoiceTotal:0.00}");
+        AddLine($"{("CHANGE:").PadRight(24)}$0.00");
+        AddLine(string.Empty);
+        AddLine("STORE: 1  REGISTER: 2", centered: true);
+        AddLine("* - Denotes Taxable Item", centered: true);
+        AddLine("** - Denotes Manual Weight Entry", centered: true);
+        AddLine("TRADING HOURS", centered: true, bold: true);
+        AddLine("MON-FRI 7AM - 8PM", centered: true);
+        AddLine("SAT 8AM - 6PM", centered: true);
+        AddLine("SUN 9AM - 6PM", centered: true);
+
+        Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(24);
+                page.PageColor(Colors.White);
+                page.DefaultTextStyle(style => style.FontSize(10).FontFamily("Courier New"));
+
+                page.Content().Column(column =>
+                {
+                    column.Spacing(2);
+
+                    foreach (var line in receiptLines)
+                    {
+                        column.Item().Element(item =>
+                        {
+                            var text = item.Text(line.Text).FontSize(line.FontSize);
+                            if (line.Bold)
+                                text.SemiBold();
+
+                            if (line.Centered)
+                                text.AlignCenter();
+                        });
+                    }
+                });
+            });
+        }).GeneratePdf(stream);
+
+        return stream.ToArray();
     }
 }

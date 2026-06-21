@@ -146,6 +146,7 @@ namespace igaServer.Controllers
                 .ToListAsync();
             var total = await _context.Orders.CountAsync();
             var dict = counts.ToDictionary(x => string.IsNullOrEmpty(x.status) ? "" : x.status, x => x.count);
+            var refundHistoryCount = await _context.Orders.CountAsync(o => o.RefundAmount > 0m || o.OrderStatus == "RefundRequested");
             // Ready：Prepared 且尚未标记取走/交接；Completed*：已标记（仍存为 Prepared + PickedUpAt）
             var preparedPickup = await _context.Orders.CountAsync(o =>
                 o.OrderStatus == "Prepared" && o.OrderType == "Pickup" && !o.PickedUpAt.HasValue);
@@ -170,6 +171,7 @@ namespace igaServer.Controllers
                 Completed = dict.GetValueOrDefault("Completed", 0),
                 Pending = dict.GetValueOrDefault("Pending", 0),
                 RefundRequested = dict.GetValueOrDefault("RefundRequested", 0),
+                RefundHistory = refundHistoryCount,
                 Cancelled = dict.GetValueOrDefault("Cancelled", 0)
             });
         }
@@ -182,7 +184,8 @@ namespace igaServer.Controllers
             [FromQuery] string? orderType = null,
             [FromQuery] bool? pickedUp = null,
             [FromQuery] string? pickupCode = null,
-            [FromQuery] string? deliverySuburb = null)
+            [FromQuery] string? deliverySuburb = null,
+            [FromQuery] bool refundHistoryOnly = false)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
             if (string.IsNullOrEmpty(status) || status == "Pending" || status == "Paid")
@@ -192,7 +195,11 @@ namespace igaServer.Controllers
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 10;
             IQueryable<Order> query = _context.Orders.Include(o => o.User);
-            if (!string.IsNullOrEmpty(status))
+            if (refundHistoryOnly)
+            {
+                query = query.Where(o => o.OrderStatus == "RefundRequested" || o.RefundAmount > 0m);
+            }
+            else if (!string.IsNullOrEmpty(status))
                 query = query.Where(o => o.OrderStatus == status);
             if (!string.IsNullOrEmpty(orderType))
                 query = query.Where(o => o.OrderType == orderType);
