@@ -161,7 +161,7 @@ export function ProductFormModal({
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      const normalizedUnitOptions = (values.unitPriceOptions ?? [])
+      const normalizedUnitOptions = unitPriceOptionsWatch
         .map((x) => ({ unit: String(x.unit ?? '').trim(), price: Number(x.price ?? 0) }))
         .filter((x) => x.unit && Number.isFinite(x.price) && x.price > 0)
         .filter((x, idx, arr) => arr.findIndex((y) => y.unit.toLowerCase() === x.unit.toLowerCase()) === idx);
