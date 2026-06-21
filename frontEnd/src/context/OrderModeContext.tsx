@@ -5,9 +5,15 @@ const ORDER_MODE_KEY = 'iga_order_mode';
 
 export type OrderType = 'Pickup' | 'Delivery';
 
-/** 与 PickupDeliverySidebar 一致：最早为当前时间 +1 小时，最晚时段在「次日 20:00」前结束 */
-function pickupWindowEndLocal(now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0, 0, 0);
+function getPickupHoursForDay(dayIndex: number): { openHour: number; closeHour: number } {
+  if (dayIndex === 6) return { openHour: 8, closeHour: 18 };
+  if (dayIndex === 0) return { openHour: 9, closeHour: 18 };
+  return { openHour: 7, closeHour: 20 };
+}
+
+function pickupWindowEndLocal(slotDate: Date): Date {
+  const { closeHour } = getPickupHoursForDay(slotDate.getDay());
+  return new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), closeHour, 0, 0, 0);
 }
 
 function pickupWindowStartLocal(now: Date): Date {
@@ -21,9 +27,12 @@ function isPickupSlotStillValid(slotValue: string): boolean {
     const now = new Date();
     if (Number.isNaN(slotDate.getTime())) return false;
     if (slotDate <= now) return false;
-    const wEnd = pickupWindowEndLocal(now);
-    if (slotDate >= wEnd) return false;
     if (slotDate < pickupWindowStartLocal(now)) return false;
+    const { openHour } = getPickupHoursForDay(slotDate.getDay());
+    const wStart = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), openHour, 0, 0, 0);
+    const wEnd = pickupWindowEndLocal(slotDate);
+    if (slotDate < wStart) return false;
+    if (slotDate >= wEnd) return false;
     return true;
   } catch {
     return false;

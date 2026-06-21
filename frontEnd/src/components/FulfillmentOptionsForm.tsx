@@ -14,6 +14,12 @@ const PICKUP_SLOT_MS = 60 * 60 * 1000;
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_MS = 86400000;
 
+function getPickupHoursForDay(dayIndex: number): { openHour: number; closeHour: number } {
+  if (dayIndex === 6) return { openHour: 8, closeHour: 18 };
+  if (dayIndex === 0) return { openHour: 9, closeHour: 18 };
+  return { openHour: 7, closeHour: 20 };
+}
+
 function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -27,28 +33,6 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-const PICKUP_OPEN_HOUR = 9;
-const PICKUP_CLOSE_HOUR = 20;
-
-function pickupWindowEnd(now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, PICKUP_CLOSE_HOUR, 0, 0, 0);
-}
-
-function pickupWindowStart(now: Date): Date {
-  const lead = new Date(now.getTime() + 60 * 60 * 1000);
-  const todayOpen = new Date(now.getFullYear(), now.getMonth(), now.getDate(), PICKUP_OPEN_HOUR, 0, 0, 0);
-  const todayClose = new Date(now.getFullYear(), now.getMonth(), now.getDate(), PICKUP_CLOSE_HOUR, 0, 0, 0);
-  const tomorrowOpen = new Date(todayOpen.getTime() + DAY_MS);
-
-  if (lead < todayOpen) {
-    return todayOpen;
-  }
-  if (lead >= todayClose) {
-    return tomorrowOpen;
-  }
-  return lead;
-}
-
 function ceilToNextHour(d: Date): Date {
   const out = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), 0, 0, 0);
   if (out.getTime() < d.getTime()) {
@@ -57,28 +41,45 @@ function ceilToNextHour(d: Date): Date {
   return out;
 }
 
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function endOfDay(d: Date, closeHour: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), closeHour, 0, 0, 0);
+}
+
 /** 仅展示时间段（不含星期、日期、月份），例如 2:00 am – 3:00 am */
 function generateAllPickupSlots(now: Date): { displayTime: string; value: string; dayKey: string }[] {
-  const wStart = pickupWindowStart(now);
-  const wEnd = pickupWindowEnd(now);
-  if (wStart >= wEnd) return [];
-  let t = ceilToNextHour(wStart);
   const fmtHm = new Intl.DateTimeFormat('en-AU', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
   const out: { displayTime: string; value: string; dayKey: string }[] = [];
-  while (t < wEnd) {
-    const slotEnd = new Date(t.getTime() + PICKUP_SLOT_MS);
-    if (slotEnd > wEnd) break;
-    out.push({
-      displayTime: `${fmtHm.format(t)} – ${fmtHm.format(slotEnd)}`,
-      value: t.toISOString(),
-      dayKey: dateKey(t),
-    });
-    t = slotEnd;
+  const days = [startOfDay(now), new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0)];
+
+  for (const day of days) {
+    const { openHour, closeHour } = getPickupHoursForDay(day.getDay());
+    const dayOpen = new Date(day.getFullYear(), day.getMonth(), day.getDate(), openHour, 0, 0, 0);
+    const dayClose = endOfDay(day, closeHour);
+    const minimumStart = day.getTime() === startOfDay(now).getTime()
+      ? ceilToNextHour(new Date(now.getTime() + 60 * 60 * 1000))
+      : dayOpen;
+    let t = minimumStart > dayOpen ? minimumStart : dayOpen;
+
+    while (t < dayClose) {
+      const slotEnd = new Date(t.getTime() + PICKUP_SLOT_MS);
+      if (slotEnd > dayClose) break;
+      out.push({
+        displayTime: `${fmtHm.format(t)} – ${fmtHm.format(slotEnd)}`,
+        value: t.toISOString(),
+        dayKey: dateKey(t),
+      });
+      t = slotEnd;
+    }
   }
+
   return out;
 }
 
