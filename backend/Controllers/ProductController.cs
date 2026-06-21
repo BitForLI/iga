@@ -176,12 +176,15 @@ namespace igaServer.Controllers
             }
         }
 
+        private static readonly JsonSerializerOptions _caseInsensitiveOpts =
+            new() { PropertyNameCaseInsensitive = true };
+
         private static List<UnitPriceOption> ParseUnitPriceOptions(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return new();
             try
             {
-                var list = JsonSerializer.Deserialize<List<UnitPriceOption>>(json) ?? new();
+                var list = JsonSerializer.Deserialize<List<UnitPriceOption>>(json, _caseInsensitiveOpts) ?? new();
                 return list
                     .Where(x => !string.IsNullOrWhiteSpace(x.Unit) && x.Price > 0)
                     .Select(x => new UnitPriceOption
