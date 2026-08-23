@@ -28,7 +28,7 @@ dotnet run --launch-profile http
 ```text
 ASPNETCORE_ENVIRONMENT=Production
 Jwt__SigningKey=<至少 32 字节的随机密钥>
-ConnectionStrings__DefaultConnection=<Ssl Mode=VerifyFull;Trust Server Certificate=false 的 PostgreSQL 连接串>
+ConnectionStrings__DefaultConnection=<Railway PostgreSQL 连接串，支持 postgres://... 或 Host=...;Ssl Mode=Require>
 Cors__AllowedOrigins__0=https://igabeverlyhills.com
 Stripe__SecretKey=...
 Stripe__WebhookSecret=...

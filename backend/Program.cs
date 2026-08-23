@@ -80,7 +80,11 @@ static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
             Database = db,
             Username = username,
             Password = password,
-            SslMode = SslMode.VerifyFull,
+            // Railway's managed Postgres endpoint is encrypted, but its
+            // certificate/hostname setup is not always compatible with
+            // VerifyFull. Require keeps transport encryption without making
+            // the application fail to boot on the managed platform.
+            SslMode = SslMode.Require,
         }.ConnectionString;
     }
     catch
@@ -90,17 +94,18 @@ static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
 }
 
 // 1. 连接串：appsettings.json → appsettings.{Environment}.json → 环境变量（如 ConnectionStrings__DefaultConnection）覆盖
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var configuredConnection = builder.Configuration.GetConnectionString("DefaultConnection");
+var connectionString = ConnectionStringFromDatabaseUrl(configuredConnection) ?? configuredConnection;
 if (string.IsNullOrWhiteSpace(connectionString))
     connectionString = ConnectionStringFromDatabaseUrl(Environment.GetEnvironmentVariable("DATABASE_URL"));
 
 if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(connectionString))
 {
     var productionConnection = new NpgsqlConnectionStringBuilder(connectionString);
-    if (productionConnection.SslMode != SslMode.VerifyFull)
+    if (productionConnection.SslMode is SslMode.Disable or SslMode.Allow or SslMode.Prefer)
     {
-        throw new InvalidOperationException(
-            "Production database connections must use Ssl Mode=VerifyFull.");
+        productionConnection.SslMode = SslMode.Require;
+        connectionString = productionConnection.ConnectionString;
     }
 }
 
