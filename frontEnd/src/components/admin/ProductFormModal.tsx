@@ -129,6 +129,8 @@ export function ProductFormModal({
     if (!open) return;
     if (mode === 'edit' && initialData) {
       applyProductToForm(form, initialData);
+      // Existing modal-open synchronization updates the upload preview state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional form synchronization
       syncImageFileListFromUrl(initialData.imageUrl);
       setDraftUnit('ea');
       setDraftPrice(null);
@@ -183,7 +185,7 @@ export function ProductFormModal({
       });
       form.resetFields();
       onClose();
-    } catch (err) {
+    } catch {
       // 校验失败或提交失败，不关闭
     }
   };

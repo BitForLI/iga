@@ -247,7 +247,6 @@ function CategoryChipButton({
 function HomeCategoryBar({
   selectedCategory,
   onSelectCategory,
-  compact: _compact,
 }: {
   selectedCategory: string;
   onSelectCategory: (v: string) => void;
@@ -279,6 +278,8 @@ function HomeCategoryBar({
 
   useEffect(() => {
     if (!hasHidden) {
+      // Existing category-layout synchronization keeps More collapsed when unused.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional category UI synchronization
       setMoreExpanded(false);
       return;
     }
@@ -444,7 +445,11 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
         setFetchError(null);
         const res = await productAPI.list();
         const raw = Array.isArray(res) ? res : [];
-        const list = raw.map((p: Record<string, unknown>) => ({
+        const list = raw.map((value) => {
+          const p = typeof value === 'object' && value !== null
+            ? (value as Record<string, unknown>)
+            : {};
+          return {
           id: (p.id ?? p.Id) as number,
           name: (p.name ?? p.Name) as string,
           description: (p.description ?? p.Description ?? '') as string,
@@ -456,11 +461,12 @@ export function HomePage({ selectedCategory, onSelectCategory, searchKeyword }: 
           imageUrl: (p.imageUrl ?? p.ImageUrl ?? '') as string | undefined,
           isActive: (p.isActive ?? p.IsActive ?? true) as boolean,
           isWeighingRequired: Boolean(p.isWeighingRequired ?? p.IsWeighingRequired),
-          defaultExpectedWeightKg:
-            p.defaultExpectedWeightKg != null || p.DefaultExpectedWeightKg != null
-              ? Number(p.defaultExpectedWeightKg ?? p.DefaultExpectedWeightKg ?? 0)
-              : undefined,
-        }));
+            defaultExpectedWeightKg:
+              p.defaultExpectedWeightKg != null || p.DefaultExpectedWeightKg != null
+                ? Number(p.defaultExpectedWeightKg ?? p.DefaultExpectedWeightKg ?? 0)
+                : undefined,
+          };
+        });
         setProducts(list);
         setSpecialProducts(list.length > 0 ? pickSpecialStripProducts(list) : []);
       } catch (e) {
@@ -564,6 +570,8 @@ function HomeCarousel({ images, isNarrow }: { images: string[]; isNarrow: boolea
   const multi = slides.length > 1;
 
   useEffect(() => {
+    // Existing carousel synchronization clamps the index after image updates.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional carousel UI synchronization
     setCurrent((c) => (images.length === 0 ? 0 : Math.min(c, images.length - 1)));
   }, [images.length]);
 

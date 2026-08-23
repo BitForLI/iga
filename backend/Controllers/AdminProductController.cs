@@ -71,7 +71,7 @@ namespace igaServer.Controllers
 
             var since = DateTime.UtcNow.AddDays(-2);
             var candidates = await _context.Orders
-                .Include(o => o.User)
+                .AsNoTracking()
                 .Where(o => o.OrderStatus == "Pending" &&
                             o.StripeSessionId != null &&
                             o.StripeSessionId != "" &&
@@ -102,11 +102,14 @@ namespace igaServer.Controllers
                         session.AmountTotal != expectedAmount || string.IsNullOrWhiteSpace(session.PaymentIntentId))
                         continue;
 
-                    order.OrderStatus = "Paid";
-                    if (!string.IsNullOrEmpty(session.PaymentIntentId))
-                    {
-                        order.StripePaymentIntentId = session.PaymentIntentId;
-                    }
+                    var affectedRows = await _context.Orders
+                        .Where(o => o.Id == order.Id && o.OrderStatus == "Pending")
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(o => o.OrderStatus, "Paid")
+                            .SetProperty(o => o.StripePaymentIntentId, session.PaymentIntentId));
+                    if (affectedRows != 1)
+                        continue;
+
                     paidNotifications.Add((order.Id, session.CustomerDetails?.Email ?? session.CustomerEmail));
                     updated++;
                 }
@@ -116,19 +119,15 @@ namespace igaServer.Controllers
                 }
             }
 
-            if (updated > 0)
+            foreach (var (orderId, contactEmail) in paidNotifications)
             {
-                await _context.SaveChangesAsync();
-                foreach (var (orderId, contactEmail) in paidNotifications)
-                {
-                    await OrderPaidNotifier.TryNotifyPickupEmailAsync(
-                        _context,
-                        _resendEmail,
-                        orderId,
-                        _logger,
-                        contactEmail,
-                        _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
-                }
+                await OrderPaidNotifier.TryNotifyPickupEmailAsync(
+                    _context,
+                    _resendEmail,
+                    orderId,
+                    _logger,
+                    contactEmail,
+                    _configuration["Store:PickupAddress"] ?? "IGA Beverly Hills");
             }
 
             return updated;

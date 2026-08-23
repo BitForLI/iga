@@ -3,6 +3,13 @@ import { apiClient, API_BASE, ApiRequestError } from './client';
 
 export { ApiRequestError };
 
+// Axios' static response type cannot see that client.ts unwraps response.data.
+// Keep that implementation detail in one place so API consumers receive the
+// actual JSON payload type instead of repeatedly casting AxiosResponse values.
+function responseData<T>(request: Promise<unknown>): Promise<T> {
+  return request as Promise<T>;
+}
+
 export interface AuthLoginResponse {
   token: string;
   expiresAtUtc: string;
@@ -46,8 +53,8 @@ export const authAPI = {
   resendVerification: (data: { email: string }) =>
     apiClient.post<{ emailSent: boolean; message: string }>('/auth/resend-verification', data),
   login: (data: { email: string; password: string }) =>
-    apiClient.post<AuthLoginResponse>('/auth/login', data) as unknown as Promise<AuthLoginResponse>,
-  me: () => apiClient.get<{ id: number; name: string; email: string; phoneNumber: string; role: string }>('/auth/me'),
+    responseData<AuthLoginResponse>(apiClient.post('/auth/login', data)),
+  me: () => responseData<{ id: number; name: string; email: string; phoneNumber: string; role: string }>(apiClient.get('/auth/me')),
   forgotPassword: (data: { email: string }) =>
     apiClient.post<{ message: string }>('/auth/forgot-password', data),
   resendPasswordReset: (data: { email: string }) =>
@@ -56,11 +63,20 @@ export const authAPI = {
     apiClient.post<{ message: string }>('/auth/reset-password', data),
 };
 
+export interface ProductAPIItem {
+  [key: string]: unknown;
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+  unit: string;
+}
+
 export const productAPI = {
-  list: () => apiClient.get<any[]>('/product'),
-  create: (data: any) => apiClient.post('/product', data),
-  update: (id: number, data: any) => apiClient.put(`/product/${id}`, data),
-  get: (id: number) => apiClient.get(`/product/${id}`),
+  list: () => responseData<ProductAPIItem[]>(apiClient.get('/product')),
+  create: (data: unknown) => responseData<unknown>(apiClient.post('/product', data)),
+  update: (id: number, data: unknown) => responseData<unknown>(apiClient.put(`/product/${id}`, data)),
+  get: (id: number) => responseData<unknown>(apiClient.get(`/product/${id}`)),
 };
 
 export const storePublicAPI = {
@@ -107,9 +123,8 @@ export const adminProductAPI = {
   ) => {
     const cat = opts?.category?.trim();
     const q = opts?.search?.trim();
-    return apiClient.get<{ items: any[]; total: number; page: number; pageSize: number }>(
-      '/admin/products',
-      {
+    return responseData<{ items: unknown[]; total: number; page: number; pageSize: number }>(
+      apiClient.get('/admin/products', {
         params: {
           page,
           pageSize,
@@ -117,11 +132,11 @@ export const adminProductAPI = {
           ...(q ? { search: q } : {}),
         },
         ...requestConfig,
-      }
+      })
     );
   },
   /** 编辑前拉取完整商品（含 costPrice） */
-  getById: (id: number) => apiClient.get(`/admin/products/${id}`),
+  getById: (id: number) => responseData<unknown>(apiClient.get(`/admin/products/${id}`)),
   /** 上传商品图到数据库，返回 { url: "/api/product/image/{id}" } */
   uploadProductImage: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData();
@@ -141,19 +156,20 @@ export const adminProductAPI = {
     if (!data.url) throw new Error('Invalid upload response');
     return { url: data.url };
   },
-  create: (data: any) => apiClient.post('/product', data),
-  update: (id: number, data: any) => apiClient.put(`/product/${id}`, data),
+  create: (data: unknown) => responseData<unknown>(apiClient.post('/product', data)),
+  update: (id: number, data: unknown) => responseData<unknown>(apiClient.put(`/product/${id}`, data)),
   delete: (id: number) => apiClient.delete(`/product/${id}`),
   toggleStatus: (id: number) => apiClient.patch(`/product/${id}/toggle-status`),
 };
 
 export const orderAPI = {
-  create: (data: OrderCreateRequest) => apiClient.post<{ orderId: number }>('/order/create', data) as unknown as Promise<{ orderId: number }>,
-  get: (id: number) => apiClient.get('/order/' + id),
-  getUserOrders: (userId: number) => apiClient.get<any[]>('/order/user/' + userId),
+  create: (data: OrderCreateRequest) => responseData<{ orderId: number }>(apiClient.post('/order/create', data)),
+  get: (id: number) => responseData<unknown>(apiClient.get('/order/' + id)),
+  getUserOrders: (userId: number) => responseData<unknown[]>(apiClient.get('/order/user/' + userId)),
   requestRefund: (orderId: number, body?: { reason?: string; itemIds?: number[] }) =>
-    apiClient.post('/order/' + orderId + '/refund-request', body ?? {}),
-  verify: (id: number, data: any) => apiClient.post('/order/' + id + '/verify', data),
+    responseData<unknown>(apiClient.post('/order/' + orderId + '/refund-request', body ?? {})),
+  verify: (id: number, data: { pickupCode: string }) =>
+    responseData<unknown>(apiClient.post('/order/' + id + '/verify', data)),
 };
 
 export const paymentAPI = {

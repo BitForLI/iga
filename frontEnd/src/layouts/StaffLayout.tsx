@@ -73,12 +73,16 @@ export function StaffLayout() {
   const [openKeys, setOpenKeys] = useState<string[]>([STAFF_ORDER_SUBMENU_KEY]);
 
   useEffect(() => {
+    // Existing responsive-layout synchronization keeps the sidebar state aligned.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional responsive UI synchronization
     if (isCompact) setCollapsed(true);
     else setCollapsed(false);
   }, [isCompact]);
 
   useEffect(() => {
     if (location.pathname.startsWith('/staff/orders')) {
+      // Existing route synchronization keeps the Orders submenu expanded.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional route UI synchronization
       setOpenKeys((prev) => (prev.includes(STAFF_ORDER_SUBMENU_KEY) ? prev : [...prev, STAFF_ORDER_SUBMENU_KEY]));
     }
   }, [location.pathname]);

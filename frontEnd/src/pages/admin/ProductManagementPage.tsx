@@ -49,6 +49,10 @@ function parseUnitOptions(raw: unknown, fallbackUnit: string, fallbackPrice: num
   return [{ unit: fallbackUnit || 'ea', price: Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : 0 }];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
 export function ProductManagementPage() {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,7 +72,9 @@ export function ProductManagementPage() {
   }, [searchInput]);
 
   const normalizeProducts = (list: unknown[]): Product[] => {
-    return list.map((p: any) => ({
+    return list.map((value) => {
+      const p = asRecord(value);
+      return {
       id: p.id ?? p.Id,
       name: p.name ?? p.Name ?? '',
       description: p.description ?? p.Description ?? '',
@@ -89,7 +95,8 @@ export function ProductManagementPage() {
         p.defaultExpectedWeightKg != null || p.DefaultExpectedWeightKg != null
           ? Number(p.defaultExpectedWeightKg ?? p.DefaultExpectedWeightKg ?? 0)
           : undefined,
-    }));
+      } as Product;
+    });
   };
 
   const fetchProducts = useCallback(
@@ -107,7 +114,7 @@ export function ProductManagementPage() {
             search: searchText || undefined,
           },
           { signal: ac.signal }
-        )) as { items?: any[]; total?: number } | undefined;
+        )) as { items?: unknown[]; total?: number } | undefined;
         const list = Array.isArray(res?.items) ? res.items : [];
         const total = res?.total ?? list.length;
         setData(normalizeProducts(list));

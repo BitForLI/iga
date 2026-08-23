@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { Card, Descriptions, Table, Button, message, InputNumber, Space, Typography, Modal } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
@@ -46,23 +46,32 @@ export function OrderDetailPage() {
   const [weightDraft, setWeightDraft] = useState<Record<number, number | null>>({});
   const [savingWeightId, setSavingWeightId] = useState<number | null>(null);
 
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
       const raw = (await apiClient.get(`/order/${id}`)) as Record<string, unknown>;
       const itemsRaw = raw.items ?? raw.Items;
       const items = Array.isArray(itemsRaw)
-        ? (itemsRaw as OrderDetail['items']).map((it: any) => ({
-            id: it.id ?? it.Id,
-            productId: it.productId ?? it.ProductId,
-            productName: it.productName ?? it.ProductName ?? '',
-            quantity: Number(it.quantity ?? it.Quantity ?? 0),
-            priceAtPurchase: Number(it.priceAtPurchase ?? it.PriceAtPurchase ?? 0),
-            expectedWeight: it.expectedWeight ?? it.ExpectedWeight,
-            actualWeight: it.actualWeight ?? it.ActualWeight,
-            isWeighingRequired: Boolean(it.isWeighingRequired ?? it.IsWeighingRequired),
-          }))
+        ? itemsRaw.map((value) => {
+            const it = typeof value === 'object' && value !== null
+              ? (value as Record<string, unknown>)
+              : {};
+            return {
+              id: Number(it.id ?? it.Id),
+              productId: Number(it.productId ?? it.ProductId),
+              productName: String(it.productName ?? it.ProductName ?? ''),
+              quantity: Number(it.quantity ?? it.Quantity ?? 0),
+              priceAtPurchase: Number(it.priceAtPurchase ?? it.PriceAtPurchase ?? 0),
+              expectedWeight: it.expectedWeight != null || it.ExpectedWeight != null
+                ? Number(it.expectedWeight ?? it.ExpectedWeight)
+                : undefined,
+              actualWeight: it.actualWeight != null || it.ActualWeight != null
+                ? Number(it.actualWeight ?? it.ActualWeight)
+                : undefined,
+              isWeighingRequired: Boolean(it.isWeighingRequired ?? it.IsWeighingRequired),
+            };
+          })
         : [];
       const nextOrder: OrderDetail = {
         id: Number(raw.id ?? raw.Id),
@@ -93,11 +102,11 @@ export function OrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    fetchOrder();
-  }, [id]);
+    void fetchOrder();
+  }, [fetchOrder]);
 
   const handleAcceptOrder = async () => {
     if (!order || !id || order.orderStatus !== 'Paid') return;

@@ -320,7 +320,7 @@ export function FulfillmentOptionsForm({ variant, active, onSidebarClose }: Fulf
           ? `This address (${suburb}) is outside our delivery zone. We only deliver to: ${deliveryZoneDisplayNames.join(', ')}.`
           : 'Unable to verify delivery zone for this address. Please confirm it is within our delivery area'
       );
-  }, [setDeliveryInfo]);
+  }, [deliveryZoneDisplayNames, isInDeliveryZone, setDeliveryInfo]);
 
   const handleOrderTypeChange = (t: OrderType) => {
     setOrderType(t);

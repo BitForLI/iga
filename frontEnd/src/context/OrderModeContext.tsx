@@ -48,14 +48,18 @@ function loadOrderMode(): { orderType: OrderType; pickupTimeSlot: string } {
       const pickupTimeSlot = orderType === 'Pickup' && parsed?.pickupTimeSlot && isPickupSlotStillValid(parsed.pickupTimeSlot) ? parsed.pickupTimeSlot : '';
       return { orderType, pickupTimeSlot };
     }
-  } catch (_) {}
+  } catch {
+    // Ignore malformed persisted order-mode data and use the safe default.
+  }
   return { orderType: 'Pickup', pickupTimeSlot: '' };
 }
 
 function saveOrderMode(orderType: OrderType, pickupTimeSlot: string) {
   try {
     localStorage.setItem(ORDER_MODE_KEY, JSON.stringify({ orderType, pickupTimeSlot }));
-  } catch (_) {}
+  } catch {
+    // Ignore storage failures; the in-memory order mode remains usable.
+  }
 }
 
 export interface DeliveryInfo {
@@ -74,7 +78,9 @@ function loadDeliveryInfo(): DeliveryInfo {
       const parsed = JSON.parse(s) as Partial<DeliveryInfo>;
       return { address: parsed?.address ?? '', suburb: parsed?.suburb, postcode: parsed?.postcode, unitNumber: parsed?.unitNumber, contactName: parsed?.contactName, contactPhone: parsed?.contactPhone };
     }
-  } catch (_) {}
+  } catch {
+    // Ignore malformed persisted delivery details.
+  }
   return { address: '' };
 }
 
@@ -83,7 +89,9 @@ function saveDeliveryInfo(info: DeliveryInfo) {
     if (info.address?.trim() || info.suburb || info.postcode || info.unitNumber || info.contactName || info.contactPhone) {
       localStorage.setItem(DELIVERY_INFO_KEY, JSON.stringify(info));
     }
-  } catch (_) {}
+  } catch {
+    // Ignore storage failures; checkout can still use in-memory details.
+  }
 }
 
 interface OrderModeContextType {

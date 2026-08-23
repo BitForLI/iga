@@ -284,7 +284,9 @@ namespace igaServer.Controllers
 
             StripeConfiguration.ApiKey = stripeSecret;
 
-            var order = await _context.Orders.FindAsync(orderId);
+            var order = await _context.Orders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null)
             {
                 return NotFound(new { error = "Order not found" });
@@ -328,18 +330,32 @@ namespace igaServer.Controllers
                     });
                 }
 
-                if (order.OrderStatus == "Paid")
-                {
-                    return Ok(new { orderStatus = order.OrderStatus, synced = false, message = "订单已是 Paid" });
-                }
+                var pendingOrderQuery = _context.Orders
+                    .Where(o => o.Id == orderId && o.OrderStatus == "Pending");
+                var updatedRows = string.IsNullOrWhiteSpace(session.PaymentIntentId)
+                    ? await pendingOrderQuery.ExecuteUpdateAsync(
+                        setters => setters.SetProperty(o => o.OrderStatus, "Paid"),
+                        HttpContext.RequestAborted)
+                    : await pendingOrderQuery.ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(o => o.OrderStatus, "Paid")
+                            .SetProperty(o => o.StripePaymentIntentId, session.PaymentIntentId),
+                        HttpContext.RequestAborted);
 
-                order.OrderStatus = "Paid";
-                if (!string.IsNullOrEmpty(session.PaymentIntentId))
+                if (updatedRows != 1)
                 {
-                    order.StripePaymentIntentId = session.PaymentIntentId;
+                    var currentOrder = await _context.Orders
+                        .AsNoTracking()
+                        .Where(o => o.Id == orderId)
+                        .Select(o => new { o.OrderStatus })
+                        .FirstOrDefaultAsync(HttpContext.RequestAborted);
+                    return Ok(new
+                    {
+                        orderStatus = currentOrder?.OrderStatus ?? order.OrderStatus,
+                        synced = false,
+                        message = "订单状态已推进，无需同步"
+                    });
                 }
-
-                await _context.SaveChangesAsync();
 
                 try
                 {
@@ -366,7 +382,7 @@ namespace igaServer.Controllers
                     _logger.LogWarning(ex, "[Payment] Telegram paid-order notification failed order {OrderId}", orderId);
                 }
 
-                return Ok(new { orderStatus = order.OrderStatus, synced = true });
+                return Ok(new { orderStatus = "Paid", synced = true });
             }
             catch (StripeException ex)
             {

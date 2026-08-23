@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Modal, Input, Checkbox, message } from 'antd';
 import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -620,37 +620,123 @@ function AuthForms({
   );
 }
 
-function orderLinePaidAmount(it: any): number {
-  const price = Number(it.priceAtPurchase ?? 0);
-  if (it.isWeighingRequired) {
-    const kg =
-      it.actualWeight != null && !Number.isNaN(Number(it.actualWeight))
-        ? Number(it.actualWeight)
-        : Number(it.expectedWeight ?? 0);
-    return kg * price;
-  }
-  return price * Number(it.quantity ?? 0);
+interface NormalizedOrderItem {
+  id: number;
+  productName: string;
+  quantity: number;
+  priceAtPurchase: number;
+  expectedWeight?: number;
+  actualWeight?: number;
+  isWeighingRequired: boolean;
+  customerRefundCompletedAt: string | null;
 }
 
-function normalizeOrderItem(raw: any) {
+interface NormalizedOrder {
+  id: number;
+  totalAmount: number;
+  finalAmount?: number;
+  refundAmount: number;
+  refundRejectionReason: string;
+  refundRequestReason: string;
+  refundRequestedItemIds: number[] | null;
+  orderStatus: string;
+  orderType: string;
+  pickupCode: string;
+  pickupTime?: string;
+  deliveryAddress?: string;
+  createdAt?: string;
+  items: NormalizedOrderItem[];
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  return typeof value === 'object' && value !== null ? (value as UnknownRecord) : {};
+}
+
+function readField(record: UnknownRecord, camelName: string, pascalName: string): unknown {
+  return record[camelName] ?? record[pascalName];
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value == null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return value == null ? undefined : String(value);
+}
+
+function toNumberArray(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.map((entry) => Number(entry)).filter((entry) => Number.isInteger(entry) && entry > 0);
+}
+
+function normalizeOrderItem(raw: unknown): NormalizedOrderItem {
+  const row = asRecord(raw);
   return {
-    ...raw,
-    id: raw?.id ?? raw?.Id,
-    productName: raw?.productName ?? raw?.ProductName ?? '',
-    quantity: Number(raw?.quantity ?? raw?.Quantity ?? 0),
-    priceAtPurchase: Number(raw?.priceAtPurchase ?? raw?.PriceAtPurchase ?? 0),
-    expectedWeight: raw?.expectedWeight ?? raw?.ExpectedWeight,
-    actualWeight: raw?.actualWeight ?? raw?.ActualWeight,
-    isWeighingRequired: Boolean(raw?.isWeighingRequired ?? raw?.IsWeighingRequired),
-    customerRefundCompletedAt: raw?.customerRefundCompletedAt ?? raw?.CustomerRefundCompletedAt ?? null,
+    id: toNumber(readField(row, 'id', 'Id')),
+    productName: String(readField(row, 'productName', 'ProductName') ?? ''),
+    quantity: toNumber(readField(row, 'quantity', 'Quantity')),
+    priceAtPurchase: toNumber(readField(row, 'priceAtPurchase', 'PriceAtPurchase')),
+    expectedWeight: toOptionalNumber(readField(row, 'expectedWeight', 'ExpectedWeight')),
+    actualWeight: toOptionalNumber(readField(row, 'actualWeight', 'ActualWeight')),
+    isWeighingRequired: Boolean(readField(row, 'isWeighingRequired', 'IsWeighingRequired')),
+    customerRefundCompletedAt: toOptionalString(
+      readField(row, 'customerRefundCompletedAt', 'CustomerRefundCompletedAt')
+    ) ?? null,
   };
 }
 
+function normalizeOrder(raw: unknown): NormalizedOrder {
+  const row = asRecord(raw);
+  const rawItems = readField(row, 'items', 'Items');
+  return {
+    id: toNumber(readField(row, 'id', 'Id')),
+    totalAmount: toNumber(readField(row, 'totalAmount', 'TotalAmount')),
+    finalAmount: toOptionalNumber(readField(row, 'finalAmount', 'FinalAmount')),
+    refundAmount: toNumber(readField(row, 'refundAmount', 'RefundAmount')),
+    refundRejectionReason: String(readField(row, 'refundRejectionReason', 'RefundRejectionReason') ?? ''),
+    refundRequestReason: String(readField(row, 'refundRequestReason', 'RefundRequestReason') ?? ''),
+    refundRequestedItemIds: toNumberArray(readField(row, 'refundRequestedItemIds', 'RefundRequestedItemIds')),
+    orderStatus: String(readField(row, 'orderStatus', 'OrderStatus') ?? ''),
+    orderType: String(readField(row, 'orderType', 'OrderType') ?? ''),
+    pickupCode: String(readField(row, 'pickupCode', 'PickupCode') ?? ''),
+    pickupTime: toOptionalString(readField(row, 'pickupTime', 'PickupTime')),
+    deliveryAddress: toOptionalString(readField(row, 'deliveryAddress', 'DeliveryAddress')),
+    createdAt: toOptionalString(readField(row, 'createdAt', 'CreatedAt')),
+    items: Array.isArray(rawItems) ? rawItems.map(normalizeOrderItem) : [],
+  };
+}
+
+function orderLinePaidAmount(item: NormalizedOrderItem): number {
+  const price = Number(item.priceAtPurchase);
+  if (item.isWeighingRequired) {
+    const kg = item.actualWeight != null && !Number.isNaN(Number(item.actualWeight))
+      ? Number(item.actualWeight)
+      : Number(item.expectedWeight ?? 0);
+    return kg * price;
+  }
+  return price * Number(item.quantity);
+}
+
+const PAID_ORDER_STATUSES = new Set(['Paid', 'Preparing', 'Prepared', 'Completed', 'RefundRequested', 'Refunded']);
+
+function isPaidOrder(order: NormalizedOrder): boolean {
+  return PAID_ORDER_STATUSES.has(order.orderStatus);
+}
+
 function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<NormalizedOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<NormalizedOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [refundRequesting, setRefundRequesting] = useState(false);
   const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
@@ -658,29 +744,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
   const [refundSelectedIds, setRefundSelectedIds] = useState<Set<number>>(new Set());
   const { setUser } = useAuth();
 
-  const paidOrderStatuses = new Set(['Paid', 'Preparing', 'Prepared', 'Completed', 'RefundRequested', 'Refunded']);
-
-  const normalizeOrder = (raw: any) => ({
-    ...raw,
-    id: raw?.id ?? raw?.Id,
-    totalAmount: Number(raw?.totalAmount ?? raw?.TotalAmount ?? 0),
-    finalAmount: raw?.finalAmount ?? raw?.FinalAmount,
-    refundAmount: Number(raw?.refundAmount ?? raw?.RefundAmount ?? 0),
-    refundRejectionReason: raw?.refundRejectionReason ?? raw?.RefundRejectionReason ?? '',
-    refundRequestReason: raw?.refundRequestReason ?? raw?.RefundRequestReason ?? '',
-    refundRequestedItemIds: raw?.refundRequestedItemIds ?? raw?.RefundRequestedItemIds ?? null,
-    orderStatus: raw?.orderStatus ?? raw?.OrderStatus ?? '',
-    orderType: raw?.orderType ?? raw?.OrderType ?? '',
-    pickupCode: raw?.pickupCode ?? raw?.PickupCode ?? '',
-    pickupTime: raw?.pickupTime ?? raw?.PickupTime,
-    deliveryAddress: raw?.deliveryAddress ?? raw?.DeliveryAddress,
-    createdAt: raw?.createdAt ?? raw?.CreatedAt,
-    items: Array.isArray(raw?.items ?? raw?.Items) ? (raw.items ?? raw.Items).map(normalizeOrderItem) : [],
-  });
-
-  const isPaidOrder = (order: any) => paidOrderStatuses.has(String(order?.orderStatus ?? ''));
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       setError('');
       const res = await orderAPI.getUserOrders(user.id);
@@ -692,20 +756,20 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void fetchOrders();
   }, [user.id]);
 
   useEffect(() => {
+    void fetchOrders();
+  }, [fetchOrders]);
+
+  useEffect(() => {
     if (!refundConfirmOpen || !selectedOrder) return;
-    const refundable = (selectedOrder.items ?? []).filter((it: any) => !it.customerRefundCompletedAt);
+    const refundable = selectedOrder.items.filter((item) => !item.customerRefundCompletedAt);
     const next = new Set<number>();
     if (refundable.length === 1) next.add(refundable[0].id);
     setRefundSelectedIds(next);
     setRefundReason('');
-  }, [refundConfirmOpen, selectedOrder?.id]);
+  }, [refundConfirmOpen, selectedOrder]);
 
   const handleLogout = () => {
     setUser(null);
@@ -726,11 +790,11 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
     }
   };
 
-  const hasRefundableLines = (order: any) =>
-    (order.items ?? []).some((it: any) => !it.customerRefundCompletedAt);
+  const hasRefundableLines = (order: NormalizedOrder) =>
+    order.items.some((item) => !item.customerRefundCompletedAt);
 
-  const canRequestRefund = (order: any) => {
-    const st = String(order?.orderStatus ?? '');
+  const canRequestRefund = (order: NormalizedOrder) => {
+    const st = order.orderStatus;
     if (!['Paid', 'Preparing', 'Prepared', 'Completed'].includes(st)) return false;
     if (['RefundRequested', 'Refunded'].includes(st)) return false;
     return hasRefundableLines(order);
@@ -738,8 +802,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
 
   const submitRefundRequest = async (): Promise<void> => {
     if (!selectedOrder || !canRequestRefund(selectedOrder)) return;
-    const items = selectedOrder.items ?? [];
-    const refundable = items.filter((it: any) => !it.customerRefundCompletedAt);
+    const items = selectedOrder.items;
+    const refundable = items.filter((item) => !item.customerRefundCompletedAt);
     const isCompleted = String(selectedOrder.orderStatus) === 'Completed';
     if (isCompleted && refundReason.trim().length < 5) {
       message.warning('Completed orders must include a refund reason (at least 5 characters).');
@@ -759,7 +823,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
       });
       const next = normalizeOrder(raw);
       setSelectedOrder(next);
-      setOrders((list) => list.map((o) => ((o.id ?? o.Id) === next.id ? { ...o, orderStatus: next.orderStatus } : o)));
+      setOrders((list) => list.map((order) => (order.id === next.id ? { ...order, orderStatus: next.orderStatus } : order)));
       setRefundConfirmOpen(false);
       message.success('Refund request submitted');
     } catch (err) {
@@ -776,7 +840,7 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
 
   if (selectedOrder) {
     const amount = selectedOrder.finalAmount != null ? Number(selectedOrder.finalAmount) : Number(selectedOrder.totalAmount ?? 0);
-    const items = selectedOrder.items ?? [];
+    const items = selectedOrder.items;
     return (
       <div>
         <Modal
@@ -815,17 +879,17 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
             </div>
           )}
           {(() => {
-            const refundable = (selectedOrder.items ?? []).filter((it: any) => !it.customerRefundCompletedAt);
+            const refundable = selectedOrder.items.filter((item) => !item.customerRefundCompletedAt);
             if (refundable.length <= 1) return null;
             return (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8 }}>Select items to refund (multiple allowed)</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {refundable.map((it: any) => {
-                    const checked = refundSelectedIds.has(it.id);
+                  {refundable.map((item) => {
+                    const checked = refundSelectedIds.has(item.id);
                     return (
                       <label
-                        key={it.id}
+                        key={item.id}
                         style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}
                       >
                         <Checkbox
@@ -833,14 +897,14 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
                           onChange={(e) => {
                             setRefundSelectedIds((prev) => {
                               const n = new Set(prev);
-                              if (e.target.checked) n.add(it.id);
-                              else n.delete(it.id);
+                              if (e.target.checked) n.add(item.id);
+                              else n.delete(item.id);
                               return n;
                             });
                           }}
                         />
                         <span>
-                          {it.productName} — approx ${orderLinePaidAmount(it).toFixed(2)}
+                          {item.productName} — approx ${orderLinePaidAmount(item).toFixed(2)}
                         </span>
                       </label>
                     );
@@ -917,14 +981,14 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
         <div style={{ marginBottom: '1rem' }}>
           <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Products</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {items.map((item: any, index: number) => {
-              const name = item.productName ?? item.ProductName ?? 'Item';
-              const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+            {items.map((item, index) => {
+              const name = item.productName || 'Item';
+              const quantity = Number(item.quantity);
               const line = orderLinePaidAmount(item);
               const done = Boolean(item.customerRefundCompletedAt);
               return (
                 <div
-                  key={item.id ?? item.Id ?? index}
+                  key={item.id || index}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1066,14 +1130,14 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
         <p style={{ textAlign: 'center', color: '#999', marginTop: '2rem' }}>No orders yet</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {orders.map((order: any) => (
+          {orders.map((order) => (
             <div
               key={order.id}
               role="button"
               tabIndex={0}
-              onClick={() => void openOrderDetail(order.id ?? order.Id)}
+              onClick={() => void openOrderDetail(order.id)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') void openOrderDetail(order.id ?? order.Id);
+                if (e.key === 'Enter' || e.key === ' ') void openOrderDetail(order.id);
               }}
               style={{
                 border: '1px solid #e5e7eb',
@@ -1120,8 +1184,8 @@ function OrderHistory({ user, onClose }: { user: User; onClose: () => void }) {
               <div style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: '#6b7280' }}>Click to view details</div>
               {order.items && order.items.length > 0 && (
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
-                  {order.items.slice(0, 3).map((item: any, i: number) => (
-                    <div key={i}>{item.productName || item.ProductName || 'Item'} x{item.quantity}</div>
+                  {order.items.slice(0, 3).map((item, i) => (
+                    <div key={i}>{item.productName || 'Item'} x{item.quantity}</div>
                   ))}
                   {order.items.length > 3 && <div>+{order.items.length - 3} more</div>}
                 </div>

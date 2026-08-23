@@ -14,7 +14,10 @@ function useOrderAlertSound() {
 
   const playBeep = useCallback(() => {
     try {
-      const ctx = ctxRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextConstructor = window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextConstructor) return;
+      const ctx = ctxRef.current || new AudioContextConstructor();
       if (ctx.state === 'suspended') ctx.resume();
       ctxRef.current = ctx;
       const osc = ctx.createOscillator();
@@ -27,7 +30,9 @@ function useOrderAlertSound() {
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
-    } catch (_) {}
+    } catch {
+      // Audio is best-effort; unsupported or blocked contexts should not break order polling.
+    }
   }, []);
 
   const play = useCallback(() => {
@@ -171,24 +176,31 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
       if (tabKey === 'RefundRequested' && isRefundsOnlyPage) {
         params.refundHistoryOnly = true;
       }
-      const res = (await apiClient.get('/admin/orders', { params })) as { items?: any[]; total?: number };
+      const res = (await apiClient.get('/admin/orders', { params })) as { items?: unknown[]; total?: number };
       const list = res?.items ?? [];
-      const rows = list.map((o: any) => ({
-        id: o.id,
-        userId: o.userId,
-        userName: o.userName ?? '',
-        userPhone: o.userPhone ?? '',
-        totalAmount: Number(o.totalAmount ?? 0),
-        finalAmount: o.finalAmount != null ? Number(o.finalAmount) : undefined,
-        orderStatus: o.orderStatus ?? 'Pending',
-        orderType: o.orderType ?? '',
-        pickupTime: o.pickupTime,
-        pickupCode: o.pickupCode ?? o.PickupCode ?? '',
-        deliveryAddress: o.deliveryAddress,
-        deliverySuburb: o.deliverySuburb ?? o.DeliverySuburb ?? '',
-        createdAt: o.createdAt,
-        pickedUpAt: o.pickedUpAt ?? o.PickedUpAt ?? null,
-      }));
+      const rows: OrderRow[] = list.map((value) => {
+        const o = typeof value === 'object' && value !== null
+          ? (value as Record<string, unknown>)
+          : {};
+        return {
+          id: Number(o.id),
+          userId: Number(o.userId),
+          userName: String(o.userName ?? ''),
+          userPhone: String(o.userPhone ?? ''),
+          totalAmount: Number(o.totalAmount ?? 0),
+          finalAmount: o.finalAmount != null ? Number(o.finalAmount) : undefined,
+          orderStatus: String(o.orderStatus ?? 'Pending'),
+          orderType: String(o.orderType ?? ''),
+          pickupTime: o.pickupTime != null ? String(o.pickupTime) : undefined,
+          pickupCode: String(o.pickupCode ?? o.PickupCode ?? ''),
+          deliveryAddress: o.deliveryAddress != null ? String(o.deliveryAddress) : undefined,
+          deliverySuburb: String(o.deliverySuburb ?? o.DeliverySuburb ?? ''),
+          createdAt: String(o.createdAt ?? ''),
+          pickedUpAt: o.pickedUpAt != null || o.PickedUpAt != null
+            ? String(o.pickedUpAt ?? o.PickedUpAt)
+            : null,
+        };
+      });
       setData(rows);
       setPagination((p) => ({ ...p, current: page, pageSize, total: res?.total ?? 0 }));
 
@@ -207,7 +219,7 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [pickupCodeFilter, deliverySuburbFilter, playAlert]);
+  }, [pickupCodeFilter, deliverySuburbFilter, isRefundsOnlyPage, playAlert]);
 
   // 获取各分类订单数量（用于 tab 显示）
   const fetchCounts = useCallback(async () => {
@@ -225,14 +237,16 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
         RefundRequested: (c?.refundRequested ?? c?.RefundRequested) ?? 0,
         RefundHistory: (c?.refundHistory ?? c?.RefundHistory) ?? 0,
       });
-    } catch (_) {}
+    } catch {
+      // Counts are supplementary; the order list remains usable if this request fails.
+    }
   }, []);
 
   // 初始加载 + 切换 tab 或筛选时（回到第 1 页）
   useEffect(() => {
     setPagination((p) => ({ ...p, current: 1 }));
     fetchOrders(1, pagination.pageSize, activeTab);
-  }, [activeTab, pickupCodeFilter, deliverySuburbFilter, fetchOrders]);
+  }, [activeTab, pickupCodeFilter, deliverySuburbFilter, fetchOrders, pagination.pageSize]);
 
   // 初始加载及切换 tab / 操作后刷新数量
   useEffect(() => {

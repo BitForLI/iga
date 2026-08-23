@@ -23,19 +23,24 @@ export function CustomerManagementPage() {
     setLoading(true);
     try {
       const res = (await apiClient.get('/admin/users', { params: { page, pageSize } })) as {
-        items?: any[];
+        items?: unknown[];
         total?: number;
       };
       const list = res?.items ?? [];
       setData(
-        list.map((u: any) => ({
-          id: u.id,
-          name: u.name ?? '',
-          email: u.email ?? '',
-          phoneNumber: u.phoneNumber ?? '',
-          role: u.role ?? 'Customer',
-          createdAt: u.createdAt,
-        }))
+        list.map((value) => {
+          const u = typeof value === 'object' && value !== null
+            ? (value as Record<string, unknown>)
+            : {};
+          return {
+            id: Number(u.id),
+            name: String(u.name ?? ''),
+            email: String(u.email ?? ''),
+            phoneNumber: String(u.phoneNumber ?? ''),
+            role: String(u.role ?? 'Customer'),
+            createdAt: String(u.createdAt ?? ''),
+          };
+        })
       );
       setPagination((p) => ({ ...p, current: page, pageSize, total: res?.total ?? 0 }));
     } catch {
@@ -46,8 +51,8 @@ export function CustomerManagementPage() {
   }, []);
 
   useEffect(() => {
-    fetchUsers(pagination.current, pagination.pageSize);
-  }, []);
+    void fetchUsers(1, 10);
+  }, [fetchUsers]);
 
   const columns: ColumnsType<CustomerRow> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },

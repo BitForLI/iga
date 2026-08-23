@@ -124,9 +124,8 @@ public class StripeWebhookProcessor
             return (400, new { error = "Checkout session does not match the order" });
         }
 
-        var wasAlreadyPaid = string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-        await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
-        if (!wasAlreadyPaid)
+        var wonTransition = await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
+        if (wonTransition)
             await NotifyPaidIfNeededAsync(orderId, session, cancellationToken);
         return (200, null);
     }
@@ -146,16 +145,13 @@ public class StripeWebhookProcessor
             return (400, null);
 
         var order = await _context.Orders.FindAsync([orderId], cancellationToken);
-        var wasAlreadyPaid = order != null && string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-        if (order != null && !wasAlreadyPaid &&
-            string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase) && SessionMatchesOrder(session, order))
-            await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
-        else if (order != null && wasAlreadyPaid)
-            await MarkProcessedOnlyAsync(stripeEvent.Id, cancellationToken);
-        else
+        if (order == null ||
+            !string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase) ||
+            !SessionMatchesOrder(session, order))
             return (400, new { error = "Checkout session does not match a payable order" });
 
-        if (order != null && !wasAlreadyPaid)
+        var wonTransition = await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
+        if (wonTransition)
             await NotifyPaidIfNeededAsync(orderId, session, cancellationToken);
 
         return (200, null);
@@ -172,48 +168,44 @@ public class StripeWebhookProcessor
             return (200, null);
         }
 
-        if (!int.TryParse(session.ClientReferenceId, out var orderId))
+        if (!int.TryParse(session.ClientReferenceId, out _))
             return (400, null);
-
-        var order = await _context.Orders.FindAsync([orderId], cancellationToken);
-        if (order != null && SessionMatchesOrder(session, order) &&
-            !string.Equals(order.OrderStatus, "Paid", StringComparison.OrdinalIgnoreCase))
-        {
-            order.OrderStatus = "Pending";
-            _context.Orders.Update(order);
-        }
 
         await MarkProcessedOnlyAsync(stripeEvent.Id, cancellationToken);
         return (200, null);
     }
 
-    private async Task ApplyPaidFromSessionAsync(
+    private async Task<bool> ApplyPaidFromSessionAsync(
         Order order,
         Session session,
         string stripeEventId,
         CancellationToken cancellationToken)
     {
-        var wasAlreadyPaid = string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-        if (!wasAlreadyPaid)
-        {
-            order.OrderStatus = "Paid";
-            order.StripePaymentIntentId = session.PaymentIntentId;
-        }
-
         var invoiceId = await StripeInvoiceHelper.ResolveInvoiceIdFromSessionAsync(
             session,
             order.StripeSessionId ?? session.Id,
             cancellationToken);
-        if (!string.IsNullOrWhiteSpace(invoiceId))
-            order.StripeInvoiceId = invoiceId;
 
-        _context.Orders.Update(order);
+        var paymentIntentId = string.IsNullOrWhiteSpace(session.PaymentIntentId) ? null : session.PaymentIntentId;
+        var resolvedInvoiceId = string.IsNullOrWhiteSpace(invoiceId) ? null : invoiceId;
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var pendingOrderQuery = _context.Orders
+            .Where(o => o.Id == order.Id && o.OrderStatus == "Pending");
+        var affectedRows = await pendingOrderQuery.ExecuteUpdateAsync(
+            setters => setters
+                .SetProperty(o => o.OrderStatus, "Paid")
+                .SetProperty(o => o.StripePaymentIntentId, o => paymentIntentId ?? o.StripePaymentIntentId)
+                .SetProperty(o => o.StripeInvoiceId, o => resolvedInvoiceId ?? o.StripeInvoiceId),
+            cancellationToken);
+
         _context.StripeProcessedEvents.Add(new StripeProcessedEvent
         {
             Id = stripeEventId,
             ProcessedAtUtc = DateTime.UtcNow,
         });
         await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return affectedRows == 1;
     }
 
     private async Task MarkProcessedOnlyAsync(string stripeEventId, CancellationToken cancellationToken)

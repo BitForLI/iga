@@ -49,6 +49,8 @@ export function AdminLayout() {
     '/admin/products';
 
   useEffect(() => {
+    // Existing responsive-layout synchronization keeps the sidebar state aligned.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional responsive UI synchronization
     if (isCompact) setCollapsed(true);
     else setCollapsed(false);
   }, [isCompact]);
