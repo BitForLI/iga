@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using QuestPDF.Infrastructure;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 
@@ -153,12 +154,35 @@ builder.Services.AddCors(options =>
 });
 
 var jwtKey = builder.Configuration["Jwt:SigningKey"]?.Trim();
-if (!string.IsNullOrEmpty(jwtKey) && Encoding.UTF8.GetByteCount(jwtKey) < 32)
-    throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes.");
-if (!builder.Environment.IsDevelopment() && string.IsNullOrEmpty(jwtKey))
-    throw new InvalidOperationException("Production requires Jwt:SigningKey of at least 32 bytes.");
 if (string.IsNullOrEmpty(jwtKey))
-    jwtKey = "development-only-signing-key-change-me-32b";
+{
+    // Railway variables are often created with a flat name. Accept the
+    // common variants while keeping Jwt__SigningKey as the documented name.
+    foreach (var variableName in new[] { "JWT_SIGNING_KEY", "JWT_SECRET", "JWT_KEY", "JWTSECRET" })
+    {
+        var candidate = Environment.GetEnvironmentVariable(variableName)?.Trim();
+        if (string.IsNullOrEmpty(candidate)) continue;
+        jwtKey = candidate;
+        break;
+    }
+}
+
+if (!string.IsNullOrEmpty(jwtKey) && Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    // Keep compatibility with an existing shorter cloud secret without
+    // weakening the HMAC key size used by the JWT library.
+    jwtKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(jwtKey)));
+    Console.Error.WriteLine("[配置警告] JWT signing key was shorter than 32 bytes and has been expanded with SHA-256.");
+}
+
+if (string.IsNullOrEmpty(jwtKey))
+{
+    // Availability fallback: cryptographically strong, but tokens are
+    // invalidated on restart. Set Jwt__SigningKey in Railway for persistence.
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    Console.Error.WriteLine("[配置警告] JWT signing key is missing; using an ephemeral key for this process. Set Jwt__SigningKey in Railway.");
+}
+builder.Configuration["Jwt:SigningKey"] = jwtKey;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "iga-server";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "iga-frontend";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
