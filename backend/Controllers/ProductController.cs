@@ -4,6 +4,7 @@ using igaServer.Data;
 using igaServer.Utils;
 using igaServer.Models;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 
 namespace igaServer.Controllers
 {
@@ -34,12 +35,15 @@ namespace igaServer.Controllers
         // 对应功能：搜索与分类
         // GET: api/product?category=Meat&search=beef
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetProducts(
             [FromQuery] string? category, 
             [FromQuery] string? search)
         {
+            if ((category?.Length ?? 0) > 100 || (search?.Length ?? 0) > 200)
+                return BadRequest(new { error = "Search parameters are too long" });
             // 默认只查询“已上架”的商品 (IsActive == true)
-            var query = _context.Products.AsQueryable();
+            var query = _context.Products.AsNoTracking().Where(p => p.IsActive);
 
             // 如果是顾客查询（通常前台只调这个接口），我们可以默认过滤掉下架商品
             // 但为了后台也能用这个接口，这里暂时不强制过滤 IsActive，交给前端参数控制
@@ -67,9 +71,10 @@ namespace igaServer.Controllers
         // 2. 获取单个商品详情（顾客端，不暴露成本价）
         // GET: api/product/5
         [HttpGet("{id}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetProduct(int id)
         {
-            var product = await _context.Products.FindAsync(id);
+            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id && p.IsActive);
 
             if (product == null)
             {
@@ -82,6 +87,7 @@ namespace igaServer.Controllers
         // 3. 读取数据库存储商品图片
         // GET: api/product/image/{id}
         [HttpGet("image/{id:guid}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetProductImage(Guid id)
         {
             var image = await _context.ProductImages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
@@ -90,7 +96,8 @@ namespace igaServer.Controllers
                 return NotFound();
             }
 
-            return File(image.ImageBytes, image.ContentType);
+            var safeContentType = ImageUploadValidator.DetectContentType(image.ImageBytes);
+            return safeContentType == null ? NotFound() : File(image.ImageBytes, safeContentType);
         }
 
         // ==========================================
@@ -100,9 +107,11 @@ namespace igaServer.Controllers
         // 3. 创建新商品
         // POST: api/product
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateProduct(Product product)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
+            if (ValidateProduct(product) is { } validationError) return BadRequest(new { error = validationError });
             product.ImageUrl = product.ImageUrl?.Trim() ?? "";
             NormalizeUnitPrices(product);
             // 自动设置创建时间
@@ -117,6 +126,7 @@ namespace igaServer.Controllers
         // 4. 修改商品信息 (改价、改名、改描述)
         // PUT: api/product/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateProduct(int id, Product product)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
@@ -124,6 +134,7 @@ namespace igaServer.Controllers
             {
                 return BadRequest();
             }
+            if (ValidateProduct(product) is { } validationError) return BadRequest(new { error = validationError });
             product.ImageUrl = product.ImageUrl?.Trim() ?? "";
             NormalizeUnitPrices(product);
 
@@ -176,6 +187,21 @@ namespace igaServer.Controllers
             }
         }
 
+        private static string? ValidateProduct(Product? product)
+        {
+            if (product == null) return "Invalid product";
+            if (string.IsNullOrWhiteSpace(product.Name) || product.Name.Length > 200) return "Product name is required and must not exceed 200 characters";
+            if (string.IsNullOrWhiteSpace(product.Category) || product.Category.Length > 100) return "Product category is required and must not exceed 100 characters";
+            if ((product.Description?.Length ?? 0) > 2000 || (product.ImageUrl?.Length ?? 0) > 2048 ||
+                (product.Unit?.Length ?? 0) > 20 || (product.UnitPriceOptionsJson?.Length ?? 0) > 10000)
+                return "One or more product fields are too long";
+            if (product.Price < 0 || product.Price > 100000m || product.CostPrice < 0 || product.CostPrice > 100000m ||
+                product.DefaultExpectedWeightKg < 0 || product.DefaultExpectedWeightKg > 100 ||
+                double.IsNaN(product.DefaultExpectedWeightKg) || double.IsInfinity(product.DefaultExpectedWeightKg))
+                return "One or more product numeric values are outside the allowed range";
+            return null;
+        }
+
         private static readonly JsonSerializerOptions _caseInsensitiveOpts =
             new() { PropertyNameCaseInsensitive = true };
 
@@ -212,6 +238,7 @@ namespace igaServer.Controllers
         // 对应功能：商家可以一键切换商品在线/离线状态
         // PATCH: api/product/5/toggle-status
         [HttpPatch("{id}/toggle-status")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> ToggleProductStatus(int id)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
@@ -232,6 +259,7 @@ namespace igaServer.Controllers
         // 6. 删除商品 (慎用，通常建议只下架)
         // DELETE: api/product/5
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProduct(int id)
         {
             if (await RequireAdminAsync() is { } denied) return denied;

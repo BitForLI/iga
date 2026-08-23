@@ -8,6 +8,9 @@ using IGA.Services;
 using igaServer.Data;
 using igaServer.Utils;
 using igaServer.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Data;
 
 namespace igaServer.Controllers
 {
@@ -16,6 +19,7 @@ namespace igaServer.Controllers
     /// </summary>
     [Route("api/admin")]
     [ApiController]
+    [Authorize(Roles = "Admin,Staff")]
     public class AdminProductController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -89,7 +93,14 @@ namespace igaServer.Controllers
                 {
                     var session = await sessionService.GetAsync(order.StripeSessionId);
                     var paid = string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
-                    if (!paid) continue;
+                    var expectedCurrency = (_configuration["Stripe:CheckoutCurrency"] ?? "aud").Trim().ToLowerInvariant();
+                    var expectedAmount = (long)Math.Round(order.TotalAmount * 100m, MidpointRounding.AwayFromZero);
+                    if (!paid || !string.Equals(session.Id, order.StripeSessionId, StringComparison.Ordinal) ||
+                        !string.Equals(session.ClientReferenceId, order.Id.ToString(), StringComparison.Ordinal) ||
+                        !string.Equals(session.Mode, "payment", StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(session.Currency, expectedCurrency, StringComparison.OrdinalIgnoreCase) ||
+                        session.AmountTotal != expectedAmount || string.IsNullOrWhiteSpace(session.PaymentIntentId))
+                        continue;
 
                     order.OrderStatus = "Paid";
                     if (!string.IsNullOrEmpty(session.PaymentIntentId))
@@ -329,9 +340,11 @@ namespace igaServer.Controllers
         public Task<IActionResult> MarkOrderPickedUpLegacy(int orderId) => MarkOrderPickedUpCore(orderId);
 
         [HttpPost("order-refund-approve/{orderId}")]
+        [EnableRateLimiting("sensitive")]
         public async Task<IActionResult> ApproveRefundRequest(int orderId)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, HttpContext.RequestAborted);
             var order = await _context.Orders
                 .Include(o => o.User)
                 .Include(o => o.Items!)
@@ -350,6 +363,7 @@ namespace igaServer.Controllers
                 order.RefundRequestReason = null;
                 order.RefundRequestedItemIdsJson = null;
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync(HttpContext.RequestAborted);
                 return Ok(new { id = order.Id, orderStatus = order.OrderStatus, refundAmount = order.RefundAmount, message = "Order already fully refunded" });
             }
 
@@ -397,7 +411,7 @@ namespace igaServer.Controllers
                 return BadRequest(new { error = "Refund amount for selected items is zero." });
             }
 
-            var refundNow = Math.Min(requestedSum, refundableRemaining);
+            var refundNow = Math.Round(Math.Min(requestedSum, refundableRemaining), 2, MidpointRounding.AwayFromZero);
             var minorUnits = (long)Math.Round(refundNow * 100m, MidpointRounding.AwayFromZero);
             if (minorUnits < 1)
             {
@@ -440,6 +454,7 @@ namespace igaServer.Controllers
             order.RefundRequestReason = null;
             order.RefundRequestedItemIdsJson = null;
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync(HttpContext.RequestAborted);
 
             await TrySendRefundApprovedEmailAsync(order, refundNow, HttpContext.RequestAborted);
 
@@ -468,12 +483,15 @@ namespace igaServer.Controllers
         }
 
         [HttpPost("order-refund-reject/{orderId}")]
+        [EnableRateLimiting("sensitive")]
         public async Task<IActionResult> RejectRefundRequest(int orderId, [FromBody] RejectRefundRequestDto? request)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
             var reason = request?.Reason?.Trim();
             if (string.IsNullOrWhiteSpace(reason))
                 return BadRequest(new { error = "Rejection reason is required." });
+            if (reason.Length > 1000)
+                return BadRequest(new { error = "Rejection reason is too long." });
 
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -673,35 +691,18 @@ namespace igaServer.Controllers
         /// <summary>上传商品图片（保存到数据库，返回可直接访问的 /api/product/image/{id}）</summary>
         [HttpPost("products/upload-image")]
         [RequestSizeLimit(5 * 1024 * 1024)]
+        [EnableRateLimiting("sensitive")]
         public async Task<IActionResult> UploadProductImage(IFormFile? file)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
-            if (file == null || file.Length == 0)
-                return BadRequest(new { error = "No file uploaded" });
-
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var allowed = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-            if (!allowed.Contains(ext))
-                return BadRequest(new { error = "Only JPG, PNG, GIF or WebP images are allowed" });
-
-            if (file.Length > 5 * 1024 * 1024)
-                return BadRequest(new { error = "File size must not exceed 5MB" });
-
-            await using var ms = new MemoryStream();
-            await file.CopyToAsync(ms);
-            var bytes = ms.ToArray();
-            if (bytes.Length == 0)
-                return BadRequest(new { error = "No file uploaded" });
-            if (bytes.Length > 5 * 1024 * 1024)
-                return BadRequest(new { error = "File size must not exceed 5MB" });
-
-            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? ContentTypeFromImageExtension(ext) : file.ContentType.Trim();
+            var (image, error) = await ImageUploadValidator.ValidateAsync(file, 5 * 1024 * 1024, HttpContext.RequestAborted);
+            if (image == null) return BadRequest(new { error });
             var id = Guid.NewGuid();
             _context.ProductImages.Add(new ProductImage
             {
                 Id = id,
-                ImageBytes = bytes,
-                ContentType = contentType,
+                ImageBytes = image.Bytes,
+                ContentType = image.ContentType,
                 CreatedAtUtc = DateTime.UtcNow,
             });
             await _context.SaveChangesAsync();
@@ -710,14 +711,5 @@ namespace igaServer.Controllers
             return Ok(new { url });
         }
 
-        private static string ContentTypeFromImageExtension(string ext) =>
-            ext switch
-            {
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".png" => "image/png",
-                ".gif" => "image/gif",
-                ".webp" => "image/webp",
-                _ => "application/octet-stream",
-            };
     }
 }

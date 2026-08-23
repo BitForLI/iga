@@ -55,8 +55,10 @@ export function Register() {
       const res = (await authAPI.login({
         email: formData.Email,
         password: formData.Password,
-      })) as unknown as { id: number; name: string; email: string; phoneNumber?: string; role?: string };
+      })) as unknown as { token: string; expiresAtUtc: string; id: number; name: string; email: string; phoneNumber?: string; role?: string };
       setUser({
+        token: res.token,
+        expiresAtUtc: res.expiresAtUtc,
         id: res.id,
         name: res.name,
         email: res.email,
@@ -185,6 +187,8 @@ export function Register() {
           value={formData.Password}
           onChange={handleChange}
           required
+          minLength={12}
+          maxLength={128}
           autoComplete="new-password"
           style={{
             width: '100%',

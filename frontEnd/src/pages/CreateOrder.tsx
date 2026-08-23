@@ -27,7 +27,7 @@ export function CreateOrder() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof OrderItem, value: any) => {
+  const handleItemChange = (index: number, field: keyof OrderItem, value: number) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
@@ -40,13 +40,17 @@ export function CreateOrder() {
 
     try {
       const orderRes = await orderAPI.create({
-        UserId: user.id,
-        OrderType: 'Pickup',
-        PickupTime: pickupTime,
-        Items: items,
+        orderType: 'Pickup',
+        pickupTime,
+        items: items.map((item) => ({
+          productId: item.ProductId,
+          quantity: item.Quantity,
+          expectedWeight: item.ExpectedWeight,
+          selectedUnit: 'kg',
+        })),
       });
 
-      const orderData = (orderRes as any).orderId || 0;
+      const orderData = orderRes.orderId || 0;
       
       // 创建 Checkout Session
       await paymentAPI.createCheckout(orderData);

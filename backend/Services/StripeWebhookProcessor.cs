@@ -60,7 +60,7 @@ public class StripeWebhookProcessor
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "[Webhook] Stripe signature or payload invalid");
-            return (400, new { error = $"Webhook error: {ex.Message}" });
+            return (400, new { error = "Invalid webhook signature or payload" });
         }
         catch (Exception ex)
         {
@@ -111,7 +111,18 @@ public class StripeWebhookProcessor
 
         var order = await _context.Orders.FindAsync([orderId], cancellationToken);
         if (order == null)
-            return (400, new { error = $"Order {orderId} not found" });
+            return (400, new { error = "Referenced order was not found" });
+
+        if (!string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+        {
+            await MarkProcessedOnlyAsync(stripeEvent.Id, cancellationToken);
+            return (200, null);
+        }
+        if (!SessionMatchesOrder(session, order))
+        {
+            _logger.LogError("[Webhook] Checkout session correlation failed for event {EventId}", stripeEvent.Id);
+            return (400, new { error = "Checkout session does not match the order" });
+        }
 
         var wasAlreadyPaid = string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
         await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
@@ -136,10 +147,13 @@ public class StripeWebhookProcessor
 
         var order = await _context.Orders.FindAsync([orderId], cancellationToken);
         var wasAlreadyPaid = order != null && string.Equals(order.OrderStatus, "Paid", StringComparison.Ordinal);
-        if (order != null && !wasAlreadyPaid)
+        if (order != null && !wasAlreadyPaid &&
+            string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase) && SessionMatchesOrder(session, order))
             await ApplyPaidFromSessionAsync(order, session, stripeEvent.Id, cancellationToken);
-        else
+        else if (order != null && wasAlreadyPaid)
             await MarkProcessedOnlyAsync(stripeEvent.Id, cancellationToken);
+        else
+            return (400, new { error = "Checkout session does not match a payable order" });
 
         if (order != null && !wasAlreadyPaid)
             await NotifyPaidIfNeededAsync(orderId, session, cancellationToken);
@@ -162,7 +176,8 @@ public class StripeWebhookProcessor
             return (400, null);
 
         var order = await _context.Orders.FindAsync([orderId], cancellationToken);
-        if (order != null)
+        if (order != null && SessionMatchesOrder(session, order) &&
+            !string.Equals(order.OrderStatus, "Paid", StringComparison.OrdinalIgnoreCase))
         {
             order.OrderStatus = "Pending";
             _context.Orders.Update(order);
@@ -240,5 +255,18 @@ public class StripeWebhookProcessor
         {
             _logger.LogWarning(ex, "[Webhook] Telegram failed order {OrderId}", orderId);
         }
+    }
+
+    private bool SessionMatchesOrder(Session session, Order order)
+    {
+        var expectedCurrency = (_configuration["Stripe:CheckoutCurrency"] ?? "aud").Trim().ToLowerInvariant();
+        var expectedAmount = (long)Math.Round(order.TotalAmount * 100m, MidpointRounding.AwayFromZero);
+        return !string.IsNullOrWhiteSpace(order.StripeSessionId)
+            && string.Equals(session.Id, order.StripeSessionId, StringComparison.Ordinal)
+            && string.Equals(session.ClientReferenceId, order.Id.ToString(), StringComparison.Ordinal)
+            && string.Equals(session.Mode, "payment", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(session.Currency, expectedCurrency, StringComparison.OrdinalIgnoreCase)
+            && session.AmountTotal == expectedAmount
+            && !string.IsNullOrWhiteSpace(session.PaymentIntentId);
     }
 }

@@ -542,7 +542,6 @@ export function CartSidebar({ compact = false }: { compact?: boolean }) {
                         ? [deliveryInfo.address, deliveryInfo.suburb, deliveryInfo.postcode].filter(Boolean).join(', ')
                         : undefined;
                     const orderRes = (await orderAPI.create({
-                      userId: user.id,
                       orderType: orderType,
                       pickupTime: orderType === 'Pickup' ? pickupTimeSlot : undefined,
                       deliveryAddress: deliveryAddress,

@@ -1,21 +1,19 @@
-using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
+using System.Security.Claims;
 
 namespace igaServer.Utils;
 
-/// <summary>后台接口：通过请求头 X-User-Id 查库校验角色（与前端登录用户一致）。</summary>
+/// <summary>Backoffice authorization derived only from the validated bearer-token principal.</summary>
 public static class BackofficeAuthHelper
 {
     public static async Task<(bool Ok, string Role)> GetUserRoleAsync(HttpRequest request, ApplicationDbContext db)
     {
-        if (!request.Headers.TryGetValue("X-User-Id", out var idStr) || !int.TryParse(idStr, out var userId))
-            return (false, "");
-
-        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        if (user == null)
-            return (false, "");
-
-        return (true, string.IsNullOrEmpty(user.Role) ? "Customer" : user.Role);
+        await Task.CompletedTask;
+        var principal = request.HttpContext.User;
+        if (principal.Identity?.IsAuthenticated != true ||
+            !int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out _))
+            return (false, string.Empty);
+        return (true, principal.FindFirstValue(ClaimTypes.Role) ?? "Customer");
     }
 
     public static bool IsAdmin(string role) => string.Equals(role?.Trim(), "Admin", StringComparison.OrdinalIgnoreCase);

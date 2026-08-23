@@ -1,5 +1,6 @@
 using IGA.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace igaServer.Controllers;
 
@@ -15,6 +16,8 @@ public class StripeWebhookController : ControllerBase
     public StripeWebhookController(StripeWebhookProcessor processor) => _processor = processor;
 
     [HttpPost("webhook")]
+    [AllowAnonymous]
+    [RequestSizeLimit(1024 * 1024)]
     public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(Request.Body);

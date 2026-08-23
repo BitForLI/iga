@@ -5,11 +5,16 @@ using IGA.Services;
 using Stripe;
 using igaServer.Data;
 using igaServer.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Security.Claims;
 
 namespace igaServer.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
+    [EnableRateLimiting("orders")]
     public class PaymentController : ControllerBase
     {
         private readonly IStripeService _stripeService;
@@ -82,6 +87,8 @@ namespace igaServer.Controllers
                 return BadRequest(new { error = "Order not found" });
             }
 
+            if (!CanAccessOrder(order.UserId)) return Forbid();
+
             if (order.Items == null || order.Items.Count == 0)
             {
                 return BadRequest(new { error = "Order has no items" });
@@ -91,6 +98,24 @@ namespace igaServer.Controllers
             if (order.OrderStatus != "Pending")
             {
                 return BadRequest(new { error = $"Order status is {order.OrderStatus}, only Pending orders can be paid" });
+            }
+
+            if (!string.IsNullOrWhiteSpace(order.StripeSessionId))
+            {
+                try
+                {
+                    var existingSession = await new SessionService().GetAsync(order.StripeSessionId);
+                    if (string.Equals(existingSession.Status, "open", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(existingSession.Url))
+                        return Ok(new { url = existingSession.Url });
+                    if (string.Equals(existingSession.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+                        return Conflict(new { error = "This order already has a paid checkout session." });
+                }
+                catch (StripeException ex)
+                {
+                    _logger.LogWarning(ex, "[Payment] Existing checkout session could not be reused for order {OrderId}", orderId);
+                    return StatusCode(502, new { error = "Existing payment session could not be verified. Please try again later." });
+                }
             }
 
             // === 步骤 3: 构建 Checkout Session 的 line items ===
@@ -142,8 +167,8 @@ namespace igaServer.Controllers
             {
                 var itemsTotal = order.Items.Sum(i =>
                     i.ExpectedWeight > 0
-                        ? i.PriceAtPurchase * (decimal)i.ExpectedWeight
-                        : i.PriceAtPurchase * i.Quantity);
+                        ? Math.Round(i.PriceAtPurchase * (decimal)i.ExpectedWeight, 2, MidpointRounding.AwayFromZero)
+                        : Math.Round(i.PriceAtPurchase * i.Quantity, 2, MidpointRounding.AwayFromZero));
                 var deliveryFee = order.TotalAmount - itemsTotal;
                 if (deliveryFee > 0)
                 {
@@ -172,6 +197,12 @@ namespace igaServer.Controllers
             var cancelUrlTemplate = _configuration["Stripe:CancelUrl"] ?? $"http://localhost:5173/?payment=cancelled&orderId={orderId}";
             var successUrl = successUrlTemplate.Replace("{orderId}", orderId.ToString());
             var cancelUrl = cancelUrlTemplate.Replace("{orderId}", orderId.ToString());
+            if (!Uri.TryCreate(successUrl, UriKind.Absolute, out var successUri) ||
+                !Uri.TryCreate(cancelUrl, UriKind.Absolute, out var cancelUri) ||
+                (!HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment() &&
+                 (successUri.Scheme != Uri.UriSchemeHttps || cancelUri.Scheme != Uri.UriSchemeHttps ||
+                  successUri.IsLoopback || cancelUri.IsLoopback)))
+                return StatusCode(500, new { error = "Stripe callback URLs are not safely configured." });
 
             var options = new SessionCreateOptions
             {
@@ -209,7 +240,8 @@ namespace igaServer.Controllers
 
             try
             {
-                var session = await _stripeService.CreateCheckoutSessionAsync(successUrl, cancelUrl, options);
+                var checkoutKey = $"checkout-order-{order.Id}-{order.StripeSessionId ?? "initial"}";
+                var session = await _stripeService.CreateCheckoutSessionAsync(successUrl, cancelUrl, options, checkoutKey);
 
                 if (string.IsNullOrEmpty(session.Url))
                 {
@@ -227,17 +259,13 @@ namespace igaServer.Controllers
             catch (StripeException ex)
             {
                 var code = ex.StripeError?.Code ?? ex.StripeError?.Type ?? "";
-                return BadRequest(new
-                {
-                    error = string.IsNullOrEmpty(code)
-                        ? $"Stripe error: {ex.Message}"
-                        : $"Stripe error ({code}): {ex.Message}",
-                    stripeCode = code,
-                });
+                _logger.LogWarning(ex, "[Payment] Stripe checkout creation failed with code {StripeCode}", code);
+                return StatusCode(502, new { error = "Payment provider could not create a checkout session.", stripeCode = code });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = $"Checkout failed: {ex.Message}" });
+                _logger.LogError(ex, "[Payment] Checkout creation failed for order {OrderId}", orderId);
+                return StatusCode(500, new { error = "Checkout could not be created." });
             }
         }
 
@@ -262,6 +290,8 @@ namespace igaServer.Controllers
                 return NotFound(new { error = "Order not found" });
             }
 
+            if (!CanAccessOrder(order.UserId)) return Forbid();
+
             if (string.IsNullOrEmpty(order.StripeSessionId))
             {
                 return BadRequest(new { error = "订单未关联 Stripe Checkout Session，无法同步" });
@@ -276,6 +306,14 @@ namespace igaServer.Controllers
                 {
                     return BadRequest(new { error = "Stripe Session 与订单不匹配" });
                 }
+
+                var expectedAmount = (long)Math.Round(order.TotalAmount * 100m, MidpointRounding.AwayFromZero);
+                var expectedCurrency = (_configuration["Stripe:CheckoutCurrency"] ?? "aud").Trim().ToLowerInvariant();
+                if (!string.Equals(session.Id, order.StripeSessionId, StringComparison.Ordinal) ||
+                    !string.Equals(session.Mode, "payment", StringComparison.OrdinalIgnoreCase) ||
+                    session.AmountTotal != expectedAmount ||
+                    !string.Equals(session.Currency, expectedCurrency, StringComparison.OrdinalIgnoreCase))
+                    return BadRequest(new { error = "Stripe Session details do not match the order." });
 
                 var paid = string.Equals(session.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
 
@@ -332,7 +370,8 @@ namespace igaServer.Controllers
             }
             catch (StripeException ex)
             {
-                return BadRequest(new { error = $"Stripe: {ex.Message}" });
+                _logger.LogWarning(ex, "[Payment] Stripe synchronization failed for order {OrderId}", orderId);
+                return StatusCode(502, new { error = "Payment provider synchronization failed." });
             }
         }
 
@@ -349,6 +388,9 @@ namespace igaServer.Controllers
         /// 4. 可选：发送确认邮件/Telegram 通知
         /// </summary>
         [HttpPost("webhook")]
+        [AllowAnonymous]
+        [DisableRateLimiting]
+        [RequestSizeLimit(1024 * 1024)]
         public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
         {
             using var reader = new StreamReader(Request.Body);
@@ -356,6 +398,12 @@ namespace igaServer.Controllers
             var sig = Request.Headers["Stripe-Signature"].ToString();
             var (status, body) = await _webhookProcessor.ProcessAsync(json, sig, cancellationToken);
             return body == null ? StatusCode(status) : StatusCode(status, body);
+        }
+
+        private bool CanAccessOrder(int ownerUserId)
+        {
+            if (User.IsInRole("Admin") || User.IsInRole("Staff")) return true;
+            return int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) && userId == ownerUserId;
         }
     }
 }

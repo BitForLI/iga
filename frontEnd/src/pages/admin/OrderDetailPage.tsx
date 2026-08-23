@@ -126,9 +126,10 @@ export function OrderDetailPage() {
     }
     setSavingWeightId(itemId);
     try {
-      const res = (await apiClient.put(`/order/item/${itemId}/weight`, { actualWeight: v }, {
-        headers: { 'X-Admin-Id': String(user.id) },
-      })) as { refundInfo?: { stripeRefundId?: string; deltaRefund?: number; cappedByPaidAmount?: boolean }; message?: string };
+      const res = (await apiClient.put(`/order/item/${itemId}/weight`, { actualWeight: v })) as {
+        refundInfo?: { stripeRefundId?: string; deltaRefund?: number; cappedByPaidAmount?: boolean };
+        message?: string;
+      };
       const stripeId = res?.refundInfo?.stripeRefundId;
       const delta = res?.refundInfo?.deltaRefund;
       const capped = res?.refundInfo?.cappedByPaidAmount;

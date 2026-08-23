@@ -4,11 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
 using igaServer.Models;
 using igaServer.Utils;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace igaServer.Controllers;
 
 [Route("api/admin/store")]
 [ApiController]
+[Authorize(Roles = "Admin")]
 public class AdminStoreController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -87,6 +90,12 @@ public class AdminStoreController : ControllerBase
     {
         if (await RequireAdminAsync() is { } denied) return denied;
         if (body == null) return BadRequest(new { error = "Invalid body" });
+        if ((body.StoreName?.Length ?? 0) > 200 || (body.PhoneNumber?.Length ?? 0) > 50 ||
+            (body.StoreAddress?.Length ?? 0) > 500 || (body.AbnNumber?.Length ?? 0) > 50 ||
+            (body.DeliveryZoneFees?.Count ?? 0) > 100 || (body.DeliveryFeeRules?.Count ?? 0) > 100 ||
+            (body.HomeCarouselImageUrls?.Count ?? 0) > 20 ||
+            (body.HomeCarouselImageUrls?.Any(url => (url?.Length ?? 0) > 2048) ?? false))
+            return BadRequest(new { error = "One or more store settings exceed the allowed size" });
 
         var freeMin = body.FreeShippingMinAud ?? StoreDeliveryHelper.DefaultFreeShippingMinAud;
         if (freeMin < 0 || freeMin > 5000)
@@ -218,36 +227,19 @@ public class AdminStoreController : ControllerBase
     /// <summary>Upload a hero carousel image into the database (survives redeploy without uploads volume).</summary>
     [HttpPost("upload-carousel-image")]
     [RequestSizeLimit(8 * 1024 * 1024)]
+    [EnableRateLimiting("sensitive")]
     public async Task<IActionResult> UploadCarouselImage(IFormFile? file, CancellationToken cancellationToken)
     {
         if (await RequireAdminAsync() is { } denied) return denied;
-        if (file == null || file.Length == 0)
-            return BadRequest(new { error = "No file uploaded" });
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var allowed = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-        if (!allowed.Contains(ext))
-            return BadRequest(new { error = "Only JPG, PNG, GIF or WebP images are allowed" });
-
-        if (file.Length > 8 * 1024 * 1024)
-            return BadRequest(new { error = "File size must not exceed 8MB" });
-
-        await using var ms = new MemoryStream();
-        await file.CopyToAsync(ms, cancellationToken);
-        var bytes = ms.ToArray();
-        if (bytes.Length == 0)
-            return BadRequest(new { error = "No file uploaded" });
-        if (bytes.Length > 8 * 1024 * 1024)
-            return BadRequest(new { error = "File size must not exceed 8MB" });
-
-        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? ContentTypeFromImageExtension(ext) : file.ContentType.Trim();
+        var (image, error) = await ImageUploadValidator.ValidateAsync(file, 8 * 1024 * 1024, cancellationToken);
+        if (image == null) return BadRequest(new { error });
         var id = Guid.NewGuid();
         _context.StoreCarouselImages.Add(
             new StoreCarouselImage
             {
                 Id = id,
-                ImageBytes = bytes,
-                ContentType = contentType,
+                ImageBytes = image.Bytes,
+                ContentType = image.ContentType,
                 CreatedAtUtc = DateTime.UtcNow,
             });
         await _context.SaveChangesAsync(cancellationToken);
@@ -255,16 +247,6 @@ public class AdminStoreController : ControllerBase
         var url = $"{CarouselImageStorageHelper.PublicPathPrefix}{id:D}";
         return Ok(new { url });
     }
-
-    private static string ContentTypeFromImageExtension(string ext) =>
-        ext switch
-        {
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            _ => "application/octet-stream",
-        };
 
     /// <summary>Remove DB carousel blobs that are no longer listed in settings (frees space after edits).</summary>
     private async Task DeleteOrphanCarouselImagesAsync(List<string> urls, CancellationToken cancellationToken)

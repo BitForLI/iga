@@ -6,7 +6,7 @@ namespace IGA.Services
 {
     public interface IStripeService
     {
-        Task<Session> CreateCheckoutSessionAsync(string successUrl, string cancelUrl, SessionCreateOptions? options = null);
+        Task<Session> CreateCheckoutSessionAsync(string successUrl, string cancelUrl, SessionCreateOptions? options = null, string? idempotencyKey = null);
         Task<bool> ValidateWebhookSignatureAsync(string payload, string sigHeader, string webhookSecret);
 
         /// <summary>

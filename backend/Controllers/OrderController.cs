@@ -6,11 +6,18 @@ using igaServer.Models;
 using igaServer.DTOs;
 using igaServer.Utils;
 using System.Text.Json;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Data;
 
 namespace igaServer.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
+    [EnableRateLimiting("orders")]
     public class OrderController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -37,23 +44,22 @@ namespace igaServer.Controllers
         [HttpPost("create")]
         public async Task<ActionResult<OrderDetailDto>> CreateOrder([FromBody] OrderCreateDto request)
         {
-            // === 步骤 1: 验证用户存在（不再自动创建 Guest/初始用户） ===
-            User user;
-            if (request.UserId == 0)
-            {
-                return BadRequest(new { error = "Please sign in before checkout" });
-            }
-            else
-            {
-                user = await _context.Users.FindAsync(request.UserId);
-                if (user == null) return BadRequest(new { error = "User not found" });
-            }
+            if (!TryGetCurrentUserId(out var currentUserId)) return Unauthorized();
+            var user = await _context.Users.FindAsync(currentUserId);
+            if (user == null || !user.EmailVerified) return Unauthorized();
 
             // === 步骤 2: 验证购物车不为空 ===
-            if (request.Items == null || request.Items.Count == 0)
+            if (request.Items == null || request.Items.Count == 0 || request.Items.Count > 100)
             {
-                return BadRequest(new { error = "Cart is empty" });
+                return BadRequest(new { error = "Cart must contain between 1 and 100 items" });
             }
+            var orderType = (request.OrderType ?? "").Trim();
+            if (orderType != "Pickup" && orderType != "Delivery")
+                return BadRequest(new { error = "OrderType must be Pickup or Delivery" });
+            if ((request.DeliveryAddress?.Length ?? 0) > 500 || (request.DeliverySuburb?.Length ?? 0) > 100)
+                return BadRequest(new { error = "Delivery details are too long" });
+            if (request.PickupTime is { } pickup && (pickup < DateTime.UtcNow.AddMinutes(-5) || pickup > DateTime.UtcNow.AddDays(30)))
+                return BadRequest(new { error = "Pickup time must be within the next 30 days" });
 
             // === 步骤 3: 获取商品信息（验证商品存在且上架） ===
             var productIds = request.Items.Select(x => x.ProductId).ToList();
@@ -63,6 +69,10 @@ namespace igaServer.Controllers
 
             foreach (var item in request.Items)
             {
+                if (item.ProductId <= 0 || item.Quantity < 0 || item.Quantity > 100 ||
+                    double.IsNaN(item.ExpectedWeight) || double.IsInfinity(item.ExpectedWeight) || item.ExpectedWeight < 0 || item.ExpectedWeight > 100 ||
+                    (item.SelectedUnit?.Length ?? 0) > 20)
+                    return BadRequest(new { error = "One or more cart items have invalid values" });
                 var product = products.FirstOrDefault(p => p.Id == item.ProductId);
                 if (product == null)
                 {
@@ -77,7 +87,7 @@ namespace igaServer.Controllers
 
             // === 步骤 3.5: 配送订单需校验区域（运费在商品小计后按分区 + 满额包邮计算） ===
             StoreConfig? store = null;
-            if (request.OrderType == "Delivery")
+            if (orderType == "Delivery")
             {
                 store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
 
@@ -95,11 +105,11 @@ namespace igaServer.Controllers
             var order = new Order
             {
                 UserId = user.Id,
-                OrderType = request.OrderType, // "Pickup" 或 "Delivery"
+                OrderType = orderType,
                 OrderStatus = "Pending", // 初始状态：待支付
                 PickupTime = request.PickupTime.HasValue ? DateTime.SpecifyKind(request.PickupTime.Value, DateTimeKind.Utc) : null, // 转换为 UTC
-                DeliveryAddress = request.DeliveryAddress,
-                DeliverySuburb = request.OrderType == "Delivery" ? (request.DeliverySuburb ?? "").Trim() : null,
+                DeliveryAddress = orderType == "Delivery" ? request.DeliveryAddress?.Trim() : null,
+                DeliverySuburb = orderType == "Delivery" ? (request.DeliverySuburb ?? "").Trim() : null,
                 Items = new List<OrderItem>()
             };
 
@@ -131,7 +141,7 @@ namespace igaServer.Controllers
 
                     orderItem.Quantity = 1;
                     orderItem.ExpectedWeight = w;
-                    lineAmount = unitPrice * (decimal)w;
+                    lineAmount = Math.Round(unitPrice * (decimal)w, 2, MidpointRounding.AwayFromZero);
                 }
                 else
                 {
@@ -142,7 +152,7 @@ namespace igaServer.Controllers
 
                     orderItem.Quantity = item.Quantity;
                     orderItem.ExpectedWeight = item.ExpectedWeight > 0 ? item.ExpectedWeight : 0;
-                    lineAmount = unitPrice * item.Quantity;
+                    lineAmount = Math.Round(unitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
                 }
 
                 order.Items.Add(orderItem);
@@ -150,7 +160,7 @@ namespace igaServer.Controllers
             }
 
             // 配送订单：分区运费（StoreConfigs.DeliveryZoneFeesJson，空则每区默认 $10），满 FreeDeliveryThreshold 包邮
-            if (request.OrderType == "Delivery")
+            if (orderType == "Delivery")
             {
                 store = await _context.StoreConfigs.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync();
                 var freeMin = store != null && store.FreeDeliveryThreshold > 0
@@ -165,7 +175,9 @@ namespace igaServer.Controllers
                 totalAmount += deliveryFee;
             }
 
-            order.TotalAmount = totalAmount;
+            if (totalAmount <= 0 || totalAmount > 100000m)
+                return BadRequest(new { error = "Order total is outside the allowed range" });
+            order.TotalAmount = Math.Round(totalAmount, 2, MidpointRounding.AwayFromZero);
 
             // === 步骤 6: 取件码（6 位数字，支付成功后邮件通知） ===
             order.PickupCode = GeneratePickupCode();
@@ -196,6 +208,8 @@ namespace igaServer.Controllers
                 return NotFound("Order not found");
             }
 
+            if (!CanAccessOrder(order.UserId)) return Forbid();
+
             var dto = MapToOrderDetailDto(order);
             return Ok(dto);
         }
@@ -207,6 +221,7 @@ namespace igaServer.Controllers
         [HttpGet("user/{userId}")]
         public async Task<ActionResult<List<OrderDetailDto>>> GetUserOrders(int userId)
         {
+            if (!CanAccessOrder(userId)) return Forbid();
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
             {
@@ -232,13 +247,9 @@ namespace igaServer.Controllers
         [HttpPost("{orderId}/refund-request")]
         public async Task<ActionResult<OrderDetailDto>> RequestRefund(
             int orderId,
-            [FromBody] RefundRequestDto? body,
-            [FromHeader(Name = "X-User-Id")] int userId)
+            [FromBody] RefundRequestDto? body)
         {
-            if (userId <= 0)
-            {
-                return Unauthorized(new { error = "Sign in required" });
-            }
+            if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -281,6 +292,7 @@ namespace igaServer.Controllers
             }
 
             var reason = (body?.Reason ?? "").Trim();
+            if (reason.Length > 1000) return BadRequest(new { error = "Refund reason is too long." });
             var requestedIds = (body?.ItemIds ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
 
             List<int> selectedIds;
@@ -343,18 +355,11 @@ namespace igaServer.Controllers
         /// Pending -> Paid -> Prepared -> Completed
         /// </summary>
         [HttpPut("{orderId}/status")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<OrderDetailDto>> UpdateOrderStatus(
             int orderId,
-            [FromBody] UpdateOrderStatusRequest request,
-            [FromHeader(Name = "X-Admin-Id")] int adminId)
+            [FromBody] UpdateOrderStatusRequest request)
         {
-            // 验证操作者是否为 Admin
-            var admin = await _context.Users.FindAsync(adminId);
-            if (admin == null || admin.Role != "Admin")
-            {
-                return Unauthorized("Only admin can perform this action");
-            }
-
             // 查找订单
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -411,6 +416,8 @@ namespace igaServer.Controllers
         /// 4. 返回订单信息
         /// </summary>
         [HttpPost("{orderId}/verify")]
+        [Authorize(Roles = "Admin,Staff")]
+        [EnableRateLimiting("sensitive")]
         public async Task<ActionResult<OrderDetailDto>> VerifyOrder(int orderId, [FromBody] OrderVerifyDto request)
         {
             // 查找订单
@@ -471,17 +478,16 @@ namespace igaServer.Controllers
         /// 若新实际重量比上次更轻（应减少已退金额），Stripe 无法自动收回已退款，接口会拒绝并提示人工处理。
         /// </summary>
         [HttpPut("item/{itemId}/weight")]
+        [Authorize(Roles = "Admin,Staff")]
+        [EnableRateLimiting("sensitive")]
         public async Task<ActionResult<OrderItemDetailDto>> UpdateItemWeight(
             int itemId,
-            [FromBody] WeightUpdateDto request,
-            [FromHeader(Name = "X-Admin-Id")] int adminId)
+            [FromBody] WeightUpdateDto request)
         {
-            // 员工或管理员可录入实重（触发 Stripe 部分退款）
-            var admin = await _context.Users.FindAsync(adminId);
-            if (admin == null || (admin.Role != "Admin" && admin.Role != "Staff"))
-            {
-                return Unauthorized("Only staff or admin can update item weight");
-            }
+            if (request == null || request.ActualWeight < 0 || request.ActualWeight > 100 ||
+                double.IsNaN(request.ActualWeight) || double.IsInfinity(request.ActualWeight))
+                return BadRequest(new { error = "Actual weight must be between 0 and 100 kg" });
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, HttpContext.RequestAborted);
 
             // 查找订单项
             var orderItem = await _context.OrderItems
@@ -529,9 +535,9 @@ namespace igaServer.Controllers
                 return pricePerKg * diff;
             }
 
-            decimal newLineRefund = LineRefundForWeight(expectedTotalWeight, newActualTotalWeight, refundPerKg);
+            decimal newLineRefund = Math.Round(LineRefundForWeight(expectedTotalWeight, newActualTotalWeight, refundPerKg), 2, MidpointRounding.AwayFromZero);
             decimal oldLineRefund = previousActual.HasValue
-                ? LineRefundForWeight(expectedTotalWeight, oldActualTotalWeight, refundPerKg)
+                ? Math.Round(LineRefundForWeight(expectedTotalWeight, oldActualTotalWeight, refundPerKg), 2, MidpointRounding.AwayFromZero)
                 : 0;
             decimal requestedDeltaRefund = newLineRefund - oldLineRefund;
             decimal refundableRemaining = Math.Max(0, order.TotalAmount - order.RefundAmount);
@@ -616,6 +622,7 @@ namespace igaServer.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync(HttpContext.RequestAborted);
 
             var itemDto = MapToOrderItemDetailDto(orderItem);
             return Ok(new
@@ -662,8 +669,8 @@ namespace igaServer.Controllers
                 RefundRequestedItemIds = ParseRefundItemIdList(order.RefundRequestedItemIdsJson),
                 OrderStatus = order.OrderStatus,
                 OrderType = order.OrderType,
-                StripeSessionId = order.StripeSessionId,
-                StripePaymentIntentId = order.StripePaymentIntentId,
+                StripeSessionId = IsPrivileged() ? order.StripeSessionId : null,
+                StripePaymentIntentId = IsPrivileged() ? order.StripePaymentIntentId : null,
                 PickupCode = order.PickupCode,
                 PickupTime = order.PickupTime,
                 DeliveryAddress = order.DeliveryAddress,
@@ -676,7 +683,15 @@ namespace igaServer.Controllers
         }
 
         private static string GeneratePickupCode() =>
-            Random.Shared.Next(100000, 1000000).ToString("D6");
+            RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
+
+        private bool TryGetCurrentUserId(out int userId) =>
+            int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+
+        private bool IsPrivileged() => User.IsInRole("Admin") || User.IsInRole("Staff");
+
+        private bool CanAccessOrder(int ownerUserId) =>
+            IsPrivileged() || (TryGetCurrentUserId(out var currentUserId) && currentUserId == ownerUserId);
 
         /// <summary>仅保留数字，用于比对取货码（允许用户粘贴带空格等）。</summary>
         private static string NormalizePickupDigits(string? input)

@@ -71,8 +71,8 @@ export function PasswordResetForm({ initialEmail = '', onBack, onSuccess }: Pass
     e.preventDefault();
     setError('');
     setInfo('');
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters');
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      setError('New password must be 12-128 characters');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -188,7 +188,8 @@ export function PasswordResetForm({ initialEmail = '', onBack, onSuccess }: Pass
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
             autoComplete="new-password"
             style={{ ...inputStyle, paddingRight: '2.25rem' }}
           />
@@ -222,7 +223,8 @@ export function PasswordResetForm({ initialEmail = '', onBack, onSuccess }: Pass
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
             autoComplete="new-password"
             style={{ ...inputStyle, paddingRight: '2.25rem' }}
           />

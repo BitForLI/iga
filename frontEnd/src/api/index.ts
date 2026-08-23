@@ -3,6 +3,29 @@ import { apiClient, API_BASE, ApiRequestError } from './client';
 
 export { ApiRequestError };
 
+export interface AuthLoginResponse {
+  token: string;
+  expiresAtUtc: string;
+  id: number;
+  name: string;
+  email: string;
+  phoneNumber: string;
+  role: string;
+}
+
+export interface OrderCreateRequest {
+  orderType: 'Pickup' | 'Delivery';
+  pickupTime?: string;
+  deliveryAddress?: string;
+  deliverySuburb?: string;
+  items: Array<{
+    productId: number;
+    quantity: number;
+    expectedWeight: number;
+    selectedUnit?: string;
+  }>;
+}
+
 /** axios 取消请求（AbortController）；需与 client 拦截器配合，勿把取消错误包成普通 Error */
 export function isRequestAborted(err: unknown): boolean {
   if (typeof axios.isCancel === 'function' && axios.isCancel(err)) return true;
@@ -23,7 +46,8 @@ export const authAPI = {
   resendVerification: (data: { email: string }) =>
     apiClient.post<{ emailSent: boolean; message: string }>('/auth/resend-verification', data),
   login: (data: { email: string; password: string }) =>
-    apiClient.post<{ id: number; name: string; email: string; phoneNumber: string }>('/auth/login', data),
+    apiClient.post<AuthLoginResponse>('/auth/login', data) as unknown as Promise<AuthLoginResponse>,
+  me: () => apiClient.get<{ id: number; name: string; email: string; phoneNumber: string; role: string }>('/auth/me'),
   forgotPassword: (data: { email: string }) =>
     apiClient.post<{ message: string }>('/auth/forgot-password', data),
   resendPasswordReset: (data: { email: string }) =>
@@ -57,23 +81,12 @@ export const adminStoreAPI = {
   uploadCarouselImage: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('token');
-    const rawUser = localStorage.getItem('user');
-    let userId = '';
-    if (rawUser) {
-      try {
-        const u = JSON.parse(rawUser) as { id?: number };
-        if (u?.id != null) userId = String(u.id);
-      } catch {
-        /* ignore */
-      }
-    }
+    const token = sessionStorage.getItem('iga_auth_token');
     const res = await fetch(`${API_BASE}/admin/store/upload-carousel-image`, {
       method: 'POST',
       body: formData,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(userId ? { 'X-User-Id': userId } : {}),
       },
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string; url?: string };
@@ -113,23 +126,12 @@ export const adminProductAPI = {
   uploadProductImage: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('token');
-    const rawUser = localStorage.getItem('user');
-    let userId = '';
-    if (rawUser) {
-      try {
-        const u = JSON.parse(rawUser) as { id?: number };
-        if (u?.id != null) userId = String(u.id);
-      } catch {
-        /* ignore */
-      }
-    }
+    const token = sessionStorage.getItem('iga_auth_token');
     const res = await fetch(`${API_BASE}/admin/products/upload-image`, {
       method: 'POST',
       body: formData,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(userId ? { 'X-User-Id': userId } : {}),
       },
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string; url?: string };
@@ -146,7 +148,7 @@ export const adminProductAPI = {
 };
 
 export const orderAPI = {
-  create: (data: any) => apiClient.post<{ orderId: number }>('/order/create', data),
+  create: (data: OrderCreateRequest) => apiClient.post<{ orderId: number }>('/order/create', data) as unknown as Promise<{ orderId: number }>,
   get: (id: number) => apiClient.get('/order/' + id),
   getUserOrders: (userId: number) => apiClient.get<any[]>('/order/user/' + userId),
   requestRefund: (orderId: number, body?: { reason?: string; itemIds?: number[] }) =>

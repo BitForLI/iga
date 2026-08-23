@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Authorization;
 
 namespace igaServer.Controllers;
 
@@ -32,11 +34,14 @@ public class AddressController : ControllerBase
     /// query 少于 3 个字符时不请求 Mapbox，仅返回 <paramref name="configured"/> 表示服务端是否已配置 token。
     /// </summary>
     [HttpGet("suggest")]
+    [AllowAnonymous]
+    [EnableRateLimiting("mapbox")]
     public async Task<IActionResult> Suggest([FromQuery] string? query, CancellationToken cancellationToken)
     {
         var token = MapboxToken;
         var configured = token is not null;
         var q = query?.Trim() ?? "";
+        if (q.Length > 200) return BadRequest(new { error = "Address query is too long." });
         if (q.Length < 3)
             return Ok(new { configured, suggestions = Array.Empty<object>() });
 
@@ -69,17 +74,16 @@ public class AddressController : ControllerBase
         {
             resp = await client.GetAsync(url, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(502, new { error = "Address lookup failed.", detail = ex.Message });
+            return StatusCode(502, new { error = "Address lookup failed." });
         }
 
         if (!resp.IsSuccessStatusCode)
         {
-            var errBody = await resp.Content.ReadAsStringAsync(cancellationToken);
             return StatusCode(
                 StatusCodes.Status502BadGateway,
-                new { error = "Geocoding provider returned an error.", status = (int)resp.StatusCode, detail = errBody });
+                new { error = "Geocoding provider returned an error.", status = (int)resp.StatusCode });
         }
 
         await using var stream = await resp.Content.ReadAsStreamAsync(cancellationToken);

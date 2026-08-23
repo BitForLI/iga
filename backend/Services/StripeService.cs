@@ -14,7 +14,7 @@ namespace IGA.Services
             _configuration = configuration;
         }
 
-        public async Task<Session> CreateCheckoutSessionAsync(string successUrl, string cancelUrl, SessionCreateOptions? options = null)
+        public async Task<Session> CreateCheckoutSessionAsync(string successUrl, string cancelUrl, SessionCreateOptions? options = null, string? idempotencyKey = null)
         {
             if (options == null)
                 throw new System.ArgumentNullException(nameof(options));
@@ -23,7 +23,10 @@ namespace IGA.Services
             options.CancelUrl ??= cancelUrl;
 
             var service = new SessionService();
-            return await service.CreateAsync(options);
+            var requestOptions = string.IsNullOrWhiteSpace(idempotencyKey)
+                ? null
+                : new RequestOptions { IdempotencyKey = idempotencyKey };
+            return await service.CreateAsync(options, requestOptions);
         }
 
         public async Task<bool> ValidateWebhookSignatureAsync(string payload, string sigHeader, string webhookSecret)

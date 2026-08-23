@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using igaServer.Data;
 using igaServer.Utils;
@@ -7,6 +8,7 @@ namespace igaServer.Controllers;
 
 [Route("api/store")]
 [ApiController]
+[AllowAnonymous]
 public class StorePublicController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -55,6 +57,7 @@ public class StorePublicController : ControllerBase
         var row = await _context.StoreCarouselImages.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (row == null) return NotFound();
-        return File(row.ImageBytes, row.ContentType);
+        var safeContentType = ImageUploadValidator.DetectContentType(row.ImageBytes);
+        return safeContentType == null ? NotFound() : File(row.ImageBytes, safeContentType);
     }
 }

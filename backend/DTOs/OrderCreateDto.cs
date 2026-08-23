@@ -6,8 +6,6 @@ namespace igaServer.DTOs
     /// </summary>
     public class OrderCreateDto
     {
-        public int UserId { get; set; }
-
         public string? OrderType { get; set; } // "Pickup" 或 "Delivery"
 
         public DateTime? PickupTime { get; set; }
@@ -16,7 +14,7 @@ namespace igaServer.DTOs
         public string? DeliverySuburb { get; set; } // 配送区，用于校验与计算运费
 
         // 购物车内容：商品ID + 数量
-        public List<OrderItemCreateDto> Items { get; set; }
+        public List<OrderItemCreateDto> Items { get; set; } = new();
     }
 
     public class OrderItemCreateDto

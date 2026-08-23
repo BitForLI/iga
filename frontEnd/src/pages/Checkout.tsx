@@ -44,18 +44,17 @@ export function Checkout() {
     try {
       // 创建订单
       const orderRes = await orderAPI.create({
-        UserId: user.id,
-        OrderType: 'Pickup',
-        PickupTime: pickupTime,
-        Items: items.map((item) => ({
-          ProductId: item.productId,
-          Quantity: item.isWeighingRequired ? 1 : item.quantity,
-          ExpectedWeight: item.isWeighingRequired ? Number(item.expectedWeightKg ?? 0) : 0,
-          SelectedUnit: item.selectedUnit ?? (item.isWeighingRequired ? 'kg' : 'ea'),
+        orderType: 'Pickup',
+        pickupTime,
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.isWeighingRequired ? 1 : item.quantity,
+          expectedWeight: item.isWeighingRequired ? Number(item.expectedWeightKg ?? 0) : 0,
+          selectedUnit: item.selectedUnit ?? (item.isWeighingRequired ? 'kg' : 'ea'),
         })),
       });
 
-      const orderId = (orderRes as any).orderId;
+      const orderId = orderRes.orderId;
 
       // 创建支付会话，获取 Stripe Checkout URL
       const checkoutRes = (await paymentAPI.createCheckout(orderId)) as { url?: string };

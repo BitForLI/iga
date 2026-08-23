@@ -2,8 +2,16 @@ using igaServer.Data;
 using igaServer.Models;
 using igaServer.Seed;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using QuestPDF.Infrastructure;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.RateLimiting;
 
 static string[] GetCorsAllowedOrigins(IConfiguration config)
 {
@@ -17,6 +25,7 @@ static string[] GetCorsAllowedOrigins(IConfiguration config)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
 
 QuestPDF.Settings.License = LicenseType.Community;
 
@@ -71,8 +80,7 @@ static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
             Database = db,
             Username = username,
             Password = password,
-            SslMode = SslMode.Require,
-            TrustServerCertificate = true,
+            SslMode = SslMode.VerifyFull,
         }.ConnectionString;
     }
     catch
@@ -85,6 +93,16 @@ static string? ConnectionStringFromDatabaseUrl(string? databaseUrl)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(connectionString))
     connectionString = ConnectionStringFromDatabaseUrl(Environment.GetEnvironmentVariable("DATABASE_URL"));
+
+if (!builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(connectionString))
+{
+    var productionConnection = new NpgsqlConnectionStringBuilder(connectionString);
+    if (productionConnection.SslMode != SslMode.VerifyFull)
+    {
+        throw new InvalidOperationException(
+            "Production database connections must use Ssl Mode=VerifyFull.");
+    }
+}
 
 if (string.IsNullOrWhiteSpace(connectionString) && builder.Environment.IsDevelopment())
 {
@@ -102,8 +120,7 @@ if (string.IsNullOrWhiteSpace(connectionString) && !builder.Environment.IsDevelo
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// 2b. CORS：UseRouting 之后 UseCors 才会给 MapControllers 的响应加上跨域头。
-// 统一策略：本地 Vite + appsettings 中的源 + igabeverlyhills.com 全站（避免 Railway 误设为 Development 时只放行 localhost 导致线上 CORS 全挂）。
+// CORS is an exact allow-list. It is not an authorization mechanism.
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -115,27 +132,64 @@ builder.Services.AddCors(options =>
                 "生产环境必须配置 Cors:AllowedOrigins（JSON 数组或分号分隔），例如 [\"https://你的前端域名\"]，或环境变量 Cors__AllowedOrigins__0。");
         }
 
-        var localDev = new[]
+        var localDev = builder.Environment.IsDevelopment() ? new[]
         {
             "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
             "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
-        };
+        } : Array.Empty<string>();
         var explicitOrigins = new HashSet<string>(
             fromConfig.Concat(localDev),
             StringComparer.OrdinalIgnoreCase);
 
-        policy.SetIsOriginAllowed(origin =>
-        {
-            if (string.IsNullOrEmpty(origin)) return false;
-            if (explicitOrigins.Contains(origin)) return true;
-            if (!Uri.TryCreate(origin, UriKind.Absolute, out var u)) return false;
-            var h = u.Host;
-            return string.Equals(h, "igabeverlyhills.com", StringComparison.OrdinalIgnoreCase)
-                || h.EndsWith(".igabeverlyhills.com", StringComparison.OrdinalIgnoreCase);
-        });
+        policy.WithOrigins(explicitOrigins.ToArray());
 
         policy.AllowAnyHeader().AllowAnyMethod();
     });
+});
+
+var jwtKey = builder.Configuration["Jwt:SigningKey"]?.Trim();
+if (!string.IsNullOrEmpty(jwtKey) && Encoding.UTF8.GetByteCount(jwtKey) < 32)
+    throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes.");
+if (!builder.Environment.IsDevelopment() && string.IsNullOrEmpty(jwtKey))
+    throw new InvalidOperationException("Production requires Jwt:SigningKey of at least 32 bytes.");
+if (string.IsNullOrEmpty(jwtKey))
+    jwtKey = "development-only-signing-key-change-me-32b";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "iga-server";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "iga-frontend";
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        ValidateIssuer = true, ValidIssuer = jwtIssuer,
+        ValidateAudience = true, ValidAudience = jwtAudience,
+        ValidateLifetime = true, ClockSkew = TimeSpan.FromMinutes(1),
+        NameClaimType = ClaimTypes.NameIdentifier,
+        RoleClaimType = ClaimTypes.Role,
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    static FixedWindowRateLimiterOptions Window(int permitLimit) => new()
+    {
+        PermitLimit = permitLimit,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0,
+        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+        AutoReplenishment = true,
+    };
+    static string Partition(HttpContext context) => context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(Partition(context), _ => Window(8)));
+    options.AddPolicy("orders", context => RateLimitPartition.GetFixedWindowLimiter(Partition(context), _ => Window(20)));
+    options.AddPolicy("sensitive", context => RateLimitPartition.GetFixedWindowLimiter(Partition(context), _ => Window(10)));
+    options.AddPolicy("mapbox", context => RateLimitPartition.GetFixedWindowLimiter(Partition(context), _ => Window(30)));
 });
 
 // 3. 注册控制器服务 (让 Controller 文件夹生效)
@@ -263,8 +317,29 @@ if (app.Environment.IsDevelopment())
 
 if (!app.Environment.IsDevelopment())
 {
+    app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsJsonAsync(new { title = "An unexpected server error occurred." });
+    }));
+    app.UseHsts();
     app.UseHttpsRedirection();
 }
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    context.Response.Headers.Append("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    if (context.Request.Path.StartsWithSegments("/api/auth") ||
+        context.Request.Path.StartsWithSegments("/api/order") ||
+        context.Request.Path.StartsWithSegments("/api/payment") ||
+        context.Request.Path.StartsWithSegments("/api/admin"))
+        context.Response.Headers["Cache-Control"] = "no-store";
+    await next();
+});
 
 app.UseStaticFiles(); // 托管 wwwroot 下的静态页面（success.html）
 
@@ -283,86 +358,61 @@ app.Use(async (ctx, next) =>
 // 终结点路由下：必须先 UseRouting，再 UseCors，否则跨域响应可能不带 Access-Control-Allow-Origin（浏览器报 CORS 且提示无该头）
 app.UseRouting();
 app.UseCors();
-
-app.UseAuthorization(); // 身份验证中间件
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // 6. 核心：映射所有的 Controller 接口
 app.MapControllers();
 
 // 浏览器直接打开 /api 时用于探活（实际业务在 /api/product、/api/auth 等）
-app.MapGet("/api", () => Results.Json(new { ok = true }));
+app.MapGet("/api", () => Results.Json(new { ok = true })).AllowAnonymous();
 
-// 7. 迁移 + 固定老板账号 + 蔬菜/水果清单补全（不自动 Seed 演示用户或演示订单）
+// 7. 迁移 + 可选环境变量引导账号 + 蔬菜/水果清单补全
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
 
     // Railway / 生产库需与代码迁移一致；未执行迁移会出现「column ... does not exist」
     await db.Database.MigrateAsync();
 
-    const string legacyBossEmail = "boss@igabeverlyhills.com";
-    const string bossEmail = "igabeverlyhills@gmail.com";
-    const string staffEmail = "igabeverlyhills+staff@gmail.com";
-    const string bossName = "David";
-    const string staffName = "Staff";
-    const string passwordHash = "6260025bb23c806be4a95b1829bffe9d9e98de1ff2a14c6db5da669dddbaac2e";
+    async Task BootstrapAccountAsync(string section, string role)
+    {
+        var email = (builder.Configuration[$"{section}:Email"] ?? "").Trim().ToLowerInvariant();
+        var password = builder.Configuration[$"{section}:Password"] ?? "";
+        var name = (builder.Configuration[$"{section}:Name"] ?? role).Trim();
+        var anyConfigured = email.Length > 0 || password.Length > 0;
+        if (!anyConfigured) return;
+        if (email.Length > 320 || !email.Contains('@') || password.Length < 12 || password.Length > 128)
+            throw new InvalidOperationException($"{section} requires a valid email and a 12-128 character password.");
 
-    var legacyBoss = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == legacyBossEmail);
-    var bossByGmail = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == bossEmail);
-
-    if (bossByGmail != null)
-    {
-        bossByGmail.Name = bossName;
-        bossByGmail.PasswordHash = passwordHash;
-        bossByGmail.Role = "Admin";
-        bossByGmail.EmailVerified = true;
-        if (legacyBoss != null && legacyBoss.Id != bossByGmail.Id)
-            db.Users.Remove(legacyBoss);
-    }
-    else if (legacyBoss != null)
-    {
-        legacyBoss.Email = bossEmail;
-        legacyBoss.Name = bossName;
-        legacyBoss.PasswordHash = passwordHash;
-        legacyBoss.Role = "Admin";
-        legacyBoss.EmailVerified = true;
-    }
-    else
-    {
-        db.Users.Add(new User
+        var existing = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+        if (existing != null)
         {
-            Name = bossName,
-            Email = bossEmail,
-            PhoneNumber = null,
-            PasswordHash = passwordHash,
-            Role = "Admin",
-            EmailVerified = true
-        });
-    }
+            // Never reset an existing password on application startup.
+            if (!string.Equals(existing.Role, role, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"{section} email already exists with a different role.");
+            return;
+        }
 
-    var staffUser = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == staffEmail);
-    if (staffUser == null)
-    {
-        db.Users.Add(new User
+        var account = new User
         {
-            Name = staffName,
-            Email = staffEmail,
+            Name = string.IsNullOrWhiteSpace(name) ? role : name[..Math.Min(name.Length, 100)],
+            Email = email,
             PhoneNumber = null,
-            PasswordHash = passwordHash,
-            Role = "Staff",
-            EmailVerified = true
-        });
-    }
-    else
-    {
-        staffUser.Name = staffName;
-        staffUser.PasswordHash = passwordHash;
-        staffUser.Role = "Staff";
-        staffUser.EmailVerified = true;
+            PasswordHash = string.Empty,
+            Role = role,
+            EmailVerified = true,
+        };
+        account.PasswordHash = passwordHasher.HashPassword(account, password);
+        db.Users.Add(account);
+        await db.SaveChangesAsync();
+        app.Logger.LogInformation("Created configured {Role} bootstrap account.", role);
     }
 
-    await db.SaveChangesAsync();
-    Console.WriteLine("[数据库] 已同步老板/员工账号（Admin / Staff）。");
+    await BootstrapAccountAsync("BootstrapAdmin", "Admin");
+    await BootstrapAccountAsync("BootstrapStaff", "Staff");
 
     // 蔬菜/水果清单：按「分类 + 名称」判断是否存在（避免误把水果写在 Vegetables 时，同名挡住 Fruit 插入）
     var (vegAdded, fruitAdded) = await CatalogDatabaseSync.SeedMissingCatalogProductsAsync(db);

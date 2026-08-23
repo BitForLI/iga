@@ -22,22 +22,11 @@ export const apiClient = axios.create({
   },
 });
 
-// 请求拦截器 - 可添加 token
+// The server derives identity exclusively from this signed bearer token.
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('iga_auth_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-  }
-  const rawUser = localStorage.getItem('user');
-  if (rawUser) {
-    try {
-      const u = JSON.parse(rawUser) as { id?: number };
-      if (u?.id != null) {
-        config.headers['X-User-Id'] = String(u.id);
-      }
-    } catch {
-      /* ignore */
-    }
   }
   return config;
 });
@@ -56,6 +45,11 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
     const status = error.response?.status;
+    if (status === 401) {
+      sessionStorage.removeItem('iga_auth_token');
+      sessionStorage.removeItem('iga_auth_user');
+      window.dispatchEvent(new Event('iga-auth-expired'));
+    }
     const data = error.response?.data;
     const o = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : null;
     let extracted =

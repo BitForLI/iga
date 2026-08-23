@@ -149,7 +149,7 @@ function AuthForms({
 }: {
   tab: 'login' | 'register';
   setTab: (t: 'login' | 'register') => void;
-  onSuccess: (user: { id: number; name: string; email: string; phoneNumber: string; role?: string }) => void;
+  onSuccess: (user: { id: number; name: string; email: string; phoneNumber: string; role?: string; token: string; expiresAtUtc: string }) => void;
 }) {
   const [loginData, setLoginData] = useState({ Email: '', Password: '' });
   const [registerData, setRegisterData] = useState({
@@ -175,8 +175,10 @@ function AuthForms({
       const res = await authAPI.login({
         email: loginData.Email,
         password: loginData.Password,
-      }) as any;
+      });
       onSuccess({
+        token: res.token,
+        expiresAtUtc: res.expiresAtUtc,
         id: res.id,
         name: res.name,
         email: res.email,
@@ -225,8 +227,10 @@ function AuthForms({
       const res = (await authAPI.login({
         email: registerData.Email,
         password: registerData.Password,
-      })) as any;
+      }));
       onSuccess({
+        token: res.token,
+        expiresAtUtc: res.expiresAtUtc,
         id: res.id,
         name: res.name,
         email: res.email,
@@ -534,6 +538,8 @@ function AuthForms({
                 value={registerData.Password}
                 onChange={(e) => setRegisterData({ ...registerData, Password: e.target.value })}
                 required
+                minLength={12}
+                maxLength={128}
                 autoComplete="new-password"
                 style={{
                   width: '100%',
