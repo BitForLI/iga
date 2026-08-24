@@ -277,7 +277,9 @@ namespace igaServer.Controllers
         [HttpGet("user/{userId}")]
         public async Task<ActionResult<List<OrderDetailDto>>> GetUserOrders(int userId)
         {
-            if (!CanAccessOrder(userId)) return Forbid();
+            if (!User.IsInRole("Admin") &&
+                (!TryGetCurrentUserId(out var currentUserId) || currentUserId != userId))
+                return Forbid();
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
             {
@@ -291,6 +293,12 @@ namespace igaServer.Controllers
                 .ThenInclude(oi => oi.Product)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
+
+            if (User.IsInRole("Admin"))
+            {
+                AdminAuditLogHelper.Add(_context, User, "CustomerOrderHistoryViewed", "User", userId);
+                await _context.SaveChangesAsync();
+            }
 
             var dtos = orders.Select(o => MapToOrderDetailDto(o)).ToList();
             return Ok(dtos);

@@ -420,7 +420,7 @@ namespace igaServer.Controllers
 
         private bool CanAccessOrder(int ownerUserId)
         {
-            if (User.IsInRole("Admin") || User.IsInRole("Staff")) return true;
+            if (User.IsInRole("Admin")) return true;
             return int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) && userId == ownerUserId;
         }
     }
