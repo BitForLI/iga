@@ -3,6 +3,7 @@ import { Table, Button, message, Modal, Input, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { apiClient } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { DELIVERY_SUBURBS, formatDeliverySuburbDisplay, suburbToKey } from '../../constants/deliveryZones';
 
 const BROADCAST_KEY = 'iga_order_broadcast_enabled';
@@ -107,6 +108,8 @@ interface OrderManagementPageProps {
 
 export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: OrderManagementPageProps = {}) {
   const { adminBasePath = '/admin' } = useOutletContext<{ adminBasePath?: string }>() ?? {};
+  const { user } = useAuth();
+  const isAdmin = user?.role?.trim().toLowerCase() === 'admin';
   const navigate = useNavigate();
   const { play: playAlert, stop: stopAlert, enable: enableBroadcast, isEnabled: broadcastEnabled } = useOrderAlertSound();
 
@@ -490,14 +493,16 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           )}
           {r.orderStatus === 'RefundRequested' && (
             <>
-              <Button
-                danger
-                size="small"
-                loading={refundingId === r.id}
-                onClick={() => handleApproveRefund(r.id)}
-              >
-                Approve refund
-              </Button>
+              {isAdmin && (
+                <Button
+                  danger
+                  size="small"
+                  loading={refundingId === r.id}
+                  onClick={() => handleApproveRefund(r.id)}
+                >
+                  Approve refund
+                </Button>
+              )}
               <Button
                 size="small"
                 loading={rejectingId === r.id}

@@ -342,7 +342,7 @@ namespace igaServer.Controllers
         [EnableRateLimiting("sensitive")]
         public async Task<IActionResult> ApproveRefundRequest(int orderId)
         {
-            if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            if (await RequireAdminAsync() is { } denied) return denied;
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, HttpContext.RequestAborted);
             var order = await _context.Orders
                 .Include(o => o.User)

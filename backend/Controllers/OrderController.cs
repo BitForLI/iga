@@ -23,17 +23,20 @@ namespace igaServer.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IStripeService _stripeService;
         private readonly IOrderCompletionReceiptSender _completionReceiptSender;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<OrderController> _logger;
 
         public OrderController(
             ApplicationDbContext context,
             IStripeService stripeService,
             IOrderCompletionReceiptSender completionReceiptSender,
+            IConfiguration configuration,
             ILogger<OrderController> logger)
         {
             _context = context;
             _stripeService = stripeService;
             _completionReceiptSender = completionReceiptSender;
+            _configuration = configuration;
             _logger = logger;
         }
 
@@ -596,6 +599,20 @@ namespace igaServer.Controllers
             decimal deltaRefund = requestedDeltaRefund > 0
                 ? Math.Min(requestedDeltaRefund, refundableRemaining)
                 : requestedDeltaRefund;
+            var staffRefundLimit = Math.Clamp(
+                _configuration.GetValue("Security:StaffWeightRefundLimitAud", 100m),
+                0m,
+                100000m);
+            var projectedRefundTotal = order.RefundAmount + Math.Max(0m, deltaRefund);
+            if (!User.IsInRole("Admin") && projectedRefundTotal > staffRefundLimit)
+            {
+                return StatusCode(403, new
+                {
+                    error = $"Cumulative refunds above ${staffRefundLimit:0.00} require an administrator.",
+                    refundAmount = deltaRefund,
+                    projectedRefundTotal,
+                });
+            }
             var canStripeRefund = deltaRefund > 0.01m &&
                 !string.IsNullOrWhiteSpace(order.StripePaymentIntentId) &&
                 !string.Equals(order.OrderStatus, "Pending", StringComparison.OrdinalIgnoreCase) &&
