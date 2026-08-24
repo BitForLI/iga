@@ -20,6 +20,9 @@ namespace igaServer.Models
 
         public string Role { get; set; } = "Customer"; // Customer | Admin | Staff（员工仅订单备货）
 
+        /// <summary>Incrementing this value invalidates every previously issued JWT for the account.</summary>
+        public int SessionVersion { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>邮箱验证码通过并登录前为 false。</summary>
@@ -28,5 +31,11 @@ namespace igaServer.Models
         public string? EmailVerificationCodeHash { get; set; }
 
         public DateTime? EmailVerificationExpiresUtc { get; set; }
+
+        public string? AdminMfaCodeHash { get; set; }
+
+        public DateTime? AdminMfaExpiresUtc { get; set; }
+
+        public int AdminMfaFailedAttempts { get; set; }
     }
 }

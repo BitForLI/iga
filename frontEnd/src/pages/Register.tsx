@@ -55,7 +55,8 @@ export function Register() {
       const res = (await authAPI.login({
         email: formData.Email,
         password: formData.Password,
-      })) as unknown as { token: string; expiresAtUtc: string; id: number; name: string; email: string; phoneNumber?: string; role?: string };
+      }));
+      if ('mfaRequired' in res) throw new Error('Unexpected administrator verification challenge.');
       setUser({
         token: res.token,
         expiresAtUtc: res.expiresAtUtc,

@@ -20,6 +20,14 @@ export interface AuthLoginResponse {
   role: string;
 }
 
+export interface AuthMfaChallengeResponse {
+  mfaRequired: true;
+  email: string;
+  message: string;
+}
+
+export type AuthLoginResult = AuthLoginResponse | AuthMfaChallengeResponse;
+
 export interface OrderCreateRequest {
   orderType: 'Pickup' | 'Delivery';
   pickupTime?: string;
@@ -95,7 +103,9 @@ export const authAPI = {
   resendVerification: (data: { email: string }) =>
     apiClient.post<{ emailSent: boolean; message: string }>('/auth/resend-verification', data),
   login: (data: { email: string; password: string }) =>
-    responseData<AuthLoginResponse>(apiClient.post('/auth/login', data)),
+    responseData<AuthLoginResult>(apiClient.post('/auth/login', data)),
+  verifyAdminLogin: (data: { email: string; code: string }) =>
+    responseData<AuthLoginResponse>(apiClient.post('/auth/verify-admin-login', data)),
   me: () => responseData<{ id: number; name: string; email: string; phoneNumber: string; role: string }>(apiClient.get('/auth/me')),
   forgotPassword: (data: { email: string }) =>
     apiClient.post<{ message: string }>('/auth/forgot-password', data),

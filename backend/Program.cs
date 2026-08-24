@@ -186,15 +186,45 @@ builder.Configuration["Jwt:SigningKey"] = jwtKey;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "iga-server";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "iga-frontend";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
+    .AddJwtBearer(options =>
     {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        ValidateIssuer = true, ValidIssuer = jwtIssuer,
-        ValidateAudience = true, ValidAudience = jwtAudience,
-        ValidateLifetime = true, ClockSkew = TimeSpan.FromMinutes(1),
-        NameClaimType = ClaimTypes.NameIdentifier,
-        RoleClaimType = ClaimTypes.Role,
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateIssuer = true, ValidIssuer = jwtIssuer,
+            ValidateAudience = true, ValidAudience = jwtAudience,
+            ValidateLifetime = true, ClockSkew = TimeSpan.FromMinutes(1),
+            NameClaimType = ClaimTypes.NameIdentifier,
+            RoleClaimType = ClaimTypes.Role,
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                if (!int.TryParse(context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                {
+                    context.Fail("Invalid account");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var account = await db.Users.AsNoTracking()
+                    .Where(u => u.Id == userId)
+                    .Select(u => new { u.Role, u.EmailVerified, u.SessionVersion })
+                    .FirstOrDefaultAsync(context.HttpContext.RequestAborted);
+                var tokenRole = context.Principal?.FindFirstValue(ClaimTypes.Role) ?? "Customer";
+                var tokenVersionText = context.Principal?.FindFirstValue("session_version");
+                var tokenVersion = int.TryParse(tokenVersionText, out var parsedVersion) ? parsedVersion : 0;
+                if (account == null || !account.EmailVerified || account.SessionVersion != tokenVersion ||
+                    !string.Equals(account.Role, tokenRole, StringComparison.OrdinalIgnoreCase) ||
+                    (string.Equals(account.Role, "Admin", StringComparison.OrdinalIgnoreCase) &&
+                     context.Principal?.FindFirstValue("admin_mfa") != "email"))
+                {
+                    context.Fail("Session has been revoked");
+                }
+            },
+        };
     });
 builder.Services.AddAuthorization(options =>
 {

@@ -159,6 +159,8 @@ function AuthForms({
   });
   const [registerStep, setRegisterStep] = useState<'form' | 'verify'>('form');
   const [verifyCode, setVerifyCode] = useState('');
+  const [adminMfaEmail, setAdminMfaEmail] = useState('');
+  const [adminMfaCode, setAdminMfaCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -176,6 +178,12 @@ function AuthForms({
         email: loginData.Email,
         password: loginData.Password,
       });
+      if ('mfaRequired' in res) {
+        setAdminMfaEmail(res.email);
+        setAdminMfaCode('');
+        setAuthSuccessMessage(res.message);
+        return;
+      }
       onSuccess({
         token: res.token,
         expiresAtUtc: res.expiresAtUtc,
@@ -184,6 +192,31 @@ function AuthForms({
         email: res.email,
         phoneNumber: res.phoneNumber || '',
         role: res.role || 'Customer',
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminMfa = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await authAPI.verifyAdminLogin({
+        email: adminMfaEmail,
+        code: adminMfaCode.replace(/\D/g, '').slice(0, 6),
+      });
+      onSuccess({
+        token: res.token,
+        expiresAtUtc: res.expiresAtUtc,
+        id: res.id,
+        name: res.name,
+        email: res.email,
+        phoneNumber: res.phoneNumber || '',
+        role: res.role || 'Admin',
       });
     } catch (err) {
       setError((err as Error).message);
@@ -228,6 +261,7 @@ function AuthForms({
         email: registerData.Email,
         password: registerData.Password,
       }));
+      if ('mfaRequired' in res) throw new Error('Unexpected administrator verification challenge.');
       onSuccess({
         token: res.token,
         expiresAtUtc: res.expiresAtUtc,
@@ -277,7 +311,7 @@ function AuthForms({
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button
           type="button"
-          onClick={() => { setTab('login'); setError(''); setRegisterStep('form'); setPasswordResetOpen(false); }}
+          onClick={() => { setTab('login'); setError(''); setRegisterStep('form'); setAdminMfaEmail(''); setPasswordResetOpen(false); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -293,7 +327,7 @@ function AuthForms({
         </button>
         <button
           type="button"
-          onClick={() => { setTab('register'); setError(''); setRegisterStep('form'); setPasswordResetOpen(false); }}
+          onClick={() => { setTab('register'); setError(''); setRegisterStep('form'); setAdminMfaEmail(''); setPasswordResetOpen(false); }}
           style={{
             flex: 1,
             padding: '0.5rem 1rem',
@@ -341,7 +375,38 @@ function AuthForms({
         </div>
       )}
 
-      {tab === 'login' ? (
+      {tab === 'login' && adminMfaEmail ? (
+        <form onSubmit={handleAdminMfa} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+            Enter the 6-digit administrator code sent to <strong>{adminMfaEmail}</strong>.
+          </p>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={adminMfaCode}
+            onChange={(e) => setAdminMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            required
+            style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: 6, letterSpacing: '0.2em', textAlign: 'center' }}
+          />
+          <button
+            type="submit"
+            disabled={loading || adminMfaCode.length !== 6}
+            style={{ backgroundColor: loading || adminMfaCode.length !== 6 ? '#9ca3af' : '#dc2626', color: 'white', padding: '0.75rem', borderRadius: 6, border: 'none', fontWeight: 'bold' }}
+          >
+            {loading ? 'Verifying...' : 'Verify administrator sign-in'}
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => { setAdminMfaEmail(''); setAdminMfaCode(''); setAuthSuccessMessage(''); setError(''); }}
+            style={{ border: 'none', background: 'none', color: '#6b7280', cursor: 'pointer' }}
+          >
+            Back to sign in
+          </button>
+        </form>
+      ) : tab === 'login' ? (
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 500 }}>Email</label>

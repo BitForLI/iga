@@ -8,6 +8,9 @@ public interface IResendEmailService
     /// <summary>Sends the password-reset verification code.</summary>
     Task<bool> SendPasswordResetVerificationAsync(string toEmail, string name, string code, CancellationToken cancellationToken = default);
 
+    /// <summary>Sends the second-factor code required for administrator login.</summary>
+    Task<bool> SendAdminLoginVerificationAsync(string toEmail, string name, string code, CancellationToken cancellationToken = default);
+
     /// <summary>After payment: pickup code (pickup) or order confirmation (delivery).</summary>
     Task<bool> SendOrderPaidPickupAsync(
         string toEmail,

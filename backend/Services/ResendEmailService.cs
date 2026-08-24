@@ -72,6 +72,19 @@ public class ResendEmailService : IResendEmailService
         return await SendEmailAsync(toEmail, subject, html, cancellationToken);
     }
 
+    public async Task<bool> SendAdminLoginVerificationAsync(string toEmail, string name, string code, CancellationToken cancellationToken = default)
+    {
+        var subject = "Your IGA administrator sign-in code";
+        var html =
+            $"""
+            <p>Hi {System.Net.WebUtility.HtmlEncode(name)},</p>
+            <p>A sign-in to the IGA administrator account was requested.</p>
+            <p style="font-size:24px;font-weight:bold;letter-spacing:4px;">{System.Net.WebUtility.HtmlEncode(code)}</p>
+            <p>This one-time code expires in 10 minutes. If this was not you, change the administrator password immediately.</p>
+            """;
+        return await SendEmailAsync(toEmail, subject, html, cancellationToken);
+    }
+
     public async Task<bool> SendOrderPaidPickupAsync(
         string toEmail,
         string customerName,
