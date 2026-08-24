@@ -305,6 +305,7 @@ namespace igaServer.Controllers
             if (order.OrderStatus != "Paid")
                 return BadRequest("Can only accept Paid orders");
             order.OrderStatus = "Preparing";
+            AdminAuditLogHelper.Add(_context, User, "OrderAccepted", "Order", order.Id);
             await _context.SaveChangesAsync();
             return Ok(new { id = order.Id, orderStatus = "Preparing", message = "Order accepted, moved to preparing" });
         }
@@ -321,6 +322,7 @@ namespace igaServer.Controllers
             if (order.OrderStatus != "Preparing")
                 return BadRequest("Can only mark Preparing orders as ready");
             order.OrderStatus = "Prepared";
+            AdminAuditLogHelper.Add(_context, User, "OrderMarkedReady", "Order", order.Id);
             await _context.SaveChangesAsync();
             return Ok(new { id = order.Id, orderStatus = "Prepared", message = "Moved to ready for pickup" });
         }
@@ -455,6 +457,7 @@ namespace igaServer.Controllers
             order.RefundRequestPreviousStatus = null;
             order.RefundRequestReason = null;
             order.RefundRequestedItemIdsJson = null;
+            AdminAuditLogHelper.Add(_context, User, "RefundApproved", "Order", order.Id, $"amount={refundNow:0.00}");
             await _context.SaveChangesAsync();
             await transaction.CommitAsync(HttpContext.RequestAborted);
 
@@ -509,6 +512,7 @@ namespace igaServer.Controllers
             order.RefundRequestPreviousStatus = null;
             order.RefundRequestReason = null;
             order.RefundRequestedItemIdsJson = null;
+            AdminAuditLogHelper.Add(_context, User, "RefundRejected", "Order", order.Id);
             await _context.SaveChangesAsync();
 
             await TrySendRefundRejectedEmailAsync(order, reason, HttpContext.RequestAborted);
@@ -568,6 +572,7 @@ namespace igaServer.Controllers
             if (order.PickedUpAt.HasValue)
                 return BadRequest("Already marked as picked up");
             order.PickedUpAt = DateTime.UtcNow;
+            AdminAuditLogHelper.Add(_context, User, "OrderHandedOff", "Order", order.Id);
             await _context.SaveChangesAsync();
             await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
             return Ok(new { id = order.Id, orderStatus = order.OrderStatus, pickedUpAt = order.PickedUpAt, message = "Marked as picked up" });
@@ -616,6 +621,27 @@ namespace igaServer.Controllers
                 })
                 .ToListAsync();
             return Ok(new { items = users, total, page, pageSize });
+        }
+
+        [HttpGet("audit-logs")]
+        public async Task<IActionResult> GetAuditLogs(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50)
+        {
+            if (await RequireAdminAsync() is { } denied) return denied;
+            if (page < 1) page = 1;
+            if (pageSize < 1 || pageSize > 100) pageSize = 50;
+
+            var query = _context.AdminAuditLogs
+                .AsNoTracking()
+                .OrderByDescending(x => x.CreatedAtUtc);
+            var total = await query.CountAsync();
+            var items = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new { items, total, page, pageSize });
         }
 
         [HttpGet("users/{userId}")]

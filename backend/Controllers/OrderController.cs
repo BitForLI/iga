@@ -260,6 +260,12 @@ namespace igaServer.Controllers
 
             if (!CanAccessOrder(order.UserId)) return Forbid();
 
+            if (User.IsInRole("Admin") || User.IsInRole("Staff"))
+            {
+                AdminAuditLogHelper.Add(_context, User, "OrderViewed", "Order", order.Id);
+                await _context.SaveChangesAsync();
+            }
+
             var dto = MapToOrderDetailDto(order);
             return Ok(dto);
         }
@@ -451,6 +457,7 @@ namespace igaServer.Controllers
 
             // 更新订单状态
             order.OrderStatus = newStatus;
+            AdminAuditLogHelper.Add(_context, User, "OrderStatusChanged", "Order", order.Id, $"{currentStatus}->{newStatus}");
             var completedNow = string.Equals(newStatus, "Completed", StringComparison.OrdinalIgnoreCase);
             if (completedNow)
                 order.PickedUpAt ??= DateTime.UtcNow;
@@ -507,6 +514,7 @@ namespace igaServer.Controllers
             // 更新订单状态为已完成，并记录交接时间，后续发票邮件只依赖这个完成标记发送。
             order.OrderStatus = "Completed";
             order.PickedUpAt ??= DateTime.UtcNow;
+            AdminAuditLogHelper.Add(_context, User, "OrderVerified", "Order", order.Id);
             _context.Orders.Update(order);
             await _context.SaveChangesAsync();
             await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
@@ -695,6 +703,7 @@ namespace igaServer.Controllers
                 order.FinalAmount = order.TotalAmount - order.RefundAmount;
                 _context.Orders.Update(order);
             }
+            AdminAuditLogHelper.Add(_context, User, "WeightRecorded", "OrderItem", itemId, $"order={order.Id};refund={deltaRefund:0.00}");
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync(HttpContext.RequestAborted);

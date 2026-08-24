@@ -117,8 +117,12 @@ namespace igaServer.Controllers
             // 自动设置创建时间
             // product.CreatedAt = DateTime.Now; (如果在 Model 里没赋值的话)
             
+            await using var transaction = await _context.Database.BeginTransactionAsync(HttpContext.RequestAborted);
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
+            AdminAuditLogHelper.Add(_context, User, "ProductCreated", "Product", product.Id, $"price={product.Price:0.00}");
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync(HttpContext.RequestAborted);
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
         }
@@ -138,7 +142,21 @@ namespace igaServer.Controllers
             product.ImageUrl = product.ImageUrl?.Trim() ?? "";
             NormalizeUnitPrices(product);
 
+            var previous = await _context.Products
+                .AsNoTracking()
+                .Where(x => x.Id == id)
+                .Select(x => new { x.Price, x.IsActive })
+                .FirstOrDefaultAsync();
+            if (previous == null) return NotFound();
+
             _context.Entry(product).State = EntityState.Modified;
+            AdminAuditLogHelper.Add(
+                _context,
+                User,
+                "ProductUpdated",
+                "Product",
+                id,
+                $"price={previous.Price:0.00}->{product.Price:0.00};active={previous.IsActive}->{product.IsActive}");
 
             try
             {
@@ -250,6 +268,7 @@ namespace igaServer.Controllers
 
             // 取反当前状态 (上架变下架，下架变上架)
             product.IsActive = !product.IsActive;
+            AdminAuditLogHelper.Add(_context, User, "ProductStatusChanged", "Product", product.Id, $"active={product.IsActive}");
             
             await _context.SaveChangesAsync();
 
@@ -270,6 +289,7 @@ namespace igaServer.Controllers
             }
 
             _context.Products.Remove(product);
+            AdminAuditLogHelper.Add(_context, User, "ProductDeleted", "Product", product.Id);
             await _context.SaveChangesAsync();
 
             return NoContent();
