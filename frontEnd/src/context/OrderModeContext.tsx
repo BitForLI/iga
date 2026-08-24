@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const DELIVERY_INFO_KEY = 'iga_delivery_info';
 const ORDER_MODE_KEY = 'iga_order_mode';
 
 export type OrderType = 'Pickup' | 'Delivery';
@@ -71,29 +70,6 @@ export interface DeliveryInfo {
   contactPhone?: string;
 }
 
-function loadDeliveryInfo(): DeliveryInfo {
-  try {
-    const s = localStorage.getItem(DELIVERY_INFO_KEY);
-    if (s) {
-      const parsed = JSON.parse(s) as Partial<DeliveryInfo>;
-      return { address: parsed?.address ?? '', suburb: parsed?.suburb, postcode: parsed?.postcode, unitNumber: parsed?.unitNumber, contactName: parsed?.contactName, contactPhone: parsed?.contactPhone };
-    }
-  } catch {
-    // Ignore malformed persisted delivery details.
-  }
-  return { address: '' };
-}
-
-function saveDeliveryInfo(info: DeliveryInfo) {
-  try {
-    if (info.address?.trim() || info.suburb || info.postcode || info.unitNumber || info.contactName || info.contactPhone) {
-      localStorage.setItem(DELIVERY_INFO_KEY, JSON.stringify(info));
-    }
-  } catch {
-    // Ignore storage failures; checkout can still use in-memory details.
-  }
-}
-
 interface OrderModeContextType {
   orderType: OrderType;
   setOrderType: (t: OrderType) => void;
@@ -110,7 +86,9 @@ export function OrderModeProvider({ children }: { children: ReactNode }) {
   const loaded = loadOrderMode();
   const [orderType, setOrderType] = useState<OrderType>(loaded.orderType);
   const [pickupTimeSlot, setPickupTimeSlot] = useState<string>(loaded.pickupTimeSlot);
-  const [deliveryInfo, setDeliveryInfoState] = useState<DeliveryInfo>(loadDeliveryInfo);
+  // Delivery PII is intentionally memory-only. A page refresh requires re-entry instead of
+  // leaving a full address and phone number in persistent browser storage.
+  const [deliveryInfo, setDeliveryInfoState] = useState<DeliveryInfo>({ address: '' });
 
   const setDeliveryInfo = (v: DeliveryInfo | ((prev: DeliveryInfo) => DeliveryInfo)) => {
     setDeliveryInfoState((prev) => (typeof v === 'function' ? v(prev) : v));
@@ -120,9 +98,7 @@ export function OrderModeProvider({ children }: { children: ReactNode }) {
     saveOrderMode(orderType, pickupTimeSlot);
   }, [orderType, pickupTimeSlot]);
 
-  const saveDeliveryAddress = () => {
-    saveDeliveryInfo(deliveryInfo);
-  };
+  const saveDeliveryAddress = () => undefined;
 
   return (
     <OrderModeContext.Provider

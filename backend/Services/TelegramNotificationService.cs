@@ -167,7 +167,6 @@ public class TelegramNotificationService : ITelegramNotificationService
     {
         var typeLabel = order.OrderType == "Delivery" ? "Delivery" : order.OrderType == "Pickup" ? "Pickup" : order.OrderType ?? "-";
         var name = user.Name ?? "";
-        var email = user.Email ?? "";
         var pickupTime = FormatPickupTimeLocal(order.PickupTime);
         var addr = string.IsNullOrWhiteSpace(order.DeliveryAddress) ? "-" : order.DeliveryAddress.Trim();
         var code = string.IsNullOrWhiteSpace(order.PickupCode) ? "-" : order.PickupCode.Trim();
@@ -186,7 +185,6 @@ public class TelegramNotificationService : ITelegramNotificationService
         return $"""
             ✅ Order paid #{order.Id} — please pick / pack
             Customer: {name}
-            Email: {email}
             Type: {typeLabel}
             Amount paid: ${order.TotalAmount:F2}
             Pickup code: {code}

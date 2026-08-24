@@ -724,6 +724,8 @@ namespace igaServer.Controllers
 
         private OrderDetailDto MapToOrderDetailDto(Order order)
         {
+            var isAdmin = User.IsInRole("Admin");
+            var isStaff = User.IsInRole("Staff");
             return new OrderDetailDto
             {
                 Id = order.Id,
@@ -738,9 +740,11 @@ namespace igaServer.Controllers
                 RefundRequestedItemIds = ParseRefundItemIdList(order.RefundRequestedItemIdsJson),
                 OrderStatus = order.OrderStatus,
                 OrderType = order.OrderType,
-                StripeSessionId = IsPrivileged() ? order.StripeSessionId : null,
-                StripePaymentIntentId = IsPrivileged() ? order.StripePaymentIntentId : null,
-                PickupCode = order.PickupCode,
+                StripeSessionId = isAdmin ? order.StripeSessionId : null,
+                StripePaymentIntentId = isAdmin ? order.StripePaymentIntentId : null,
+                // Customers need their own code; staff must ask the customer for it instead of
+                // reading it from the order response and bypassing the handoff check.
+                PickupCode = isStaff ? null : order.PickupCode,
                 PickupTime = order.PickupTime,
                 DeliveryAddress = order.DeliveryAddress,
                 DeliverySuburb = order.DeliverySuburb,

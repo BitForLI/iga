@@ -201,6 +201,7 @@ namespace igaServer.Controllers
             [FromQuery] bool refundHistoryOnly = false)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
+            var isAdmin = User.IsInRole("Admin");
             if (string.IsNullOrEmpty(status) || status == "Pending" || status == "Paid")
             {
                 await SyncRecentlyPaidPendingOrdersAsync();
@@ -272,17 +273,17 @@ namespace igaServer.Controllers
                     id = o.Id,
                     userId = o.UserId,
                     userName = o.User != null ? o.User.Name : "",
-                    userPhone = o.User != null ? o.User.PhoneNumber : "",
+                    userPhone = isAdmin && o.User != null ? o.User.PhoneNumber : "",
                     totalAmount = o.TotalAmount,
                     finalAmount = o.FinalAmount,
                     orderStatus = o.OrderStatus,
                     orderType = o.OrderType,
                     pickupTime = o.PickupTime,
-                    pickupCode = o.PickupCode,
-                    deliveryAddress = o.DeliveryAddress,
+                    pickupCode = isAdmin ? o.PickupCode : null,
+                    deliveryAddress = isAdmin ? o.DeliveryAddress : null,
                     deliverySuburb = o.DeliverySuburb,
-                    stripeSessionId = o.StripeSessionId,
-                    stripePaymentIntentId = o.StripePaymentIntentId,
+                    stripeSessionId = isAdmin ? o.StripeSessionId : null,
+                    stripePaymentIntentId = isAdmin ? o.StripePaymentIntentId : null,
                     pickedUpAt = o.PickedUpAt,
                     createdAt = o.CreatedAt
                 })
