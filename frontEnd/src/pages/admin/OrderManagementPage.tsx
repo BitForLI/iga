@@ -339,11 +339,16 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
   };
 
   const [pickedUpId, setPickedUpId] = useState<number | null>(null);
-  const handleMarkPickedUp = async (orderId: number, orderType: string) => {
+  const [pickupVerifyOrderId, setPickupVerifyOrderId] = useState<number | null>(null);
+  const [pickupVerifyCode, setPickupVerifyCode] = useState('');
+
+  const completeHandoff = async (orderId: number, orderType: string, pickupCode?: string) => {
     setPickedUpId(orderId);
     try {
-      await apiClient.post(`/admin/order-picked-up/${orderId}`, {});
-      message.success('Marked as picked up — see Completed in the Orders menu');
+      await apiClient.post(`/admin/order-picked-up/${orderId}`, { pickupCode });
+      message.success(orderType === 'Delivery' ? 'Marked as handed off' : 'Pickup code verified and order completed');
+      setPickupVerifyOrderId(null);
+      setPickupVerifyCode('');
       fetchCounts();
       fetchOrders(pagination.current, pagination.pageSize, activeTab, true);
       if (adminBasePath === '/staff') {
@@ -356,6 +361,24 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
     } finally {
       setPickedUpId(null);
     }
+  };
+
+  const handleMarkPickedUp = async (orderId: number, orderType: string) => {
+    if (orderType === 'Pickup') {
+      setPickupVerifyOrderId(orderId);
+      setPickupVerifyCode('');
+      return;
+    }
+    await completeHandoff(orderId, orderType);
+  };
+
+  const confirmPickup = async () => {
+    const digits = pickupVerifyCode.replace(/\D/g, '').slice(0, 6);
+    if (digits.length !== 6 || pickupVerifyOrderId == null) {
+      message.warning('Enter the customer’s 6-digit pickup code');
+      return;
+    }
+    await completeHandoff(pickupVerifyOrderId, 'Pickup', digits);
   };
 
   const [readyId, setReadyId] = useState<number | null>(null);
@@ -679,6 +702,31 @@ export function OrderManagementPage({ initialTab = 'Pending', visibleTabKeys }: 
           placeholder="Example: This order is already prepared and cannot be refunded."
           maxLength={500}
           showCount
+        />
+      </Modal>
+      <Modal
+        title={`Verify pickup${pickupVerifyOrderId != null ? ` for order #${pickupVerifyOrderId}` : ''}`}
+        open={pickupVerifyOrderId != null}
+        okText="Verify and complete"
+        okButtonProps={{ loading: pickedUpId === pickupVerifyOrderId }}
+        onOk={confirmPickup}
+        onCancel={() => {
+          if (pickedUpId != null) return;
+          setPickupVerifyOrderId(null);
+          setPickupVerifyCode('');
+        }}
+      >
+        <p style={{ color: '#6b7280', marginTop: 0 }}>
+          Ask the customer for the 6-digit code from their pickup email.
+        </p>
+        <Input
+          value={pickupVerifyCode}
+          onChange={(e) => setPickupVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onPressEnter={confirmPickup}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="6-digit pickup code"
         />
       </Modal>
     </div>

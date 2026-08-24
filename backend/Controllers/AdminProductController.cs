@@ -11,6 +11,7 @@ using igaServer.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Data;
+using System.Security.Cryptography;
 
 namespace igaServer.Controllers
 {
@@ -331,15 +332,21 @@ namespace igaServer.Controllers
         /// 标记顾客已取货/已交接：仍为 Prepared；从 Ready 列表消失，出现在 Completed pickup/delivery 列表。
         /// </summary>
         [HttpPost("order-picked-up/{orderId}")]
-        public Task<IActionResult> MarkOrderPickedUp(int orderId) => MarkOrderPickedUpCore(orderId);
+        [EnableRateLimiting("sensitive")]
+        public Task<IActionResult> MarkOrderPickedUp(int orderId, [FromBody] MarkOrderPickedUpDto? request) =>
+            MarkOrderPickedUpCore(orderId, request);
 
         /// <summary>同上，REST 风格备用路径。</summary>
         [HttpPost("orders/{orderId}/picked-up")]
-        public Task<IActionResult> MarkOrderPickedUpRest(int orderId) => MarkOrderPickedUpCore(orderId);
+        [EnableRateLimiting("sensitive")]
+        public Task<IActionResult> MarkOrderPickedUpRest(int orderId, [FromBody] MarkOrderPickedUpDto? request) =>
+            MarkOrderPickedUpCore(orderId, request);
 
         /// <summary>旧版路径，兼容已部署客户端。</summary>
         [HttpPost("order-mark-picked-up/{orderId}")]
-        public Task<IActionResult> MarkOrderPickedUpLegacy(int orderId) => MarkOrderPickedUpCore(orderId);
+        [EnableRateLimiting("sensitive")]
+        public Task<IActionResult> MarkOrderPickedUpLegacy(int orderId, [FromBody] MarkOrderPickedUpDto? request) =>
+            MarkOrderPickedUpCore(orderId, request);
 
         [HttpPost("order-refund-approve/{orderId}")]
         [EnableRateLimiting("sensitive")]
@@ -562,7 +569,7 @@ namespace igaServer.Controllers
                 _logger.LogWarning("[Refund] Rejected email failed for order {OrderId}", order.Id);
         }
 
-        private async Task<IActionResult> MarkOrderPickedUpCore(int orderId)
+        private async Task<IActionResult> MarkOrderPickedUpCore(int orderId, MarkOrderPickedUpDto? request)
         {
             if (await RequireStaffOrAdminAsync() is { } denied) return denied;
             var order = await _context.Orders.FindAsync(orderId);
@@ -571,11 +578,26 @@ namespace igaServer.Controllers
                 return BadRequest("Can only mark Prepared orders as picked up");
             if (order.PickedUpAt.HasValue)
                 return BadRequest("Already marked as picked up");
+            if (string.Equals(order.OrderType, "Pickup", StringComparison.OrdinalIgnoreCase))
+            {
+                var expected = order.PickupCode ?? string.Empty;
+                var entered = new string((request?.PickupCode ?? string.Empty).Where(char.IsDigit).ToArray());
+                if (expected.Length != 6 || entered.Length != 6 ||
+                    !CryptographicOperations.FixedTimeEquals(
+                        System.Text.Encoding.ASCII.GetBytes(expected),
+                        System.Text.Encoding.ASCII.GetBytes(entered)))
+                    return BadRequest(new { error = "Invalid pickup code." });
+            }
             order.PickedUpAt = DateTime.UtcNow;
             AdminAuditLogHelper.Add(_context, User, "OrderHandedOff", "Order", order.Id);
             await _context.SaveChangesAsync();
             await TrySendCompletionReceiptNowAsync(order.Id, HttpContext.RequestAborted);
             return Ok(new { id = order.Id, orderStatus = order.OrderStatus, pickedUpAt = order.PickedUpAt, message = "Marked as picked up" });
+        }
+
+        public sealed class MarkOrderPickedUpDto
+        {
+            public string? PickupCode { get; set; }
         }
 
         private async Task TrySendCompletionReceiptNowAsync(int orderId, CancellationToken cancellationToken)
