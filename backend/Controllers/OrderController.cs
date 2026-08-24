@@ -396,15 +396,18 @@ namespace igaServer.Controllers
         // PUT: api/order/{orderId}/status
         // ==========================================
         /// <summary>
-        /// 管理员更新订单状态
-        /// Pending -> Paid -> Prepared -> Completed
+        /// 管理员更新履约状态。Paid 只能由已验证的 Stripe 回调/同步产生。
         /// </summary>
         [HttpPut("{orderId}/status")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<OrderDetailDto>> UpdateOrderStatus(
             int orderId,
-            [FromBody] UpdateOrderStatusRequest request)
+            [FromBody] UpdateOrderStatusRequest? request)
         {
+            var newStatus = request?.NewStatus?.Trim();
+            if (string.IsNullOrWhiteSpace(newStatus))
+                return BadRequest(new { error = "NewStatus is required" });
+
             // 查找订单
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -420,24 +423,28 @@ namespace igaServer.Controllers
             // 验证状态流转
             var validStatusTransitions = new Dictionary<string, List<string>>
             {
-                { "Pending", new List<string> { "Paid", "Cancelled" } },
-                { "Paid", new List<string> { "Preparing", "Cancelled" } },
-                { "Preparing", new List<string> { "Prepared", "Cancelled" } },
-                { "Prepared", new List<string> { "Completed", "Cancelled" } },
-                { "RefundRequested", new List<string> { "Cancelled" } },
+                // An unpaid order may be cancelled. Paid/refund states must use their dedicated
+                // Stripe-backed flows so money and local status can never diverge.
+                { "Pending", new List<string> { "Cancelled" } },
+                { "Paid", new List<string> { "Preparing" } },
+                { "Preparing", new List<string> { "Prepared" } },
+                { "Prepared", new List<string> { "Completed" } },
+                { "RefundRequested", new List<string>() },
+                { "Refunded", new List<string>() },
                 { "Completed", new List<string>() },
                 { "Cancelled", new List<string>() }
             };
 
-            if (!validStatusTransitions.ContainsKey(order.OrderStatus) || 
-                !validStatusTransitions[order.OrderStatus].Contains(request.NewStatus))
+            var currentStatus = order.OrderStatus ?? string.Empty;
+            if (!validStatusTransitions.TryGetValue(currentStatus, out var allowedNextStatuses) ||
+                !allowedNextStatuses.Contains(newStatus))
             {
-                return BadRequest($"Cannot transition from {order.OrderStatus} to {request.NewStatus}");
+                return BadRequest($"Cannot transition from {currentStatus} to {newStatus}");
             }
 
             // 更新订单状态
-            order.OrderStatus = request.NewStatus;
-            var completedNow = string.Equals(request.NewStatus, "Completed", StringComparison.OrdinalIgnoreCase);
+            order.OrderStatus = newStatus;
+            var completedNow = string.Equals(newStatus, "Completed", StringComparison.OrdinalIgnoreCase);
             if (completedNow)
                 order.PickedUpAt ??= DateTime.UtcNow;
             _context.Orders.Update(order);
@@ -865,6 +872,6 @@ namespace igaServer.Controllers
     // ==========================================
     public class UpdateOrderStatusRequest
     {
-        public string NewStatus { get; set; } // Pending, Paid, Prepared, Completed, Cancelled
+        public string? NewStatus { get; set; }
     }
 }
