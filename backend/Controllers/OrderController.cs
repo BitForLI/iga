@@ -44,9 +44,29 @@ namespace igaServer.Controllers
         [HttpPost("create")]
         public async Task<ActionResult<OrderDetailDto>> CreateOrder([FromBody] OrderCreateDto request)
         {
+            if (request == null) return BadRequest(new { error = "Invalid JSON body" });
             if (!TryGetCurrentUserId(out var currentUserId)) return Unauthorized();
             var user = await _context.Users.FindAsync(currentUserId);
             if (user == null || !user.EmailVerified) return Unauthorized();
+
+            var clientRequestId = request.ClientRequestId?.Trim().ToLowerInvariant();
+            if (!Guid.TryParseExact(clientRequestId, "D", out _))
+            {
+                return BadRequest(new { error = "ClientRequestId must be a UUID. Refresh the page and try again." });
+            }
+
+            var existingOrder = await _context.Orders.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.UserId == currentUserId && o.ClientRequestId == clientRequestId);
+            if (existingOrder != null)
+            {
+                return Ok(new
+                {
+                    message = "Order already created",
+                    orderId = existingOrder.Id,
+                    totalAmount = existingOrder.TotalAmount,
+                    idempotentReplay = true,
+                });
+            }
 
             // === 步骤 2: 验证购物车不为空 ===
             if (request.Items == null || request.Items.Count == 0 || request.Items.Count > 100)
@@ -105,6 +125,7 @@ namespace igaServer.Controllers
             var order = new Order
             {
                 UserId = user.Id,
+                ClientRequestId = clientRequestId,
                 OrderType = orderType,
                 OrderStatus = "Pending", // 初始状态：待支付
                 PickupTime = request.PickupTime.HasValue ? DateTime.SpecifyKind(request.PickupTime.Value, DateTimeKind.Utc) : null, // 转换为 UTC
@@ -189,7 +210,26 @@ namespace igaServer.Controllers
 
             // === 步骤 7: 保存到数据库 ===
             _context.Orders.Add(order);
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // A concurrent retry may win the unique (UserId, ClientRequestId) insert.
+                // Return that order instead of surfacing a conflict or creating another order.
+                _context.ChangeTracker.Clear();
+                existingOrder = await _context.Orders.AsNoTracking()
+                    .FirstOrDefaultAsync(o => o.UserId == currentUserId && o.ClientRequestId == clientRequestId);
+                if (existingOrder == null) throw;
+                return Ok(new
+                {
+                    message = "Order already created",
+                    orderId = existingOrder.Id,
+                    totalAmount = existingOrder.TotalAmount,
+                    idempotentReplay = true,
+                });
+            }
 
             // === 步骤 8: 返回订单详情（后续会添加 Stripe PaymentIntent） ===
             return Ok(new { message = "Order created", orderId = order.Id, totalAmount = order.TotalAmount });

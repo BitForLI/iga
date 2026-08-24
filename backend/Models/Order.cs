@@ -11,6 +11,10 @@ namespace igaServer.Models
         public int UserId { get; set; }
         public User User { get; set; }
 
+        /// <summary>Client-generated UUID used to make order creation idempotent per customer.</summary>
+        [StringLength(36)]
+        public string? ClientRequestId { get; set; }
+
         // --- 支付与退款 ---
         public string? StripeSessionId { get; set; } // Stripe Checkout Session ID
         

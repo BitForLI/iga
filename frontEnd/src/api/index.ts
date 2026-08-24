@@ -33,6 +33,48 @@ export interface OrderCreateRequest {
   }>;
 }
 
+const ORDER_CREATE_REQUEST_KEY = 'iga_pending_order_create';
+
+async function orderRequestFingerprint(data: OrderCreateRequest): Promise<string> {
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const digest = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function getOrCreateOrderRequestId(data: OrderCreateRequest): Promise<string> {
+  const fingerprint = await orderRequestFingerprint(data);
+  try {
+    const raw = sessionStorage.getItem(ORDER_CREATE_REQUEST_KEY);
+    if (raw) {
+      const stored = JSON.parse(raw) as { fingerprint?: string; requestId?: string; expiresAt?: number };
+      if (stored.fingerprint === fingerprint && stored.requestId && Number(stored.expiresAt) > Date.now()) {
+        return stored.requestId;
+      }
+    }
+  } catch {
+    // A blocked or malformed sessionStorage entry must not stop checkout.
+  }
+
+  const requestId = crypto.randomUUID();
+  try {
+    sessionStorage.setItem(
+      ORDER_CREATE_REQUEST_KEY,
+      JSON.stringify({ fingerprint, requestId, expiresAt: Date.now() + 24 * 60 * 60 * 1000 })
+    );
+  } catch {
+    // The request still carries an idempotency key for in-flight network retries.
+  }
+  return requestId;
+}
+
+export function clearPendingOrderCreate(): void {
+  try {
+    sessionStorage.removeItem(ORDER_CREATE_REQUEST_KEY);
+  } catch {
+    // Ignore storage failures after payment completion.
+  }
+}
+
 /** axios 取消请求（AbortController）；需与 client 拦截器配合，勿把取消错误包成普通 Error */
 export function isRequestAborted(err: unknown): boolean {
   if (typeof axios.isCancel === 'function' && axios.isCancel(err)) return true;
@@ -163,7 +205,10 @@ export const adminProductAPI = {
 };
 
 export const orderAPI = {
-  create: (data: OrderCreateRequest) => responseData<{ orderId: number }>(apiClient.post('/order/create', data)),
+  create: async (data: OrderCreateRequest) => {
+    const clientRequestId = await getOrCreateOrderRequestId(data);
+    return responseData<{ orderId: number }>(apiClient.post('/order/create', { ...data, clientRequestId }));
+  },
   get: (id: number) => responseData<unknown>(apiClient.get('/order/' + id)),
   getUserOrders: (userId: number) => responseData<unknown[]>(apiClient.get('/order/user/' + userId)),
   requestRefund: (orderId: number, body?: { reason?: string; itemIds?: number[] }) =>

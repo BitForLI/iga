@@ -6,6 +6,8 @@ namespace igaServer.DTOs
     /// </summary>
     public class OrderCreateDto
     {
+        public string? ClientRequestId { get; set; }
+
         public string? OrderType { get; set; } // "Pickup" 或 "Delivery"
 
         public DateTime? PickupTime { get; set; }

@@ -20,7 +20,7 @@ import { DeliveryFeesSettingsPage } from './pages/admin/DeliveryFeesSettingsPage
 import { HomeHeroSettingsPage } from './pages/admin/HomeHeroSettingsPage';
 import searchIcon from './assets/images/搜索.png';
 import { useCart } from './context/CartContext';
-import { paymentAPI } from './api';
+import { clearPendingOrderCreate, paymentAPI } from './api';
 import { useMaxWidth } from './hooks/useMediaQuery';
 import { MOBILE_NAV_BREAKPOINT } from './constants/layout';
 
@@ -58,6 +58,7 @@ function MainAppWithPaymentReturn() {
       } catch (e) {
         console.error('[payment] 同步订单状态失败（可忽略后由 Webhook 补）：', e);
       } finally {
+        clearPendingOrderCreate();
         clearCart();
         setSearchParams({}, { replace: true });
       }
