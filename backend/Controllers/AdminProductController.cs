@@ -344,6 +344,8 @@ namespace igaServer.Controllers
         public async Task<IActionResult> ApproveRefundRequest(int orderId)
         {
             if (await RequireAdminAsync() is { } denied) return denied;
+            if (!_configuration.GetValue("Operations:AcceptRefunds", true))
+                return StatusCode(503, new { error = "Refund processing is temporarily paused." });
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, HttpContext.RequestAborted);
             var order = await _context.Orders
                 .Include(o => o.User)

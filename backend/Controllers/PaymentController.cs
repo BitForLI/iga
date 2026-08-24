@@ -58,6 +58,8 @@ namespace igaServer.Controllers
         [HttpPost("create-checkout-session/{orderId}")]
         public async Task<IActionResult> CreateCheckoutSession(int orderId)
         {
+            if (!_configuration.GetValue("Operations:AcceptPayments", true))
+                return StatusCode(503, new { error = "Payments are temporarily paused." });
             // 注意：appsettings.Development.json 会覆盖 appsettings.json；若 Development 里 Stripe:SecretKey 为空字符串，会覆盖掉基座里已填的密钥。
             var stripeSecret = (_configuration["Stripe:SecretKey"] ?? "").Trim();
             if (string.IsNullOrWhiteSpace(stripeSecret))

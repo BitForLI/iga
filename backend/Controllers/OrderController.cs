@@ -47,6 +47,8 @@ namespace igaServer.Controllers
         [HttpPost("create")]
         public async Task<ActionResult<OrderDetailDto>> CreateOrder([FromBody] OrderCreateDto request)
         {
+            if (!_configuration.GetValue("Operations:AcceptOrders", true))
+                return StatusCode(503, new { error = "New orders are temporarily paused." });
             if (request == null) return BadRequest(new { error = "Invalid JSON body" });
             if (!TryGetCurrentUserId(out var currentUserId)) return Unauthorized();
             var user = await _context.Users.FindAsync(currentUserId);
@@ -297,6 +299,8 @@ namespace igaServer.Controllers
             int orderId,
             [FromBody] RefundRequestDto? body)
         {
+            if (!_configuration.GetValue("Operations:AcceptRefunds", true))
+                return StatusCode(503, new { error = "Refund requests are temporarily paused." });
             if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
             var order = await _context.Orders
@@ -632,6 +636,8 @@ namespace igaServer.Controllers
             string? stripeRefundId = null;
             if (deltaRefund > 0.01m)
             {
+                if (!_configuration.GetValue("Operations:AcceptRefunds", true))
+                    return StatusCode(503, new { error = "Refund processing is temporarily paused." });
                 if (!canStripeRefund)
                 {
                     return BadRequest(new
