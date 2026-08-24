@@ -219,6 +219,7 @@ public class AdminStoreController : ControllerBase
             await DeleteOrphanCarouselImagesAsync(urls, cancellationToken);
         }
 
+        AdminAuditLogHelper.Add(_context, User, "StoreSettingsUpdated", "StoreConfig", store.Id);
         await _context.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("[AdminStore] Settings updated");
         return Ok(new { message = "Saved" });

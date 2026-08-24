@@ -608,7 +608,7 @@ namespace igaServer.Controllers
                 .Where(u => _context.Orders.Any(o => o.UserId == u.Id))
                 .OrderByDescending(u => u.CreatedAt);
             var total = await query.CountAsync();
-            var users = await query
+            var userRows = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(u => new {
@@ -620,6 +620,17 @@ namespace igaServer.Controllers
                     createdAt = u.CreatedAt
                 })
                 .ToListAsync();
+            var users = userRows.Select(u => new
+            {
+                u.id,
+                u.name,
+                u.email,
+                phoneNumber = MaskPhone(u.phoneNumber),
+                u.role,
+                u.createdAt,
+            }).ToList();
+            AdminAuditLogHelper.Add(_context, User, "CustomerListViewed", "User", "page", $"page={page};pageSize={pageSize}");
+            await _context.SaveChangesAsync();
             return Ok(new { items = users, total, page, pageSize });
         }
 
@@ -651,9 +662,19 @@ namespace igaServer.Controllers
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 return NotFound();
+            AdminAuditLogHelper.Add(_context, User, "CustomerViewed", "User", user.Id);
+            await _context.SaveChangesAsync();
             var name = user.Email == "guest@iga.local" ? "Guest" : user.Name;
             var email = user.Email == "guest@iga.local" ? "(Guest order)" : user.Email;
             return Ok(new { id = user.Id, name = name, email = email, phoneNumber = user.PhoneNumber, role = user.Role, createdAt = user.CreatedAt });
+        }
+
+        private static string MaskPhone(string? phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone)) return string.Empty;
+            var digits = new string(phone.Where(char.IsDigit).ToArray());
+            if (digits.Length <= 4) return "••••";
+            return $"••••••{digits[^4..]}";
         }
 
         [HttpGet("products")]
