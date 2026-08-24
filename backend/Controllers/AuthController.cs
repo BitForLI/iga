@@ -22,6 +22,8 @@ public class AuthController : ControllerBase
 {
     private const string PasswordResetUserMessage =
         "If an account exists for this email, a verification code has been sent. It expires in 15 minutes.";
+    private const string RegistrationUserMessage =
+        "If this email can be registered, a verification code has been sent. It expires in 15 minutes.";
 
     private readonly ApplicationDbContext _context;
     private readonly IResendEmailService _resendEmail;
@@ -51,12 +53,22 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = "Enter a valid name and email." });
         if (password.Length is < 12 or > 128)
             return BadRequest(new { error = "Password must be 12-128 characters." });
+        // Perform the expensive password hashing before the account lookup so the response does
+        // not provide an obvious fast-path timing signal for already registered addresses.
+        var passwordHash = _passwordHasher.HashPassword(new User { Email = email, Name = name }, password);
         if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email))
-            return BadRequest(new { error = "Email already registered" });
+        {
+            return Ok(new
+            {
+                status = "PendingVerification",
+                message = RegistrationUserMessage,
+                emailSent = true,
+                email,
+            });
+        }
 
         var code = GenerateSixDigitCode();
         var pending = await _context.PendingRegistrations.FindAsync(email);
-        var passwordHash = _passwordHasher.HashPassword(new User { Email = email, Name = name }, password);
         if (pending == null)
         {
             pending = new PendingRegistration { Email = email };
@@ -73,8 +85,8 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             status = "PendingVerification",
-            message = sent ? "Verification code sent." : "Verification email could not be sent. Please try again later.",
-            emailSent = sent,
+            message = RegistrationUserMessage,
+            emailSent = true,
             email,
         });
     }
