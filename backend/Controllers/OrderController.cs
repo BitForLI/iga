@@ -69,7 +69,7 @@ namespace igaServer.Controllers
 
             foreach (var item in request.Items)
             {
-                if (item.ProductId <= 0 || item.Quantity < 0 || item.Quantity > 100 ||
+                if (item.ProductId <= 0 || item.Quantity < 1 || item.Quantity > 100 ||
                     double.IsNaN(item.ExpectedWeight) || double.IsInfinity(item.ExpectedWeight) || item.ExpectedWeight < 0 || item.ExpectedWeight > 100 ||
                     (item.SelectedUnit?.Length ?? 0) > 20)
                     return BadRequest(new { error = "One or more cart items have invalid values" });
@@ -119,8 +119,13 @@ namespace igaServer.Controllers
             foreach (var item in request.Items)
             {
                 var product = products.First(p => p.Id == item.ProductId);
-                var selectedUnit = (item.SelectedUnit ?? product.Unit ?? "ea").Trim();
-                var unitPrice = ResolveUnitPrice(product, selectedUnit);
+                if (!TryResolveUnitPrice(product, item.SelectedUnit, out var selectedUnit, out var unitPrice))
+                {
+                    return BadRequest(new { error = $"Invalid unit for product: {product.Name}" });
+                }
+
+                // Only a server-validated catalog unit may choose the weighing path. Never let an
+                // arbitrary client string change quantity semantics after falling back to another price.
                 var isWeighed = string.Equals(selectedUnit, "kg", StringComparison.OrdinalIgnoreCase);
 
                 decimal lineAmount;
@@ -145,13 +150,13 @@ namespace igaServer.Controllers
                 }
                 else
                 {
-                    if (item.Quantity < 1)
+                    if (item.ExpectedWeight > 0)
                     {
-                        return BadRequest(new { error = $"Invalid quantity for {product.Name}" });
+                        return BadRequest(new { error = $"Weight is only valid for kg items: {product.Name}" });
                     }
 
                     orderItem.Quantity = item.Quantity;
-                    orderItem.ExpectedWeight = item.ExpectedWeight > 0 ? item.ExpectedWeight : 0;
+                    orderItem.ExpectedWeight = 0;
                     lineAmount = Math.Round(unitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
                 }
 
@@ -753,21 +758,37 @@ namespace igaServer.Controllers
             return oi.PriceAtPurchase * oi.Quantity;
         }
 
-        private static decimal ResolveUnitPrice(Product product, string selectedUnit)
+        private static bool TryResolveUnitPrice(
+            Product product,
+            string? requestedUnit,
+            out string selectedUnit,
+            out decimal unitPrice)
         {
             var options = ParseUnitPriceOptions(product.UnitPriceOptionsJson);
             if (options.Count == 0)
             {
-                return product.Price;
+                options.Add(new ProductUnitPriceOption
+                {
+                    Unit = string.IsNullOrWhiteSpace(product.Unit) ? "ea" : product.Unit.Trim(),
+                    Price = Math.Round(product.Price, 2, MidpointRounding.AwayFromZero),
+                });
             }
 
-            var match = options.FirstOrDefault(x => string.Equals(x.Unit, selectedUnit, StringComparison.OrdinalIgnoreCase));
-            if (match is not null)
+            var requested = string.IsNullOrWhiteSpace(requestedUnit)
+                ? options[0].Unit
+                : requestedUnit.Trim();
+            var match = options.FirstOrDefault(x =>
+                string.Equals(x.Unit, requested, StringComparison.OrdinalIgnoreCase));
+            if (match is null || match.Price <= 0)
             {
-                return match.Price;
+                selectedUnit = string.Empty;
+                unitPrice = 0;
+                return false;
             }
 
-            return options[0].Price;
+            selectedUnit = match.Unit;
+            unitPrice = match.Price;
+            return true;
         }
 
         private static List<ProductUnitPriceOption> ParseUnitPriceOptions(string? json)
